@@ -1,0 +1,45 @@
+import os
+
+from dotenv import load_dotenv
+from peewee import *
+from playhouse.postgres_ext import ArrayField, JSONField
+
+load_dotenv()
+
+db: float = PostgresqlDatabase(
+	os.getenv('PG_DATABASE'),
+	user=os.getenv('PG_USER'),
+	password=os.getenv('PG_PASSWORD'),
+	host=os.getenv('PG_HOST'),
+	port=os.getenv('PG_PORT'))
+
+class Dictionary(Model):
+    id = IntegerField()
+    timestamp = DateTimeField()
+    name = CharField()
+    username = CharField()
+    labels = ArrayField(CharField)
+
+    class Meta:
+        database = db
+        primary_key = CompositeKey('id', 'timestamp')
+
+class Rule(Model):
+    id = IntegerField()
+    timestamp = DateTimeField()
+    name = CharField()
+    username = CharField()
+    type = CharField()
+    dictionary_id = IntegerField()
+    dictionary_timestamp = DateTimeField()
+    properties = JSONField()
+
+    class Meta:
+        database = db
+        primary_key = CompositeKey('id', 'timestamp')
+        indexes = (
+            (('dictionary_id', 'dictionary_timestamp'), True),
+        )
+
+db.connect()
+db.create_tables([Dictionary, Rule])

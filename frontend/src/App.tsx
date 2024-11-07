@@ -1,9 +1,15 @@
 import React, { useState } from 'react';
 import './App.css';
+import { useKeycloak } from '@react-keycloak/web';
 
 function App() {
 	const [file, setFile] = useState<File | null>(null);
 	const [paragraphs, setParagraphs] = useState<string[] | null>(null);
+  const { keycloak, initialized } = useKeycloak();
+
+  if (!initialized) {
+    return <div>Loading...</div>;
+  }
 
 	const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -32,6 +38,15 @@ function App() {
 
   return (
     <div className="App">
+      <div>
+        <h1>Welcome to Keycloak-React App</h1>
+        {!keycloak.authenticated && (
+          <button onClick={() => keycloak.login()}>Login</button>
+        )}
+        {keycloak.authenticated && (
+          <button onClick={() => keycloak.logout()}>Logout</button>
+        )}
+      </div>
       <p>
         <input type="file" onChange={handleFileChange} />
         <button disabled={!file} onClick={handleDocx2Text}>docx2text</button>
