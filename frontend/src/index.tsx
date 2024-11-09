@@ -10,11 +10,9 @@ const root = ReactDOM.createRoot(
   document.getElementById('root') as HTMLElement
 );
 root.render(
-  <React.StrictMode>
-    <ReactKeycloakProvider authClient={keycloak}>
-      <App />
-    </ReactKeycloakProvider>
-  </React.StrictMode>
+  <ReactKeycloakProvider authClient={keycloak}>
+    <App />
+  </ReactKeycloakProvider>
 );
 
 // If you want to start measuring performance in your app, pass a function
