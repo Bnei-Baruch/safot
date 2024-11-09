@@ -11,8 +11,6 @@ function App() {
     return <div>Loading...</div>;
   }
 
-  console.log(keycloak);
-
 	const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       setFile(e.target.files[0]);
@@ -40,8 +38,8 @@ function App() {
 
   return (
     <div className="App">
+			<h1>Safot</h1>
       <div>
-        <h1>Welcome to Keycloak-React App</h1>
         {!keycloak.authenticated && (
           <button onClick={() => keycloak.login()}>Login</button>
         )}
