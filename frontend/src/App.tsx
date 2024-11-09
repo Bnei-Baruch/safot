@@ -11,6 +11,8 @@ function App() {
     return <div>Loading...</div>;
   }
 
+  console.log(keycloak);
+
 	const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       setFile(e.target.files[0]);
