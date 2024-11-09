@@ -11,9 +11,9 @@ const root = ReactDOM.createRoot(
 );
 root.render(
   <React.StrictMode>
-		<ReactKeycloakProvider authClient={keycloak}>
-			<App />
-		</ReactKeycloakProvider>
+    <ReactKeycloakProvider authClient={keycloak}>
+      <App />
+    </ReactKeycloakProvider>
   </React.StrictMode>
 );
 

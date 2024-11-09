@@ -1,4 +1,4 @@
-import Keycloak, { KeycloakInstance } from 'keycloak-js';
+import Keycloak from 'keycloak-js';
 
 const REACT_APP_KEYCLOAK_URL="https://auth.2serv.eu/auth";
 const REACT_APP_KEYCLOAK_REALM="master";
@@ -10,6 +10,6 @@ const keycloakConfig = {
   clientId: REACT_APP_KEYCLOAK_CLIENT_ID,
 };
 
-const keycloak: KeycloakInstance = new Keycloak(keycloakConfig);
+const keycloak = new Keycloak(keycloakConfig);
 
 export default keycloak;
