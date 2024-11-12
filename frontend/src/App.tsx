@@ -6,6 +6,7 @@ function App() {
 	const [file, setFile] = useState<File | null>(null);
 	const [paragraphs, setParagraphs] = useState<string[] | null>(null);
   const { keycloak, initialized } = useKeycloak();
+  const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "https://babylon.bbdev1.kbb1.com/backend";
 
   if (!initialized) {
     return <div>Loading...</div>;
@@ -24,7 +25,7 @@ function App() {
 			const formData = new FormData();
       formData.append('file', file);
 			try {
-        const result = await fetch('https://babylon.bbdev1.kbb1.com/backend/docx2text', {
+        const result = await fetch(`${API_BASE_URL}/docx2text`, {
           method: 'POST',
           body: formData,
         });

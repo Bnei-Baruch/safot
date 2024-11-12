@@ -1,2 +1,5 @@
 **/*.swp
 **/*.swo
+*.env
+package-lock.json
+yarn.lock
