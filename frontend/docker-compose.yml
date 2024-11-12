@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile  # Points to your frontend Dockerfile
+    env_file:
+      - .env  # Loads environment variables for the frontend
+    ports:
+      - "3000:3000"  # Maps container's port 3000 to host's port 3000
+    volumes:
+      - .:/usr/src/app  # Mounts code for live editing in development
+    command: ["npm", "start"]  # Starts the frontend development server
