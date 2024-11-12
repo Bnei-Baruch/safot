@@ -5,3 +5,4 @@ uvicorn[standard]
 python-docx
 peewee-migrate
 psycopg2-binary
+python-multipart
