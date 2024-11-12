@@ -1,0 +1,7 @@
+python-dotenv
+peewee
+fastapi
+uvicorn[standard]
+python-docx
+peewee-migrate
+psycopg2-binary
