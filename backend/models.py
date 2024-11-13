@@ -1,19 +1,17 @@
-from peewee import PostgresqlDatabase, Model, IntegerField, DateTimeField, CharField, CompositeKey
-from playhouse.postgres_ext import ArrayField, JSONField
 import os
+
 from dotenv import load_dotenv
+from peewee import *
+from playhouse.postgres_ext import ArrayField, JSONField
 
 load_dotenv()
 
-db = PostgresqlDatabase(
-    os.getenv('PG_DATABASE'),
-    user=os.getenv('PG_USER'),
-    password=os.getenv('PG_PASSWORD'),
-    host=os.getenv('PG_HOST'),
-    port=int(os.getenv('PG_PORT')),
-    autorollback=True,
-    **{'client_encoding': 'utf8', 'driver': 'psycopg'}
-)
+db: float = PostgresqlDatabase(
+	os.getenv('PG_DATABASE'),
+	user=os.getenv('PG_USER'),
+	password=os.getenv('PG_PASSWORD'),
+	host=os.getenv('PG_HOST'),
+	port=os.getenv('PG_PORT'))
 
 class Dictionary(Model):
     id = IntegerField()

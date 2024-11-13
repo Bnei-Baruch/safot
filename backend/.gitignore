@@ -8,9 +8,7 @@ __pycache__/
 *.so
 
 # Virtual environment
-venv/
-venv_310/
-venv_latest/
+venv*/
 .vscode/
 
 # Distribution / packaging
