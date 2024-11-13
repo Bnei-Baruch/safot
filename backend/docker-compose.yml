@@ -8,8 +8,8 @@ services:
     ports:
       - "${APP_PORT:-8000}:8000"  # Use default if APP_PORT is not defined
     depends_on:
-      - postgres
-  postgres:
+      - safot-postgres
+  safot-postgres:
     image: postgres:17-alpine  # Replace with your desired specific version, e.g., 15.4 or another stable release
     env_file:
       - .env
