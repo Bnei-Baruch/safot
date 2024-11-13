@@ -123,12 +123,20 @@ You can run the backend in a containerized environment using Docker and `docker-
 
 1. **Update the `.env` Files**: Ensure the `.env` files (e.g., `.env.dev`, `.env.prod`) are correctly configured with database and application settings.
 
-2. **Run Docker Compose for Development with Multiple Files**:
-   If you have a `docker-compose.dev.yml` file specifically for development overrides, you can combine it with the base `docker-compose.yml`:
-   ```bash
-   docker-compose -f docker-compose.yml -f docker-compose.dev.yml up --build
-   ```
-   This command uses both `docker-compose.yml` and `docker-compose.dev.yml` files, where `docker-compose.dev.yml` contains development-specific overrides (e.g., different volumes, ports, or service settings).
+2. **Run Docker Compose for Development**:
+   To run the development environment, you can use either of these options:
+   
+   - With `--env-file`:
+     ```bash
+     docker-compose --env-file .env.dev up --build
+     ```
+   
+   - Using multiple compose files:
+     ```bash
+     docker-compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+     ```
+
+   Both commands will use the `.env.dev` configuration, but the second approach allows you to apply development-specific overrides defined in `docker-compose.dev.yml`.
 
 3. **Run Docker Compose for Production**:
    To run in production without overrides, you can simply use the base `docker-compose.yml`:
