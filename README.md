@@ -180,7 +180,7 @@ We welcome contributions! Please fork the repository, create a new branch, and s
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for more information.
+The license for this project is yet to be determined.
 
 ## Legacy Setup
 
