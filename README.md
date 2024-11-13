@@ -11,6 +11,7 @@ A backend service built with FastAPI, Peewee ORM, and PostgreSQL for managing th
 - [Installation](#installation)
 - [Environment Setup](#environment-setup)
 - [Usage](#usage)
+- [Docker Setup](#docker-setup-optional)
 - [Scripts](#scripts)
 - [API Documentation](#api-documentation)
 - [Contributing](#contributing)
@@ -50,7 +51,7 @@ A backend service built with FastAPI, Peewee ORM, and PostgreSQL for managing th
 2. **Create and Activate a Virtual Environment**:
    ```bash
    python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   source venv/bin/activate  # On Windows: venv\Scriptsctivate
    ```
 
 3. **Install Dependencies**:
@@ -108,6 +109,53 @@ runprod  # Starts with production configuration
 FastAPI automatically generates interactive API documentation, which can be accessed at:
 - **Swagger UI**: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
 - **ReDoc**: [http://127.0.0.1:8000/redoc](http://127.0.0.1:8000/redoc)
+
+## Docker Setup (Optional)
+
+You can run the backend in a containerized environment using Docker and `docker-compose`, which simplifies setup and ensures consistency across environments.
+
+### Prerequisites
+
+- **Docker** - Install [Docker](https://docs.docker.com/get-docker/) if not already installed.
+- **Docker Compose** - Install [Docker Compose](https://docs.docker.com/compose/install/) (often included with Docker Desktop).
+
+### Build and Run with Docker Compose
+
+1. **Update the `.env` Files**: Ensure the `.env` files (e.g., `.env.dev`, `.env.prod`) are correctly configured with database and application settings.
+
+2. **Run Docker Compose for Development with Multiple Files**:
+   If you have a `docker-compose.dev.yml` file specifically for development overrides, you can combine it with the base `docker-compose.yml`:
+   ```bash
+   docker-compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+   ```
+   This command uses both `docker-compose.yml` and `docker-compose.dev.yml` files, where `docker-compose.dev.yml` contains development-specific overrides (e.g., different volumes, ports, or service settings).
+
+3. **Run Docker Compose for Production**:
+   To run in production without overrides, you can simply use the base `docker-compose.yml`:
+   ```bash
+   docker-compose -f docker-compose.yml -f docker-compose.prod.yml up --build
+   ```
+
+4. **Verify the Server is Running**:
+   Once the container is up, you can access the API at [http://localhost:8000](http://localhost:8000).
+
+### Stopping the Containers
+
+To stop and remove the containers, use:
+```bash
+docker-compose down
+```
+
+### Docker Compose Tips
+
+- **Rebuild Images**: If you make changes to the code or dependencies, rebuild the images:
+  ```bash
+  docker-compose up --build
+  ```
+- **Detached Mode**: Run in the background by adding the `-d` flag:
+  ```bash
+  docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+  ```
 
 ## Scripts
 
