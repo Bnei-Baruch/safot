@@ -16,6 +16,7 @@ A backend service built with FastAPI, Peewee ORM, and PostgreSQL for managing th
 - [API Documentation](#api-documentation)
 - [Contributing](#contributing)
 - [License](#license)
+- [Legacy Setup](#legacy-setup)
 
 ## Features
 
@@ -180,3 +181,20 @@ We welcome contributions! Please fork the repository, create a new branch, and s
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for more information.
+
+## Legacy Setup
+
+For reference, here are the original commands used in setting up and starting the backend and frontend:
+
+### Frontend
+```bash
+yarn install
+PORT=1234 yarn start
+```
+
+### Backend
+```bash
+pip install "fastapi[standard]"
+pip install python-docx
+fastapi dev server.py --port=7392 --host=0.0.0.0
+```
