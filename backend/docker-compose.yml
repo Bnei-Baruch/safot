@@ -3,21 +3,16 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    environment:
-      - PG_HOST=${PG_HOST}
-      - PG_DATABASE=${PG_DATABASE}
-      - PG_USER=${PG_USER}
-      - PG_PASSWORD=${PG_PASSWORD}
+    env_file:
+      - .env
     ports:
       - "${APP_PORT:-8000}:8000"  # Use default if APP_PORT is not defined
     depends_on:
       - postgres
   postgres:
     image: postgres:17-alpine  # Replace with your desired specific version, e.g., 15.4 or another stable release
-    environment:
-      - POSTGRES_DB=${PG_DATABASE}
-      - POSTGRES_USER=${PG_USER}
-      - POSTGRES_PASSWORD=${PG_PASSWORD}
+    env_file:
+      - .env
     ports:
       - "${DB_PORT:-5432}:5432"
     volumes:
