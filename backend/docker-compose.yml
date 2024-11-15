@@ -1,5 +1,6 @@
 services:
   safot-backend:
+    restart: always
     build:
       context: .
       dockerfile: Dockerfile
@@ -10,6 +11,7 @@ services:
     depends_on:
       - safot-postgres
   safot-postgres:
+    restart: always
     image: postgres:17-alpine  # Replace with your desired specific version, e.g., 15.4 or another stable release
     env_file:
       - .env
