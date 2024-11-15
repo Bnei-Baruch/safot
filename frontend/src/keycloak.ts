@@ -1,8 +1,8 @@
 import Keycloak from 'keycloak-js';
 
-const REACT_APP_KEYCLOAK_URL="https://auth.2serv.eu/auth";
-const REACT_APP_KEYCLOAK_REALM="master";
-const REACT_APP_KEYCLOAK_CLIENT_ID="kolman-dev";
+const REACT_APP_KEYCLOAK_URL=process.env.REACT_APP_KEYCLOAK_URL || "https://auth.2serv.eu/auth";
+const REACT_APP_KEYCLOAK_REALM=process.env.REACT_APP_KEYCLOAK_REALM || "master";
+const REACT_APP_KEYCLOAK_CLIENT_ID= process.env.REACT_APP_KEYCLOAK_CLIENT_ID || "kolman-dev";
 
 const keycloakConfig = {
   url: REACT_APP_KEYCLOAK_URL,
