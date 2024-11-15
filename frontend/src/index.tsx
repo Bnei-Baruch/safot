@@ -5,6 +5,10 @@ import App from './App';
 import reportWebVitals from './reportWebVitals';
 import keycloak from './keycloak';
 import { ReactKeycloakProvider } from '@react-keycloak/web';
+import crypto from 'crypto-browserify';
+
+// Assign the polyfill to the global scope
+global.crypto = crypto as unknown as Crypto;
 
 const onKeycloakTokens = (tokens: { token: string; refreshToken: string }) => {
  console.log('Tokens refreshed:', tokens);
