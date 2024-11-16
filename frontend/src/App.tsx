@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import './App.css';
 import { useKeycloak } from '@react-keycloak/web';
+import LoginButton from './LoginButton';
+import Dictionaries from './Dictionaries';
+import { Box } from '@mui/material';
 
 function App() {
 	const [file, setFile] = useState<File | null>(null);
 	const [paragraphs, setParagraphs] = useState<string[] | null>(null);
-  const { keycloak, initialized } = useKeycloak();
+  const {initialized} = useKeycloak();
 
   if (!initialized) {
     return <div>Loading...</div>;
@@ -22,13 +25,12 @@ function App() {
 			const formData = new FormData();
       formData.append('file', file);
 			try {
-        const result = await fetch('https://babylon.bbdev1.kbb1.com/backend/docx2text', {
+        const result = await fetch('https://safot.bbdev1.kbb1.com/backend/docx2text', {
           method: 'POST',
           body: formData,
         });
 
         const data = await result.json();
-        console.log(data);
 				setParagraphs(data);
       } catch (error) {
         console.error(error);
@@ -39,14 +41,10 @@ function App() {
   return (
     <div className="App">
 			<h1>Safot</h1>
-      <div>
-        {!keycloak.authenticated && (
-          <button onClick={() => keycloak.login()}>Login</button>
-        )}
-        {keycloak.authenticated && (
-          <button onClick={() => keycloak.logout()}>Logout</button>
-        )}
-      </div>
+			<Box sx={{position: 'absolute', top: '10px', right: '10px'}}>
+				<LoginButton />
+			</Box>
+			<Dictionaries />
       <p>
         <input type="file" onChange={handleFileChange} />
         <button disabled={!file} onClick={handleDocx2Text}>docx2text</button>

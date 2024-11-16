@@ -1,10 +1,17 @@
+from datetime import datetime
+import logging
 import os
 
 from dotenv import load_dotenv
 from peewee import *
 from playhouse.postgres_ext import ArrayField, JSONField
+from pydantic import BaseModel
 
 load_dotenv()
+
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger('peewee')
+logger.setLevel(logging.DEBUG)
 
 db: float = PostgresqlDatabase(
 	os.getenv('PG_DATABASE'),
@@ -14,8 +21,8 @@ db: float = PostgresqlDatabase(
 	port=os.getenv('PG_PORT'))
 
 class Dictionary(Model):
-    id = IntegerField()
-    timestamp = DateTimeField()
+    id = IntegerField(sequence='dictionary_id_seq')
+    timestamp = DateTimeField(default=datetime.utcnow())
     name = CharField()
     username = CharField()
     labels = ArrayField(CharField)
@@ -25,8 +32,8 @@ class Dictionary(Model):
         primary_key = CompositeKey('id', 'timestamp')
 
 class Rule(Model):
-    id = IntegerField()
-    timestamp = DateTimeField()
+    id = IntegerField(sequence='rule_id_seq')
+    timestamp = DateTimeField(default=datetime.utcnow())
     name = CharField()
     username = CharField()
     type = CharField()

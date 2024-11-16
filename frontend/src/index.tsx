@@ -1,13 +1,20 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import './index.css';
-import App from './App';
-import reportWebVitals from './reportWebVitals';
-import keycloak from './keycloak';
 import { ReactKeycloakProvider } from '@react-keycloak/web';
+import { Provider } from "react-redux";
+import { ToastContainer } from "react-toastify";
+
+import './index.css';
+import "react-toastify/dist/ReactToastify.css";
+
+import App from './App';
+import keycloak from './keycloak';
+import reportWebVitals from './reportWebVitals';
+import store from "./store";
 
 const onKeycloakTokens = (tokens: { token: string; refreshToken: string }) => {
  console.log('Tokens refreshed:', tokens);
+ localStorage.setItem('token', tokens.token);
 };
 
 const onKeycloakEvent = async (event: string, error?: Error) => {
@@ -25,7 +32,10 @@ root.render(
 			initOptions={{
 				checkLoginIframe: false,  // This disables iframe checking for session status
 			}}>
-    <App />
+    <ToastContainer />
+    <Provider store={store}>
+      <App />
+    </Provider>
   </ReactKeycloakProvider>
 );
 
