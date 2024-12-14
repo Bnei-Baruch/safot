@@ -7,6 +7,7 @@ from peewee import DoesNotExist
 from dotenv import load_dotenv
 from docx import Document
 from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from keycloak import KeycloakOpenID
 from playhouse.shortcuts import model_to_dict
 from starlette.status import HTTP_401_UNAUTHORIZED
@@ -16,6 +17,14 @@ from models import db, Rule, Dictionary
 load_dotenv()
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Initialize Keycloak
 print('Initializing keycloak', os.getenv('KEYCLOAK_SERVER_URL'), os.getenv('KEYCLOAK_CLIENT_ID'), os.getenv('KEYCLOAK_REALM_NAME'))
@@ -48,7 +57,7 @@ def startup():
 
 @app.on_event('shutdown')
 def shutdown():
-    if not db.is_closed():
+    if not db.is_closed(): 
         db.close()
 
 
