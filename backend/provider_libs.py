@@ -95,4 +95,5 @@ class TranslationProvider:
                 translated_paragraphs.extend(translated_text.split(" ||| "))
             else:
                 print(f"Segment {i} translation failed.")
+                
         return translated_paragraphs
