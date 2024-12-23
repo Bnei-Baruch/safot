@@ -1,10 +1,16 @@
+import os
+from dotenv import load_dotenv
 from provider_libs import TranslationProvider
 
-def main():
+# Load environment variables from .env file
+load_dotenv()
 
+
+def main():
+    api_key = os.environ.get("OPENAI_API_KEY")
     model = "gpt-4"
     prompt = (
-        "Translate the following text into [target language], maintaining the original meaning and structure. "
+        "Translate the following text into %(target_language), maintaining the original meaning and structure. "
         "The translation should reflect the precise concepts and teachings of Kabbalist Michael Laitman, "
         "adhering closely to the authentic style and terminology of Kabbalah. Avoid rephrasing or altering the intent "
         "of the original text while ensuring linguistic accuracy and fluency. Preserve the `|||` separator exactly as it appears in the text."
@@ -20,6 +26,7 @@ def main():
 
     # Create a TranslationProvider object
     translator = TranslationProvider(
+        api_key=api_key,
         model=model,
         prompt=prompt,
         target_language=target_language,

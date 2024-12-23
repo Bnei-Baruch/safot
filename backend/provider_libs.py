@@ -1,22 +1,16 @@
-import os
-from dotenv import load_dotenv
 import tiktoken
 from openai import OpenAI
 
-load_dotenv()
-
 class TranslationProvider:
-    def __init__(self, model, prompt, target_language, paragraphs=None):
-      
-        api_key = os.environ['OPENAI_API_KEY']
-        self.client = OpenAI(api_key=api_key)  
+    def __init__(self, api_key, model, prompt, target_language, paragraphs=None):
+        self.client = OpenAI(api_key=api_key)
         self.model = model                   
         self.prompt = prompt                
         self.target_language = target_language  
         self.encoding = tiktoken.encoding_for_model(self.model)
         self.paragraphs = paragraphs or []  
     
-    def __get_model_token_limit(self):
+    def get_model_token_limit(self):
         model_token_limits = {
             "gpt-4o": {"context_window": 128000, "max_output_tokens": 16384},
             "gpt-4o-2024-11-20": {"context_window": 128000, "max_output_tokens": 16384},
@@ -30,11 +24,9 @@ class TranslationProvider:
     def calculate_segment_token_limit(self, output_ratio=1.2):
 
         prompt_tokens = len(self.encoding.encode(self.prompt))
-
-        model_limits = self.__get_model_token_limit()
+        model_limits = self.get_model_token_limit()
         context_window = model_limits["context_window"]
         max_output_tokens = model_limits["max_output_tokens"]
-        
         segment_tokens_by_output = int(max_output_tokens / output_ratio)
         segment_tokens_by_context = context_window - prompt_tokens - max_output_tokens
 
@@ -63,12 +55,15 @@ class TranslationProvider:
         return segments
 
     def send_segment_for_translation(self, segment, temperature=0.2):
-
-        model_limits = self.__get_model_token_limit()
+        """
+        1. Prepares a translation prompt using the provided segment 
+           and target language.
+        2. Retrieves the maximum output tokens required for the API call.
+        3. Sends the request to the OpenAI API and retrieves the translated content.
+         """
+        model_limits = self.get_model_token_limit()
         max_output_tokens = model_limits["max_output_tokens"]
-
-        prompt = self.prompt.replace("[target language]", self.target_language)
-
+        prompt = self.prompt % {"target_language": self.target_language}
         messages = [
             {"role": "system", "content": prompt},
             {"role": "user", "content": f"{segment}"}
@@ -82,7 +77,6 @@ class TranslationProvider:
                 temperature=temperature
             )
             return response.choices[0].message.content.strip()
-
         except Exception as e:
             print(f"Error during translation: {e}")
             return f"Translation failed for segment: {segment}"
@@ -101,5 +95,4 @@ class TranslationProvider:
                 translated_paragraphs.extend(translated_text.split(" ||| "))
             else:
                 print(f"Segment {i} translation failed.")
-
         return translated_paragraphs
