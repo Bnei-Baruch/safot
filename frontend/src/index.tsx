@@ -7,18 +7,18 @@ import { ToastContainer } from "react-toastify";
 import './index.css';
 import "react-toastify/dist/ReactToastify.css";
 
-import App from './App';
+import App from './App-copy';
 import keycloak from './keycloak';
 import reportWebVitals from './reportWebVitals';
 import store from "./store";
 
 const onKeycloakTokens = (tokens: { token: string; refreshToken: string }) => {
- console.log('Tokens refreshed:', tokens);
- localStorage.setItem('token', tokens.token);
+  console.log('Tokens refreshed:', tokens);
+  localStorage.setItem('token', tokens.token);
 };
 
 const onKeycloakEvent = async (event: string, error?: Error) => {
-	console.log('Keycloak event:', event, error);
+  console.log('Keycloak event:', event, error);
 };
 
 const root = ReactDOM.createRoot(
@@ -26,12 +26,12 @@ const root = ReactDOM.createRoot(
 );
 root.render(
   <ReactKeycloakProvider
-      authClient={keycloak}
-      onTokens={onKeycloakTokens}
-      onEvent={onKeycloakEvent}
-			initOptions={{
-				checkLoginIframe: false,  // This disables iframe checking for session status
-			}}>
+    authClient={keycloak}
+    onTokens={onKeycloakTokens}
+    onEvent={onKeycloakEvent}
+    initOptions={{
+      checkLoginIframe: false,  // This disables iframe checking for session status
+    }}>
     <ToastContainer />
     <Provider store={store}>
       <App />
