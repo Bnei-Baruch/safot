@@ -1,8 +1,8 @@
 import React from 'react';
 import './App.css';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import SourceIndex from './pages/source-index';
-import SourceEdit from './pages/source-edit';
+import SourceIndex from './pages/SourceIndex';
+import SourceEdit from './pages/SourceEdit';
 
 function App() {
     return (

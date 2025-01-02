@@ -1,10 +1,10 @@
 import { configureStore } from '@reduxjs/toolkit';
-// import safotReducer from './SafotSlice';
+import safotReducer from './SafotSlice';
 import sourceReducer from './SourceSlice';
 
 export default configureStore({
   reducer: {
-    // safot: safotReducer,
+    safot: safotReducer,
     sources: sourceReducer,
   },
 });

@@ -2,12 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { toast } from "react-toastify";
 
 import { useAppDispatch, useAppSelector } from './hooks';
-import { 
-  fetchDictionaries, 
-  addDictionary, 
-  updateDictionary, 
-  deleteDictionary, 
-  Dictionary 
+import {
+  fetchDictionaries,
+  addDictionary,
+  updateDictionary,
+  deleteDictionary,
+  Dictionary
 } from './SafotSlice';
 
 const Dictionaries: React.FC = () => {
@@ -25,12 +25,12 @@ const Dictionaries: React.FC = () => {
   const handleAdd = async () => {
     if (newDictName.trim()) {
       try {
-          const payload = await dispatch(addDictionary({ name: newDictName, labels: [] })).unwrap();
-          setNewDictName('');
-          toast.success("Dictionary added successfully!");
-          dispatch(fetchDictionaries());
+        const payload = await dispatch(addDictionary({ name: newDictName, labels: [] })).unwrap();
+        setNewDictName('');
+        toast.success("Dictionary added successfully!");
+        dispatch(fetchDictionaries());
       } catch (error) {
-          toast.error(error.stack);
+        toast.error(error.stack);
       }
     }
   };
@@ -42,12 +42,12 @@ const Dictionaries: React.FC = () => {
   const handleUpdate = async () => {
     if (editDict) {
       try {
-          const payload = await dispatch(updateDictionary(editDict)).unwrap();
-          toast.success("Dictionary updated successfully!");
-          setEditDict(null);
-          dispatch(fetchDictionaries());
+        const payload = await dispatch(updateDictionary(editDict)).unwrap();
+        toast.success("Dictionary updated successfully!");
+        setEditDict(null);
+        dispatch(fetchDictionaries());
       } catch (error) {
-          toast.error(error.stack);
+        toast.error(error.stack);
       }
     }
   };
@@ -69,9 +69,9 @@ const Dictionaries: React.FC = () => {
           {dictionaries.map((dict) => (
             <div key={dict.id} style={{ display: 'flex', alignItems: 'center' }}>
               {editDict && editDict.id === dict.id ? (
-                <input 
-                  value={editDict.name} 
-                  onChange={(e) => setEditDict({ ...editDict, name: e.target.value })} 
+                <input
+                  value={editDict.name}
+                  onChange={(e) => setEditDict({ ...editDict, name: e.target.value })}
                 />
               ) : (
                 <span>{dict.name}</span>
@@ -84,10 +84,10 @@ const Dictionaries: React.FC = () => {
       )}
 
       <div>
-        <input 
-          type="text" 
-          value={newDictName} 
-          onChange={(e) => setNewDictName(e.target.value)} 
+        <input
+          type="text"
+          value={newDictName}
+          onChange={(e) => setNewDictName(e.target.value)}
           placeholder="Add new dictionary"
         />
         <button onClick={handleAdd}>Add</button>

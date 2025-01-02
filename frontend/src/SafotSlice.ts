@@ -17,7 +17,7 @@ interface Rule {
   dictionary_timestamp: number;
 }
 
-interface Dictionary {
+export interface Dictionary {
   id: number;
   timestamp: number;
   name: string;
@@ -31,11 +31,11 @@ export const fetchDictionaries = createAsyncThunk<Dictionary[]>(
   'dictionary/fetchDictionaries',
   async (_, { rejectWithValue }) => {
     try {
-    const response = await fetch(`${BACKEND_URL}/dictionaries`, {
-      headers: getDefaultHeaders(),
-    });
-    if (!response.ok) throw new Error('Failed to fetch dictionaries');
-    return (await response.json()) as Dictionary[];
+      const response = await fetch(`${BACKEND_URL}/dictionaries`, {
+        headers: getDefaultHeaders(),
+      });
+      if (!response.ok) throw new Error('Failed to fetch dictionaries');
+      return (await response.json()) as Dictionary[];
     } catch (error: any) {
       return rejectWithValue(error || 'Failed to fetch dictionaries');
     }
@@ -88,23 +88,23 @@ export const deleteDictionary = createAsyncThunk<number, number>(
 interface SafotState {
   rules: Rule[];
   dictionaries: Dictionary[];
-	loading: Boolean,
-	error: any,
+  loading: Boolean,
+  error: any,
 }
 
 // Initial state with empty arrays for rules and dictionaries
 const initialState: SafotState = {
   rules: [],
   dictionaries: [],
-	loading: false,
-	error: null,
+  loading: false,
+  error: null,
 };
 
 const safotSlice = createSlice({
   name: 'safot',
   initialState,
   reducers: {},
-	extraReducers: (builder) => {
+  extraReducers: (builder) => {
     // Fetch dictionaries
     builder.addCase(fetchDictionaries.pending, (state) => {
       state.loading = true;
@@ -119,30 +119,30 @@ const safotSlice = createSlice({
       state.error = action.payload;
     });
 
-		// Add dictionary
+    // Add dictionary
     builder.addCase(addDictionary.fulfilled, (state, action: PayloadAction<Dictionary>) => {
       state.dictionaries.push(action.payload);
     });
-		builder.addCase(addDictionary.rejected, (state, action: PayloadAction<any>) => {
+    builder.addCase(addDictionary.rejected, (state, action: PayloadAction<any>) => {
       state.error = action.payload;
     });
 
-		// Update dictionary
+    // Update dictionary
     builder.addCase(updateDictionary.fulfilled, (state, action: PayloadAction<Dictionary>) => {
       const index = state.dictionaries.findIndex((dict) => dict.id === action.payload.id);
       if (index !== -1) {
         state.dictionaries[index] = action.payload;
       }
     });
-		builder.addCase(updateDictionary.rejected, (state, action: PayloadAction<any>) => {
+    builder.addCase(updateDictionary.rejected, (state, action: PayloadAction<any>) => {
       state.error = action.payload;
     });
 
-		// Delete dictionary
+    // Delete dictionary
     builder.addCase(deleteDictionary.fulfilled, (state, action: PayloadAction<number>) => {
       state.dictionaries = state.dictionaries.filter((dict) => dict.id !== action.payload);
     });
-		builder.addCase(deleteDictionary.rejected, (state, action: PayloadAction<any>) => {
+    builder.addCase(deleteDictionary.rejected, (state, action: PayloadAction<any>) => {
       state.error = action.payload;
     });
 
