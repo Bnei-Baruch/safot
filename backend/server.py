@@ -12,7 +12,8 @@ from keycloak import KeycloakOpenID
 from playhouse.shortcuts import model_to_dict
 from starlette.status import HTTP_401_UNAUTHORIZED
 
-from models import db, Rule, Dictionary
+from models import db, Source
+# from models import db, Rule, Dictionary
 
 load_dotenv()
 
@@ -27,7 +28,8 @@ app.add_middleware(
 )
 
 # Initialize Keycloak
-print('Initializing keycloak', os.getenv('KEYCLOAK_SERVER_URL'), os.getenv('KEYCLOAK_CLIENT_ID'), os.getenv('KEYCLOAK_REALM_NAME'))
+print('Initializing keycloak', os.getenv('KEYCLOAK_SERVER_URL'),
+      os.getenv('KEYCLOAK_CLIENT_ID'), os.getenv('KEYCLOAK_REALM_NAME'))
 keycloak_openid = KeycloakOpenID(
     server_url=os.getenv('KEYCLOAK_SERVER_URL'),
     client_id=os.getenv('KEYCLOAK_CLIENT_ID'),
@@ -35,11 +37,14 @@ keycloak_openid = KeycloakOpenID(
 )
 
 # User info middlware
+
+
 async def get_user_info(request: Request):
     # Extract token from Authorization header
     auth_header = request.headers.get('Authorization')
     if not auth_header or not auth_header.startswith('Bearer '):
-        raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail='Missing or invalid token')
+        raise HTTPException(status_code=HTTP_401_UNAUTHORIZED,
+                            detail='Missing or invalid token')
 
     token = auth_header[len('Bearer '):].strip()
     try:
@@ -48,16 +53,22 @@ async def get_user_info(request: Request):
         return user_info
     except Exception as e:
         print('Invalid or expired token:', e)
-        raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail='Invalid or expired token')
+        raise HTTPException(status_code=HTTP_401_UNAUTHORIZED,
+                            detail='Invalid or expired token')
+
 
 @app.on_event('startup')
 def startup():
     if db.is_closed():
         db.connect()
 
+      # Ensure all tables exist
+    db.create_tables([Source], safe=True)
+
+
 @app.on_event('shutdown')
 def shutdown():
-    if not db.is_closed(): 
+    if not db.is_closed():
         db.close()
 
 
@@ -68,14 +79,81 @@ def read_root():
 
 @app.post('/docx2text')
 def docx2text(file: UploadFile, _: dict = Depends(get_user_info)):
-	ret = []
-	content = file.file.read()
-	print('content: ')
-	print(content)
-	document = Document(BytesIO(content))
-	for p in document.paragraphs:
-		ret.append(p.text)
-	return ret
+    ret = []
+    content = file.file.read()
+    print('content: ')
+    print(content)
+    document = Document(BytesIO(content))
+    for p in document.paragraphs:
+        ret.append(p.text)
+    return ret
+
+# 1. Fetch all sources
+
+
+@app.get('/sources', response_model=list[dict])
+def read_sources(skip: int = 0, limit: int = 10, user_info: dict = Depends(get_user_info)):
+    return list(Source.select().offset(skip).limit(limit).dicts())
+
+# 2. Create a new source
+
+
+@app.post('/sources', response_model=dict)
+def create_source(source: dict, user_info: dict = Depends(get_user_info)):
+    # Generate a new ID using the database sequence
+    cursor = db.execute_sql("SELECT nextval('source_id_seq')")
+    id_value = cursor.fetchone()[0]
+
+    # Create the new source record
+    created_source = Source.create(
+        id=id_value,
+        timestamp=datetime.utcnow(),
+        # Set the username from authenticated user
+        username=user_info['preferred_username'],
+        **source  # Unpack additional source fields from the request
+    )
+    return model_to_dict(created_source)
+
+# 3. Fetch a source by ID
+
+
+@app.get('/sources/{source_id}', response_model=dict)
+def read_source(source_id: int, user_info: dict = Depends(get_user_info)):
+    try:
+        source = Source.get(Source.id == source_id)
+        return model_to_dict(source)
+    except DoesNotExist:
+        raise HTTPException(status_code=404, detail='Source not found')
+
+# 4. Update an existing source
+
+
+@app.put('/sources/{source_id}', response_model=dict)
+def update_source(source_id: int, source: dict, user_info: dict = Depends(get_user_info)):
+    try:
+        # Update fields dynamically
+        query = Source.update(
+            **source, timestamp=datetime.utcnow()).where(Source.id == source_id)
+        updated_rows = query.execute()
+
+        if updated_rows == 0:
+            raise HTTPException(status_code=404, detail='Source not found')
+        # Return the updated object
+        db_source = Source.get(Source.id == source_id)
+        return model_to_dict(db_source)
+    except DoesNotExist:
+        raise HTTPException(status_code=404, detail='Source not found')
+
+# 5. Delete a source by ID
+
+
+@app.delete('/sources/{source_id}', response_model=int)
+def delete_source(source_id: int, _: dict = Depends(get_user_info)):
+    rows_deleted = Source.delete().where(Source.id == source_id).execute()
+    if rows_deleted == 0:
+        raise HTTPException(status_code=404, detail='Source not found')
+    return rows_deleted
+
 
 @app.post('/dictionaries', response_model=dict)
 def create_dictionary(dictionary: dict, user_info: dict = Depends(get_user_info)):
@@ -92,9 +170,11 @@ def create_dictionary(dictionary: dict, user_info: dict = Depends(get_user_info)
         labels=new_dictionary.labels,
     ))
 
+
 @app.get('/dictionaries', response_model=list[dict])
 def read_dictionaries(skip: int = 0, limit: int = 10, user_info: dict = Depends(get_user_info)):
-	return list(Dictionary.select().offset(skip).limit(limit).dicts())
+    return list(Dictionary.select().offset(skip).limit(limit).dicts())
+
 
 @app.get('/dictionaries/{dictionary_id}', response_model=dict)
 def read_dictionary(dictionary_id: int, user_info: dict = Depends(get_user_info)):
@@ -102,6 +182,7 @@ def read_dictionary(dictionary_id: int, user_info: dict = Depends(get_user_info)
         return model_to_dict(Dictionary.get(Dictionary.id == dictionary_id))
     except DoesNotExist:
         raise HTTPException(status_code=404, detail='Dictionary not found')
+
 
 @app.put('/dictionaries/{dictionary_id}', response_model=dict)
 def update_dictionary(dictionary_id: int, dictionary: dict, user_info: dict = Depends(get_user_info)):
@@ -116,6 +197,7 @@ def update_dictionary(dictionary_id: int, dictionary: dict, user_info: dict = De
         return model_to_dict(Dictionary.create(**model_to_dict(db_dictionary)))
     except DoesNotExist:
         raise HTTPException(status_code=404, detail='Dictionary not found')
+
 
 @app.delete('/dictionaries/{dictionary_id}', response_model=int)
 def delete_dictionary(dictionary_id: int, _: dict = Depends(get_user_info)):
