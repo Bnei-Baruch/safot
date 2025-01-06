@@ -8,7 +8,6 @@ import './index.css';
 import "react-toastify/dist/ReactToastify.css";
 
 import App from './App';
-// import App from './App-copy';
 import keycloak from './keycloak';
 import reportWebVitals from './reportWebVitals';
 import store from "./store";

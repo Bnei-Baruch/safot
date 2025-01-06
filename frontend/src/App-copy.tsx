@@ -1,3 +1,4 @@
+// This file is for backup and will be deleted soon
 import React, { useState } from 'react';
 import './App.css';
 import { useKeycloak } from '@react-keycloak/web';
