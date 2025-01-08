@@ -92,8 +92,10 @@ def docx2text(file: UploadFile, _: dict = Depends(get_user_info)):
 
 
 @app.get('/sources', response_model=list[dict])
-def read_sources(skip: int = 0, limit: int = 10, user_info: dict = Depends(get_user_info)):
-    return list(Source.select().offset(skip).limit(limit).dicts())
+def read_sources(user_info: dict = Depends(get_user_info)):
+    sources = list(Source.select().dicts())
+    print("Fetched sources:", sources)
+    return sources
 
 # 2. Create a new source
 

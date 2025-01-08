@@ -1,16 +1,16 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
-import { sourceService, initializeDemoData } from './services/source.service';
-const { querySources } = sourceService
+import { sourceService } from './services/source.service';
+// const { querySources } = sourceService
 
 export const fetchSources = createAsyncThunk(
     'sources/fetchSources',
-    async (_, thunkAPI) => {
+    async (_, { rejectWithValue }) => {
         try {
-            await initializeDemoData();
-            const sources = await querySources();
-            return sources;
-        } catch (error: any) {
-            return thunkAPI.rejectWithValue(error.message);
+            // return await sourceService.querySources();
+            const data = await sourceService.querySources();
+            return data;
+        } catch (err: any) {
+            return rejectWithValue(err.message || 'Failed to fetch sources');
         }
     }
 );
@@ -35,13 +35,13 @@ type Source = {
 
 type SourcesState = {
     sources: Source[];
-    status: 'idle' | 'loading' | 'succeeded' | 'failed';
+    loading: boolean;
     error: string | null;
 };
 
 const initialState: SourcesState = {
     sources: [],
-    status: 'idle',
+    loading: false,
     error: null,
 };
 
@@ -51,26 +51,33 @@ const sourcesSlice = createSlice({
     reducers: {
         resetSources: (state) => {
             state.sources = [];
-            state.status = 'idle';
+            state.loading = false;
             state.error = null;
+        },
+        updateSourceLocal: (state, action: PayloadAction<Source>) => {
+            const updatedSource = action.payload;
+            const index = state.sources.findIndex(source => source.id === updatedSource.id);
+            if (index !== -1) {
+                state.sources[index] = updatedSource;
+            }
         },
     },
     extraReducers: (builder) => {
         builder
             .addCase(fetchSources.pending, (state) => {
-                state.status = 'loading';
+                state.loading = true;
                 state.error = null;
             })
             .addCase(fetchSources.fulfilled, (state, action: PayloadAction<Source[]>) => {
-                state.status = 'succeeded';
+                state.loading = false;
                 state.sources = action.payload;
             })
             .addCase(fetchSources.rejected, (state, action: PayloadAction<string | undefined>) => {
-                state.status = 'failed';
+                state.loading = false;
                 state.error = action.payload || 'Unknown error';
             });
     },
 });
 
-export const { resetSources } = sourcesSlice.actions;
+export const { resetSources, updateSourceLocal } = sourcesSlice.actions;
 export default sourcesSlice.reducer;

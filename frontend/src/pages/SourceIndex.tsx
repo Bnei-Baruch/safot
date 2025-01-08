@@ -1,11 +1,12 @@
 import React, { useEffect } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
+import { useSelector } from 'react-redux';
 import { fetchSources } from '../SourceSlice';
-import { RootState } from '../store';
+import { useAppDispatch, RootState } from '../store';
+
 
 const SourceIndex: React.FC = () => {
-    const dispatch = useDispatch();
-    const { sources, status, error } = useSelector((state: RootState) => state.sources);
+    const dispatch = useAppDispatch();
+    const { sources, loading, error } = useSelector((state: RootState) => state.sources);
 
     useEffect(() => {
         dispatch(fetchSources());
@@ -15,9 +16,9 @@ const SourceIndex: React.FC = () => {
         <div className="source-index">
             <h1>Source Index CMP</h1>
 
-            {status === 'loading' && <p>Loading...</p>}
-            {status === 'failed' && <p>Error: {error}</p>}
-            {status === 'succeeded' && (
+            {loading && <p>Loading...</p>}
+            {error && <p>Error: {error}</p>}
+            {!loading && !error && (
                 <ul>
                     {sources.map((source) => (
                         <li key={source.id}>

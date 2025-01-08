@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import './App.css';
 import { useKeycloak } from '@react-keycloak/web';
 import LoginButton from './LoginButton';
-import Dictionaries from './Dictionaries';
+import Dictionaries from './cmp/Dictionaries';
 import { Box } from '@mui/material';
 
 function App() {
