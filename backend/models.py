@@ -14,11 +14,12 @@ logger = logging.getLogger('peewee')
 logger.setLevel(logging.DEBUG)
 
 db: float = PostgresqlDatabase(
-	os.getenv('PG_DATABASE'),
-	user=os.getenv('PG_USER'),
-	password=os.getenv('PG_PASSWORD'),
-	host=os.getenv('PG_HOST'),
-	port=os.getenv('PG_PORT'))
+    os.getenv('PG_DATABASE'),
+    user=os.getenv('PG_USER'),
+    password=os.getenv('PG_PASSWORD'),
+    host=os.getenv('PG_HOST'),
+    port=os.getenv('PG_PORT'))
+
 
 class Dictionary(Model):
     id = IntegerField(sequence='dictionary_id_seq')
@@ -30,6 +31,7 @@ class Dictionary(Model):
     class Meta:
         database = db
         primary_key = CompositeKey('id', 'timestamp')
+
 
 class Rule(Model):
     id = IntegerField(sequence='rule_id_seq')
@@ -48,5 +50,24 @@ class Rule(Model):
             (('dictionary_id', 'dictionary_timestamp'), True),
         )
 
+
+class Source(Model):
+    id = IntegerField(sequence='source_id_seq')
+    timestamp = DateTimeField(default=datetime.utcnow)
+    username = CharField()
+    name = CharField()
+    labels = ArrayField(CharField)
+    language = CharField()
+    type = CharField()  # Type of the source (e.g., book, chapter)
+    order = IntegerField(null=True)
+    parent_source_id = IntegerField(null=True)
+    parent_timestamp = DateTimeField(null=True)
+    properties = JSONField()
+
+    class Meta:
+        database = db
+        primary_key = CompositeKey('id', 'timestamp')
+
+
 db.connect()
-db.create_tables([Dictionary, Rule])
+db.create_tables([Source])
