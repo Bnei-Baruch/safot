@@ -58,8 +58,8 @@ class Source(Model):
     name = CharField()
     labels = ArrayField(CharField)
     language = CharField()
-    is_original = BooleanField()
-    status = CharField()
+    type = CharField()  # Type of the source (e.g., book, chapter)
+    order = IntegerField(null=True)
     parent_source_id = IntegerField(null=True)
     parent_timestamp = DateTimeField(null=True)
     properties = JSONField()
@@ -71,4 +71,3 @@ class Source(Model):
 
 db.connect()
 db.create_tables([Source])
-# db.create_tables([Dictionary, Rule, Source])

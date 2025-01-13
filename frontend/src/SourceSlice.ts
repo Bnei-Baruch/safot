@@ -1,12 +1,10 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import { sourceService } from './services/source.service';
-// const { querySources } = sourceService
 
 export const fetchSources = createAsyncThunk(
     'sources/fetchSources',
     async (_, { rejectWithValue }) => {
         try {
-            // return await sourceService.querySources();
             const data = await sourceService.querySources();
             return data;
         } catch (err: any) {
@@ -22,8 +20,8 @@ type Source = {
     name: string;
     labels: string[];
     language: string;
-    isOriginal: boolean;
-    status: string;
+    type: string;
+    order: number | null;
     parent_source_id: number | null;
     parent_timestamp: string | null;
     properties: {

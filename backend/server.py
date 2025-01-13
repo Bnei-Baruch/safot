@@ -13,7 +13,6 @@ from playhouse.shortcuts import model_to_dict
 from starlette.status import HTTP_401_UNAUTHORIZED
 
 from models import db, Source
-# from models import db, Rule, Dictionary
 
 load_dotenv()
 
@@ -88,16 +87,12 @@ def docx2text(file: UploadFile, _: dict = Depends(get_user_info)):
         ret.append(p.text)
     return ret
 
-# 1. Fetch all sources
-
 
 @app.get('/sources', response_model=list[dict])
 def read_sources(user_info: dict = Depends(get_user_info)):
     sources = list(Source.select().dicts())
     print("Fetched sources:", sources)
     return sources
-
-# 2. Create a new source
 
 
 @app.post('/sources', response_model=dict)
@@ -116,8 +111,6 @@ def create_source(source: dict, user_info: dict = Depends(get_user_info)):
     )
     return model_to_dict(created_source)
 
-# 3. Fetch a source by ID
-
 
 @app.get('/sources/{source_id}', response_model=dict)
 def read_source(source_id: int, user_info: dict = Depends(get_user_info)):
@@ -126,8 +119,6 @@ def read_source(source_id: int, user_info: dict = Depends(get_user_info)):
         return model_to_dict(source)
     except DoesNotExist:
         raise HTTPException(status_code=404, detail='Source not found')
-
-# 4. Update an existing source
 
 
 @app.put('/sources/{source_id}', response_model=dict)
@@ -145,8 +136,6 @@ def update_source(source_id: int, source: dict, user_info: dict = Depends(get_us
         return model_to_dict(db_source)
     except DoesNotExist:
         raise HTTPException(status_code=404, detail='Source not found')
-
-# 5. Delete a source by ID
 
 
 @app.delete('/sources/{source_id}', response_model=int)

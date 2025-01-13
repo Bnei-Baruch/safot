@@ -1,6 +1,6 @@
 import axios, { AxiosInstance } from 'axios';
 
-const BASE_URL = 'http://localhost:7392';
+const BASE_URL = process.env.REACT_APP_BASE_URL;
 
 class HttpService {
     private client: AxiosInstance;
