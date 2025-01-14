@@ -1,18 +1,6 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import { sourceService } from './services/source.service';
 
-export const fetchSources = createAsyncThunk(
-    'sources/fetchSources',
-    async (_, { rejectWithValue }) => {
-        try {
-            const data = await sourceService.querySources();
-            return data;
-        } catch (err: any) {
-            return rejectWithValue(err.message || 'Failed to fetch sources');
-        }
-    }
-);
-
 type Source = {
     id: number;
     timestamp: string;
@@ -30,6 +18,40 @@ type Source = {
         audience: string;
     };
 };
+
+export const fetchSources = createAsyncThunk(
+    'sources/fetchSources',
+    async (_, { rejectWithValue }) => {
+        try {
+            const data = await sourceService.querySources();
+            return data;
+        } catch (err: any) {
+            return rejectWithValue(err.message || 'Failed to fetch sources');
+        }
+    }
+);
+
+// export const addSource = createAsyncThunk(
+//     'sources/addSource',
+//     async (sourceData: Omit<Source, 'id' | 'timestamp'>, { rejectWithValue }) => {
+//         try {
+//             const data = await sourceService.addSource(sourceData);
+//             return data;
+//         } catch (err: any) {
+//             return rejectWithValue(err.message || 'Failed to add source');
+//         }
+//     }
+// );
+
+export const addSource = createAsyncThunk(
+    'sources/addSource',
+    async (sourceData: Source) => {
+        return await sourceService.addSource(sourceData);
+    }
+);
+
+
+
 
 type SourcesState = {
     sources: Source[];
@@ -73,6 +95,18 @@ const sourcesSlice = createSlice({
             .addCase(fetchSources.rejected, (state, action: PayloadAction<string | undefined>) => {
                 state.loading = false;
                 state.error = action.payload || 'Unknown error';
+            })
+            .addCase(addSource.pending, (state) => {
+                state.loading = true;
+                state.error = null;
+            })
+            .addCase(addSource.fulfilled, (state, action: PayloadAction<Source>) => {
+                state.loading = false;
+                state.sources.push(action.payload); // הוספת הסורס החדש לרשימה
+            })
+            .addCase(addSource.rejected, (state, action: PayloadAction<string | undefined>) => {
+                state.loading = false;
+                state.error = action.payload || 'Failed to add source';
             });
     },
 });
