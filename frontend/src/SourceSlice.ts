@@ -19,7 +19,12 @@ type Source = {
     };
 };
 
-export const fetchSources = createAsyncThunk(
+
+export const fetchSources = createAsyncThunk<
+    Source[],
+    void,
+    { rejectValue: string }
+>(
     'sources/fetchSources',
     async (_, { rejectWithValue }) => {
         try {
@@ -31,27 +36,20 @@ export const fetchSources = createAsyncThunk(
     }
 );
 
-// export const addSource = createAsyncThunk(
-//     'sources/addSource',
-//     async (sourceData: Omit<Source, 'id' | 'timestamp'>, { rejectWithValue }) => {
-//         try {
-//             const data = await sourceService.addSource(sourceData);
-//             return data;
-//         } catch (err: any) {
-//             return rejectWithValue(err.message || 'Failed to add source');
-//         }
-//     }
-// );
-
-export const addSource = createAsyncThunk(
+export const addSource = createAsyncThunk<
+    Source,
+    Source,
+    { rejectValue: string }
+>(
     'sources/addSource',
-    async (sourceData: Source) => {
-        return await sourceService.addSource(sourceData);
+    async (sourceData, { rejectWithValue }) => {
+        try {
+            return await sourceService.addSource(sourceData);
+        } catch (err: any) {
+            return rejectWithValue(err.message || 'Failed to add source');
+        }
     }
 );
-
-
-
 
 type SourcesState = {
     sources: Source[];
@@ -102,7 +100,7 @@ const sourcesSlice = createSlice({
             })
             .addCase(addSource.fulfilled, (state, action: PayloadAction<Source>) => {
                 state.loading = false;
-                state.sources.push(action.payload); // הוספת הסורס החדש לרשימה
+                state.sources.push(action.payload);
             })
             .addCase(addSource.rejected, (state, action: PayloadAction<string | undefined>) => {
                 state.loading = false;

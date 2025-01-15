@@ -6,13 +6,13 @@ import os
 from peewee import DoesNotExist
 from dotenv import load_dotenv
 from docx import Document
-from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from keycloak import KeycloakOpenID
 from playhouse.shortcuts import model_to_dict
 from starlette.status import HTTP_401_UNAUTHORIZED
 
-from models import db, Source
+from models import db, Source, Segment
 
 load_dotenv()
 
@@ -62,7 +62,7 @@ def startup():
         db.connect()
 
       # Ensure all tables exist
-    db.create_tables([Source], safe=True)
+    db.create_tables([Source, Segment], safe=True)
 
 
 @app.on_event('shutdown')
@@ -86,6 +86,45 @@ def docx2text(file: UploadFile, _: dict = Depends(get_user_info)):
     for p in document.paragraphs:
         ret.append(p.text)
     return ret
+
+
+@app.post('/segments', response_model=dict)
+def add_segments_from_file(
+    file: UploadFile,
+    sourceId: str = Form(...),
+    user_info: dict = Depends(get_user_info)
+):
+    try:
+        # convert str to int
+        source_id = int(sourceId)
+
+        # Read the file content
+        content = file.file.read()
+        document = Document(BytesIO(content))
+
+        # Extract paragraphs
+        paragraphs = [p.text for p in document.paragraphs if p.text.strip()]
+
+        # Save each paragraph as a segment
+        segments = []
+        for order, text in enumerate(paragraphs):
+            segment = Segment.create(
+                timestamp=datetime.utcnow(),
+                username=user_info['preferred_username'],
+                text=text,
+                source_id=source_id,  # שימוש ב-source_id כ-int
+                order=order,
+            )
+            print(f"Saved segment: {model_to_dict(segment)}")
+            segments.append(model_to_dict(segment))
+
+        return {"sourceId": source_id, "segments": segments}
+
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid sourceId format")
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to process file: {str(e)}")
 
 
 @app.get('/sources', response_model=list[dict])

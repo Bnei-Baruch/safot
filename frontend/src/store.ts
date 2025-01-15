@@ -2,11 +2,13 @@ import { configureStore } from '@reduxjs/toolkit';
 import { useDispatch } from 'react-redux';
 import safotReducer from './SafotSlice';
 import sourceReducer from './SourceSlice';
+import segmentReducer from './SegmentSlice';
 
 const store = configureStore({
   reducer: {
     safot: safotReducer,
     sources: sourceReducer,
+    segments: segmentReducer,
   },
 });
 

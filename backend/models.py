@@ -69,5 +69,24 @@ class Source(Model):
         primary_key = CompositeKey('id', 'timestamp')
 
 
+class Segment(Model):
+    id = IntegerField(sequence='segment_id_seq')
+    timestamp = DateTimeField(default=datetime.utcnow)
+    username = CharField()
+    text = TextField()  # Text of the paragraph
+    source_id = IntegerField()
+    order = IntegerField()
+    parent_segment_id = IntegerField(null=True)
+    parent_segment_timestamp = DateTimeField(null=True)
+
+    class Meta:
+        database = db
+        table_name = 'segment'
+        primary_key = CompositeKey('id', 'timestamp')
+        indexes = (
+            (('source_id', 'order'), True),  # Ensures unique order per source
+        )
+
+
 db.connect()
-db.create_tables([Source])
+db.create_tables([Source, Segment])

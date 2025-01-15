@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { fetchSources, addSource } from '../SourceSlice';
+import { addSegmentsFromFile } from '../SegmentSlice';
 import { useAppDispatch, RootState } from '../store';
 import { Button } from '@mui/material';
 
@@ -49,8 +50,21 @@ const SourceIndex: React.FC = () => {
         console.info('File to process:', data.file);
 
         try {
-            await dispatch(addSource(sourceData as any)).unwrap();
-            alert('Source added successfully!');
+            // Add source metadata
+            const addedSource = await dispatch(addSource(sourceData as any)).unwrap();
+            // Ensure source ID exists
+            if (!addedSource.id) {
+                throw new Error('Failed to get source ID from the backend.');
+            }
+            // Add segments from file
+            const response = await dispatch(addSegmentsFromFile({
+                file: data.file,
+                sourceId: addedSource.id.toString(),
+            })).unwrap();
+
+            console.info('Segments created successfully:', response.segments);
+
+            alert('Source and segments created successfully!');
         } catch (error) {
             console.error('Failed to add source:', error);
             alert('Failed to add source. Please try again.');
