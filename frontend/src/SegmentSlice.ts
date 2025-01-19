@@ -6,22 +6,22 @@ type Segment = {
     timestamp: string;
     username: string;
     text: string;
-    sourceId: number;
+    source_id: number;
     order: number;
-    parentSegmentId?: number;
-    parentSegmentTimestamp?: string;
+    original_SegmentId?: number;
+    original_SegmentTimestamp?: string;
 };
 
 export const addSegmentsFromFile = createAsyncThunk<
-    { sourceId: string; segments: Segment[] }, // Return type on success
-    { file: File; sourceId: string }, // Parameters the function receives
+    { source_id: string; segments: Segment[] }, // Return type on success
+    { file: File; source_id: string }, // Parameters the function receives
     { rejectValue: string } // Value returned on rejection
 >(
     'segments/addSegmentsFromFile',
-    async ({ file, sourceId }, thunkAPI) => {
+    async ({ file, source_id: source_id }, thunkAPI) => {
         try {
-            const response = await segmentService.addSegmentsFromFile(file, sourceId);
-            return { sourceId, segments: response.segments as Segment[] };
+            const response = await segmentService.addSegmentsFromFile(file, source_id);
+            return { source_id: source_id, segments: response.segments as Segment[] };
         } catch (error: any) {
             return thunkAPI.rejectWithValue(error.message || 'Failed to create segments');
         }
@@ -30,7 +30,7 @@ export const addSegmentsFromFile = createAsyncThunk<
 
 // Initial state for segments
 interface SegmentState {
-    segments: Record<string, Segment[]>; // Mapping of sourceId to segments
+    segments: Record<string, Segment[]>; // Mapping of source_id to segments
     loading: boolean;
     error: string | null;
 }
@@ -51,9 +51,9 @@ const segmentSlice = createSlice({
                 state.loading = true;
                 state.error = null;
             })
-            .addCase(addSegmentsFromFile.fulfilled, (state, action: PayloadAction<{ sourceId: string; segments: Segment[] }>) => {
-                const { sourceId, segments } = action.payload;
-                state.segments[sourceId] = segments; // Save segments by sourceId
+            .addCase(addSegmentsFromFile.fulfilled, (state, action: PayloadAction<{ source_id: string; segments: Segment[] }>) => {
+                const { source_id: source_id, segments } = action.payload;
+                state.segments[source_id] = segments; // Save segments by source_id
                 state.loading = false;
             })
             .addCase(addSegmentsFromFile.rejected, (state, action) => {

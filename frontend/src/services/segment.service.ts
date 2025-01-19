@@ -6,10 +6,10 @@ export const segmentService = {
     addSegmentsFromFile,
 };
 
-async function addSegmentsFromFile(file: File, sourceId: string): Promise<{ segments: any[] }> {
+async function addSegmentsFromFile(file: File, source_id: string): Promise<{ segments: any[] }> {
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('sourceId', sourceId);
+    formData.append('source_id', source_id);
 
     return await httpService.post(`${ENTITY_TYPE}`, formData);
 }

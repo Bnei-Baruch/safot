@@ -53,7 +53,6 @@ class Rule(Model):
 
 class Source(Model):
     id = IntegerField(sequence='source_id_seq')
-    timestamp = DateTimeField(default=datetime.utcnow)
     username = CharField()
     name = CharField()
     labels = ArrayField(CharField)
@@ -61,12 +60,12 @@ class Source(Model):
     type = CharField()  # Type of the source (e.g., book, chapter)
     order = IntegerField(null=True)
     parent_source_id = IntegerField(null=True)
-    parent_timestamp = DateTimeField(null=True)
+    original_source_id = IntegerField(null=True)
     properties = JSONField()
 
     class Meta:
         database = db
-        primary_key = CompositeKey('id', 'timestamp')
+        primary_key = CompositeKey('id')
 
 
 class Segment(Model):
@@ -76,8 +75,8 @@ class Segment(Model):
     text = TextField()  # Text of the paragraph
     source_id = IntegerField()
     order = IntegerField()
-    parent_segment_id = IntegerField(null=True)
-    parent_segment_timestamp = DateTimeField(null=True)
+    original_segment_id = IntegerField(null=True)
+    original_segment_timestamp = DateTimeField(null=True)
 
     class Meta:
         database = db

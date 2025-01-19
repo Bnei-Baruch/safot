@@ -91,12 +91,12 @@ def docx2text(file: UploadFile, _: dict = Depends(get_user_info)):
 @app.post('/segments', response_model=dict)
 def add_segments_from_file(
     file: UploadFile,
-    sourceId: str = Form(...),
+    source_id: str = Form(...),
     user_info: dict = Depends(get_user_info)
 ):
     try:
         # convert str to int
-        source_id = int(sourceId)
+        source_id = int(source_id)
 
         # Read the file content
         content = file.file.read()
@@ -112,16 +112,16 @@ def add_segments_from_file(
                 timestamp=datetime.utcnow(),
                 username=user_info['preferred_username'],
                 text=text,
-                source_id=source_id,  # שימוש ב-source_id כ-int
+                source_id=source_id,
                 order=order,
             )
             print(f"Saved segment: {model_to_dict(segment)}")
             segments.append(model_to_dict(segment))
 
-        return {"sourceId": source_id, "segments": segments}
+        return {"source_id": source_id, "segments": segments}
 
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid sourceId format")
+        raise HTTPException(status_code=400, detail="Invalid source_id format")
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to process file: {str(e)}")
@@ -143,7 +143,6 @@ def create_source(source: dict, user_info: dict = Depends(get_user_info)):
     # Create the new source record
     created_source = Source.create(
         id=id_value,
-        timestamp=datetime.utcnow(),
         # Set the username from authenticated user
         username=user_info['preferred_username'],
         **source  # Unpack additional source fields from the request

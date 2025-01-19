@@ -3,7 +3,6 @@ import { sourceService } from './services/source.service';
 
 type Source = {
     id: number;
-    timestamp: string;
     username: string;
     name: string;
     labels: string[];
@@ -11,7 +10,7 @@ type Source = {
     type: string;
     order: number | null;
     parent_source_id: number | null;
-    parent_timestamp: string | null;
+    original_source_id: number | null;
     properties: {
         category: string;
         description: string;
