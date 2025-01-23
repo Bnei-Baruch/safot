@@ -62,8 +62,6 @@ const SourceIndex: React.FC = () => {
                 source_id: addedSource.id.toString(),
             })).unwrap();
 
-            console.info('Segments created successfully:', response.segments);
-
             alert('Source and segments created successfully!');
         } catch (error) {
             console.error('Failed to add source:', error);

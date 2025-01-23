@@ -23,7 +23,6 @@ const AddSourceForm: React.FC<AddSourceFormProps> = ({ onSubmit }) => {
     const [labels, setLabels] = useState<string[]>([]);
     const [language, setLanguage] = useState('');
     const [type, setType] = useState('');
-    const [customType, setCustomType] = useState('');
     const [order, setOrder] = useState<number | null>(null);
     const [properties, setProperties] = useState({
         category: '',
@@ -31,23 +30,11 @@ const AddSourceForm: React.FC<AddSourceFormProps> = ({ onSubmit }) => {
         audience: '',
     });
 
-    const predefinedTypes = ['Book', 'Chapter', 'Article', 'Transcript'];
+    const languages = ['Hebrew', 'English', 'Spanish', 'Russian', 'French'];
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files.length > 0) {
             setFile(e.target.files[0]);
-        }
-    };
-
-    const handleTypeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const selectedType = e.target.value;
-
-        if (selectedType === 'Other') {
-            setCustomType('');
-            setType('');
-        } else {
-            setCustomType('');
-            setType(selectedType);
         }
     };
 
@@ -58,7 +45,7 @@ const AddSourceForm: React.FC<AddSourceFormProps> = ({ onSubmit }) => {
             name,
             labels,
             language,
-            type: type || customType,
+            type,
             order,
             properties,
         });
@@ -72,14 +59,14 @@ const AddSourceForm: React.FC<AddSourceFormProps> = ({ onSubmit }) => {
             name,
             labels,
             language,
-            type: type || customType,
+            type,
             order,
             properties,
         });
     };
 
     return (
-        <form onSubmit={handleSubmit}>
+        <form id="add-source-form" onSubmit={handleSubmit}>
             <input
                 type="file"
                 onChange={handleFileChange}
@@ -106,42 +93,31 @@ const AddSourceForm: React.FC<AddSourceFormProps> = ({ onSubmit }) => {
                 onChange={(e) => setLabels(e.target.value.split(','))}
             />
             <TextField
+                select
                 label="Language"
-                placeholder="e.g., English, Hebrew, Russian"
-                helperText="Specify the language of the original text."
-                fullWidth
-                margin="normal"
                 value={language}
                 onChange={(e) => setLanguage(e.target.value)}
-                required
-            />
-            <TextField
-                select
-                label="Type"
-                value={type || (customType ? 'Other' : '')}
-                onChange={handleTypeChange}
                 fullWidth
                 margin="normal"
-                helperText="Select the type of text. If not listed, choose 'Other' and provide a custom type."
+                helperText="Select the language of the original text."
+                required
             >
-                {predefinedTypes.map((option) => (
-                    <MenuItem key={option} value={option}>
-                        {option}
+                {languages.map((lang) => (
+                    <MenuItem key={lang} value={lang}>
+                        {lang}
                     </MenuItem>
                 ))}
-                <MenuItem value="Other">Other</MenuItem>
             </TextField>
-            {type === '' && (
-                <TextField
-                    label="Custom Type"
-                    placeholder="e.g., Presentation, Lecture"
-                    fullWidth
-                    margin="normal"
-                    value={customType}
-                    onChange={(e) => setCustomType(e.target.value)}
-                    required
-                />
-            )}
+            <TextField
+                label="Type"
+                placeholder="e.g., Book, Chapter, Article"
+                helperText="Enter the type of the text."
+                fullWidth
+                margin="normal"
+                value={type}
+                onChange={(e) => setType(e.target.value)}
+                required
+            />
             <TextField
                 label="Order"
                 placeholder="e.g., 1, 2, 3"
@@ -178,9 +154,6 @@ const AddSourceForm: React.FC<AddSourceFormProps> = ({ onSubmit }) => {
                 value={properties.audience}
                 onChange={(e) => setProperties((prev) => ({ ...prev, audience: e.target.value }))}
             />
-            <Button type="submit" variant="contained" color="primary" style={{ marginTop: '16px' }}>
-                Submit
-            </Button>
         </form>
     );
 };

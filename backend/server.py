@@ -107,9 +107,10 @@ def add_segments_from_file(
 
         # Save each paragraph as a segment
         segments = []
+        now = datetime.utcnow()
         for order, text in enumerate(paragraphs):
             segment = Segment.create(
-                timestamp=datetime.utcnow(),
+                timestamp=now,
                 username=user_info['preferred_username'],
                 text=text,
                 source_id=source_id,
@@ -118,10 +119,11 @@ def add_segments_from_file(
             print(f"Saved segment: {model_to_dict(segment)}")
             segments.append(model_to_dict(segment))
 
-        return {"source_id": source_id, "segments": segments}
+        return {"source_id": source_id}
 
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid source_id format")
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400, detail=f"Invalid source_id format: {str(e)} ")
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to process file: {str(e)}")

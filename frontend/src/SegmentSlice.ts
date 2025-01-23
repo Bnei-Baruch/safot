@@ -13,15 +13,15 @@ type Segment = {
 };
 
 export const addSegmentsFromFile = createAsyncThunk<
-    { source_id: string; segments: Segment[] }, // Return type on success
+    { source_id: string; }, // Return type on success
     { file: File; source_id: string }, // Parameters the function receives
     { rejectValue: string } // Value returned on rejection
 >(
     'segments/addSegmentsFromFile',
     async ({ file, source_id: source_id }, thunkAPI) => {
         try {
-            const response = await segmentService.addSegmentsFromFile(file, source_id);
-            return { source_id: source_id, segments: response.segments as Segment[] };
+            await segmentService.addSegmentsFromFile(file, source_id);
+            return { source_id };
         } catch (error: any) {
             return thunkAPI.rejectWithValue(error.message || 'Failed to create segments');
         }
@@ -51,9 +51,9 @@ const segmentSlice = createSlice({
                 state.loading = true;
                 state.error = null;
             })
-            .addCase(addSegmentsFromFile.fulfilled, (state, action: PayloadAction<{ source_id: string; segments: Segment[] }>) => {
-                const { source_id: source_id, segments } = action.payload;
-                state.segments[source_id] = segments; // Save segments by source_id
+            .addCase(addSegmentsFromFile.fulfilled, (state, action: PayloadAction<{ source_id: string }>) => {
+                const { source_id } = action.payload;
+                state.segments[source_id] = [];
                 state.loading = false;
             })
             .addCase(addSegmentsFromFile.rejected, (state, action) => {
