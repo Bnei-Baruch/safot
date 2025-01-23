@@ -35,6 +35,21 @@ export const fetchSources = createAsyncThunk<
     }
 );
 
+export const fetchSource = createAsyncThunk<
+    Source,
+    { source_id: string; },
+    { rejectValue: string }
+>(
+    'sources/fetchSource',
+    async ({ source_id }, { rejectWithValue }) => {
+        try {
+            return await sourceService.getSourceById(source_id);
+        } catch (err: any) {
+            return rejectWithValue(err.message || 'Failed to fetch source');
+        }
+    }
+);
+
 export const addSource = createAsyncThunk<
     Source,
     Source,
@@ -51,13 +66,13 @@ export const addSource = createAsyncThunk<
 );
 
 type SourcesState = {
-    sources: Source[];
+    sources: Record<string, Source>;
     loading: boolean;
     error: string | null;
 };
 
 const initialState: SourcesState = {
-    sources: [],
+    sources: {},
     loading: false,
     error: null,
 };
@@ -65,20 +80,17 @@ const initialState: SourcesState = {
 const sourcesSlice = createSlice({
     name: 'sources',
     initialState,
-    reducers: {
+    /*reducers: {
         resetSources: (state) => {
-            state.sources = [];
+            state.sources = {};
             state.loading = false;
             state.error = null;
         },
         updateSourceLocal: (state, action: PayloadAction<Source>) => {
-            const updatedSource = action.payload;
-            const index = state.sources.findIndex(source => source.id === updatedSource.id);
-            if (index !== -1) {
-                state.sources[index] = updatedSource;
-            }
+            const source = action.payload;
+            state.sources[source.id] = source;
         },
-    },
+    },*/
     extraReducers: (builder) => {
         builder
             .addCase(fetchSources.pending, (state) => {
@@ -87,11 +99,27 @@ const sourcesSlice = createSlice({
             })
             .addCase(fetchSources.fulfilled, (state, action: PayloadAction<Source[]>) => {
                 state.loading = false;
-                state.sources = action.payload;
+                // Replace all existing sources with new fetch.
+                state.sources = action.payload.reduce((sources, source) => {
+                    sources[source.id] = source;
+                    return sources;
+                }, {});
             })
             .addCase(fetchSources.rejected, (state, action: PayloadAction<string | undefined>) => {
                 state.loading = false;
                 state.error = action.payload || 'Unknown error';
+            })
+            .addCase(fetchSource.pending, (state) => {
+                state.loading = true;
+                state.error = null;
+            })
+            .addCase(fetchSource.fulfilled, (state, action: PayloadAction<Source>) => {
+                state.loading = false;
+                state.sources[action.payload.id] = action.playload;
+            })
+            .addCase(fetchSource.rejected, (state, action: PayloadAction<string | undefined>) => {
+                state.loading = false;
+                state.error = action.payload || 'Failed to add source';
             })
             .addCase(addSource.pending, (state) => {
                 state.loading = true;
@@ -99,7 +127,7 @@ const sourcesSlice = createSlice({
             })
             .addCase(addSource.fulfilled, (state, action: PayloadAction<Source>) => {
                 state.loading = false;
-                state.sources.push(action.payload);
+                state.sources[action.payload.id] = action.playload;
             })
             .addCase(addSource.rejected, (state, action: PayloadAction<string | undefined>) => {
                 state.loading = false;
@@ -108,5 +136,5 @@ const sourcesSlice = createSlice({
     },
 });
 
-export const { resetSources, updateSourceLocal } = sourcesSlice.actions;
+// export const { resetSources, updateSourceLocal } = sourcesSlice.actions;
 export default sourcesSlice.reducer;

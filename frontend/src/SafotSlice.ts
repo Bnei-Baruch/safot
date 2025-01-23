@@ -1,6 +1,6 @@
 import { createAsyncThunk, createSlice, PayloadAction } from '@reduxjs/toolkit';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const BACKEND_URL = process.env.REACT_APP_BASE_URL;
 
 const getDefaultHeaders = () => ({
   'Authorization': `Bearer ${localStorage.getItem('token')}`,

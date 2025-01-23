@@ -18,12 +18,28 @@ export const addSegmentsFromFile = createAsyncThunk<
     { rejectValue: string } // Value returned on rejection
 >(
     'segments/addSegmentsFromFile',
-    async ({ file, source_id: source_id }, thunkAPI) => {
+    async ({ source_id }, thunkAPI) => {
         try {
             await segmentService.addSegmentsFromFile(file, source_id);
             return { source_id };
         } catch (error: any) {
             return thunkAPI.rejectWithValue(error.message || 'Failed to create segments');
+        }
+    }
+);
+
+export const fetchSegments = createAsyncThunk<
+    { source_id: number, segments: Segment[] },  // Return type on success
+    { source_id: number },  // Parameters the functino receives
+    { rejectValue: string }  // Value returned on rejection
+>(
+    'segments/fetchSegments',
+    async ({ source_id }, { rejectWithValue }) => {
+        try {
+            const data = await segmentService.fetchSegments(source_id);
+            return {source_id, segments: data};
+        } catch (err: any) {
+            return rejectWithValue(err.message || 'Failed to fetch segments');
         }
     }
 );
@@ -47,6 +63,19 @@ const segmentSlice = createSlice({
     reducers: {},
     extraReducers: (builder) => {
         builder
+            .addCase(fetchSegments.pending, (state) => {
+                state.loading = true;
+                state.error = null;
+            })
+            .addCase(fetchSegments.fulfilled, (state, action: PayloadAction<{source_id: number, segments: Segment[]}>) => {
+                const { source_id, segments } = action.payload;
+                state.loading = false;
+                state.segments[source_id] = segments;
+            })
+            .addCase(fetchSegments.rejected, (state, action: PayloadAction<string | undefined>) => {
+                state.loading = false;
+                state.error = action.payload || 'Unknown error';
+            })
             .addCase(addSegmentsFromFile.pending, (state) => {
                 state.loading = true;
                 state.error = null;

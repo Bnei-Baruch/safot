@@ -21,12 +21,12 @@ const Header: React.FC = () => {
         <AppBar position="static" sx={{ backgroundColor: '#1976d2', color: '#fff' }}>
             <Toolbar>
                 <Typography variant="h6" sx={{ flexGrow: 1 }}>
-                    Safot CMS
+                    Safot
                 </Typography>
                 {keycloak?.authenticated ? (
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                         <Typography variant="body1">
-                            Welcome, {keycloak.tokenParsed?.preferred_username || 'User'}
+                            {keycloak.tokenParsed?.preferred_username || 'User'}
                         </Typography>
                         <Button color="inherit" onClick={handleLogout}>
                             Logout

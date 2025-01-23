@@ -1,11 +1,26 @@
 import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
+import { useNavigate } from "react-router-dom";
 import { fetchSources, addSource } from '../SourceSlice';
 import { addSegmentsFromFile } from '../SegmentSlice';
 import { useAppDispatch, RootState } from '../store';
-import { Button } from '@mui/material';
+import {
+    Button,
+    Paper,
+    Table,
+    TableBody,
+    TableCell,
+    TableContainer,
+    TableHead,
+    TableRow,
+} from '@mui/material';
+import IconButton from "@mui/material/IconButton";
+import DeleteIcon from "@mui/icons-material/Delete";
+import EditIcon from "@mui/icons-material/Edit";
+
 
 import AddSourceDialog from '../cmp/AddSourceDialog';
+import { ShowToast } from '../cmp/Toast';
 
 interface AddSourceData {
     file: File;
@@ -22,7 +37,9 @@ interface AddSourceData {
 }
 
 const SourceIndex: React.FC = () => {
+    const navigate = useNavigate();
     const dispatch = useAppDispatch();
+    const { showToast } = useToast();
     const { sources, loading, error } = useSelector((state: RootState) => state.sources);
     const [dialogOpen, setDialogOpen] = useState(false);
 
@@ -62,6 +79,7 @@ const SourceIndex: React.FC = () => {
                 source_id: addedSource.id.toString(),
             })).unwrap();
 
+            showToast(response);
             alert('Source and segments created successfully!');
         } catch (error) {
             console.error('Failed to add source:', error);
@@ -85,13 +103,46 @@ const SourceIndex: React.FC = () => {
             {loading && <p>Loading...</p>}
             {error && <p>Error: {error}</p>}
             {!loading && !error && (
-                <ul>
-                    {sources.map((source) => (
-                        <li key={source.id}>
-                            {source.name} - {source.language}
-                        </li>
-                    ))}
-                </ul>
+                <TableContainer
+                      component={Paper}
+                      sx={{
+                        margin: "auto",           // Center horizontally
+                        width: "80%",             // Optional: Set Table width
+                        mt: 4,                    // Optional: Add top margin
+                      }}
+                    >
+                    <Table>
+                        <TableHead>
+                            <TableRow>
+                                <TableCell>Name</TableCell>
+                                <TableCell>Language</TableCell>
+                                <TableCell>Type</TableCell>
+                                <TableCell>Owner</TableCell>
+                                <TableCell>Properties</TableCell>
+                                <TableCell></TableCell>
+                            </TableRow>
+                        </TableHead>
+                        <TableBody>
+                        {sources.map((source) => (
+                            <TableRow key={source.id}>
+                                <TableCell>{source.name}</TableCell>
+                                <TableCell>{source.language}</TableCell>
+                                <TableCell>{source.type}</TableCell>
+                                <TableCell>{source.username}</TableCell>
+                                <TableCell>{JSON.stringify(source.properties)}</TableCell>
+                                <TableCell>
+                                    <IconButton aria-label="delete">
+                                        <EditIcon onClick={() => navigate(`source-edit/${source.id}`)} />
+                                    </IconButton>
+                                    <IconButton aria-label="delete" disabled>
+                                        <DeleteIcon />
+                                    </IconButton>
+                                </TableCell>
+                            </TableRow>
+                        ))}
+                        </TableBody>
+                    </Table>
+                </TableContainer>
             )}
             {dialogOpen && (
                 <AddSourceDialog

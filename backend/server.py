@@ -129,6 +129,13 @@ def add_segments_from_file(
             status_code=500, detail=f"Failed to process file: {str(e)}")
 
 
+@app.get('/segments/{source_id}', response_model=list[dict])
+def read_sources(source_id: int, user_info: dict = Depends(get_user_info)):
+    segments = list(Segment.select().where(Segment.source_id == source_id).dicts())
+    print("Fetched segments:", segments)
+    return segments
+
+
 @app.get('/sources', response_model=list[dict])
 def read_sources(user_info: dict = Depends(get_user_info)):
     sources = list(Source.select().dicts())
