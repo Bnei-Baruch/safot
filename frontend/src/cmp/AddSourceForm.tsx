@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { TextField, MenuItem } from '@mui/material';
+import { TextField, MenuItem, Autocomplete, Chip } from '@mui/material';
 
 interface AddSourceFormProps {
     onSubmit: (data: {
@@ -16,6 +16,28 @@ interface AddSourceFormProps {
         };
     }) => void;
 }
+
+const labelOptions = [
+    'Kabbalah',
+    'Spirituality',
+    'Torah',
+    'Zohar',
+    'Sefirot',
+    'Creation',
+    'Ten Sefirot',
+    'Unity',
+    'Inner Work',
+    'Correction',
+    'Faith Above Reason',
+    'Rabash',
+    'Baal HaSulam',
+    'Prayer',
+    'The Creator',
+    'Human Connection',
+    'Women',
+    'Science',
+    'Economics',
+];
 
 const AddSourceForm: React.FC<AddSourceFormProps> = ({ onSubmit }) => {
     const [file, setFile] = useState<File | null>(null);
@@ -83,14 +105,35 @@ const AddSourceForm: React.FC<AddSourceFormProps> = ({ onSubmit }) => {
                 onChange={(e) => setName(e.target.value)}
                 required
             />
-            <TextField
-                label="Labels (comma-separated)"
-                placeholder="e.g., Education, Pedagogy, Child Development"
-                helperText="Enter the main topics and subtopics related to the book. Separate topics with commas."
-                fullWidth
-                margin="normal"
-                value={labels.join(',')}
-                onChange={(e) => setLabels(e.target.value.split(','))}
+            <Autocomplete
+                multiple
+                freeSolo
+                options={labelOptions}
+                value={labels}
+                onChange={(event, newValue) => setLabels(newValue)}
+                renderTags={(value: string[], getTagProps) =>
+                    value.map((option, index) => {
+                        const { key, ...tagProps } = getTagProps({ index });
+                        return (
+                            <Chip
+                                key={key}
+                                variant="outlined"
+                                label={option}
+                                {...tagProps}
+                            />
+                        );
+                    })
+                }
+                renderInput={(params) => (
+                    <TextField
+                        {...params}
+                        label="Labels"
+                        placeholder="Add labels (e.g., Kabbalah, Spirituality)"
+                        helperText="Select labels related to the Kabbalah book or add custom ones."
+                        fullWidth
+                        margin="normal"
+                    />
+                )}
             />
             <TextField
                 select

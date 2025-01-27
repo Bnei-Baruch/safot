@@ -20,7 +20,8 @@ import EditIcon from "@mui/icons-material/Edit";
 
 
 import AddSourceDialog from '../cmp/AddSourceDialog';
-import { ShowToast } from '../cmp/Toast';
+// import { ShowToast } from '../cmp/Toast';
+import { useToast } from '../cmp/Toast';
 
 interface AddSourceData {
     file: File;
@@ -79,11 +80,10 @@ const SourceIndex: React.FC = () => {
                 source_id: addedSource.id.toString(),
             })).unwrap();
 
-            showToast(response);
-            alert('Source and segments created successfully!');
+            showToast('Source and segments created successfully!', 'success');
         } catch (error) {
             console.error('Failed to add source:', error);
-            alert('Failed to add source. Please try again.');
+            showToast('Failed to add source. Please try again.', 'error');
         } finally {
             handleCloseDialog();
         }
@@ -104,13 +104,13 @@ const SourceIndex: React.FC = () => {
             {error && <p>Error: {error}</p>}
             {!loading && !error && (
                 <TableContainer
-                      component={Paper}
-                      sx={{
+                    component={Paper}
+                    sx={{
                         margin: "auto",           // Center horizontally
                         width: "80%",             // Optional: Set Table width
                         mt: 4,                    // Optional: Add top margin
-                      }}
-                    >
+                    }}
+                >
                     <Table>
                         <TableHead>
                             <TableRow>
@@ -123,23 +123,23 @@ const SourceIndex: React.FC = () => {
                             </TableRow>
                         </TableHead>
                         <TableBody>
-                        {sources.map((source) => (
-                            <TableRow key={source.id}>
-                                <TableCell>{source.name}</TableCell>
-                                <TableCell>{source.language}</TableCell>
-                                <TableCell>{source.type}</TableCell>
-                                <TableCell>{source.username}</TableCell>
-                                <TableCell>{JSON.stringify(source.properties)}</TableCell>
-                                <TableCell>
-                                    <IconButton aria-label="delete">
-                                        <EditIcon onClick={() => navigate(`source-edit/${source.id}`)} />
-                                    </IconButton>
-                                    <IconButton aria-label="delete" disabled>
-                                        <DeleteIcon />
-                                    </IconButton>
-                                </TableCell>
-                            </TableRow>
-                        ))}
+                            {Object.values(sources).map((source) => (
+                                <TableRow key={source.id}>
+                                    <TableCell>{source.name}</TableCell>
+                                    <TableCell>{source.language}</TableCell>
+                                    <TableCell>{source.type}</TableCell>
+                                    <TableCell>{source.username}</TableCell>
+                                    <TableCell>{JSON.stringify(source.properties)}</TableCell>
+                                    <TableCell>
+                                        <IconButton aria-label="edit" onClick={() => navigate(`source-edit/${source.id}`)}>
+                                            <EditIcon />
+                                        </IconButton>
+                                        <IconButton aria-label="delete" disabled>
+                                            <DeleteIcon />
+                                        </IconButton>
+                                    </TableCell>
+                                </TableRow>
+                            ))}
                         </TableBody>
                     </Table>
                 </TableContainer>

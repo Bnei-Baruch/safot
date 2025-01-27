@@ -95,17 +95,13 @@ def add_segments_from_file(
     user_info: dict = Depends(get_user_info)
 ):
     try:
-        # convert str to int
         source_id = int(source_id)
 
-        # Read the file content
         content = file.file.read()
         document = Document(BytesIO(content))
 
-        # Extract paragraphs
         paragraphs = [p.text for p in document.paragraphs if p.text.strip()]
 
-        # Save each paragraph as a segment
         segments = []
         now = datetime.utcnow()
         for order, text in enumerate(paragraphs):
@@ -131,7 +127,8 @@ def add_segments_from_file(
 
 @app.get('/segments/{source_id}', response_model=list[dict])
 def read_sources(source_id: int, user_info: dict = Depends(get_user_info)):
-    segments = list(Segment.select().where(Segment.source_id == source_id).dicts())
+    segments = list(Segment.select().where(
+        Segment.source_id == source_id).dicts())
     print("Fetched segments:", segments)
     return segments
 
@@ -149,10 +146,8 @@ def create_source(source: dict, user_info: dict = Depends(get_user_info)):
     cursor = db.execute_sql("SELECT nextval('source_id_seq')")
     id_value = cursor.fetchone()[0]
 
-    # Create the new source record
     created_source = Source.create(
         id=id_value,
-        # Set the username from authenticated user
         username=user_info['preferred_username'],
         **source  # Unpack additional source fields from the request
     )
@@ -178,7 +173,6 @@ def update_source(source_id: int, source: dict, user_info: dict = Depends(get_us
 
         if updated_rows == 0:
             raise HTTPException(status_code=404, detail='Source not found')
-        # Return the updated object
         db_source = Source.get(Source.id == source_id)
         return model_to_dict(db_source)
     except DoesNotExist:

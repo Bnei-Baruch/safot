@@ -37,13 +37,13 @@ export const fetchSources = createAsyncThunk<
 
 export const fetchSource = createAsyncThunk<
     Source,
-    { source_id: string; },
+    { id: string; },
     { rejectValue: string }
 >(
     'sources/fetchSource',
-    async ({ source_id }, { rejectWithValue }) => {
+    async ({ id }, { rejectWithValue }) => {
         try {
-            return await sourceService.getSourceById(source_id);
+            return await sourceService.getSourceById(id);
         } catch (err: any) {
             return rejectWithValue(err.message || 'Failed to fetch source');
         }
@@ -80,17 +80,17 @@ const initialState: SourcesState = {
 const sourcesSlice = createSlice({
     name: 'sources',
     initialState,
-    /*reducers: {
-        resetSources: (state) => {
-            state.sources = {};
-            state.loading = false;
-            state.error = null;
-        },
-        updateSourceLocal: (state, action: PayloadAction<Source>) => {
-            const source = action.payload;
-            state.sources[source.id] = source;
-        },
-    },*/
+    reducers: {
+        // resetSources: (state) => {
+        //     state.sources = {};
+        //     state.loading = false;
+        //     state.error = null;
+        // },
+        // updateSourceLocal: (state, action: PayloadAction<Source>) => {
+        //     const source = action.payload;
+        //     state.sources[source.id] = source;
+        // },
+    },
     extraReducers: (builder) => {
         builder
             .addCase(fetchSources.pending, (state) => {
@@ -99,9 +99,8 @@ const sourcesSlice = createSlice({
             })
             .addCase(fetchSources.fulfilled, (state, action: PayloadAction<Source[]>) => {
                 state.loading = false;
-                // Replace all existing sources with new fetch.
-                state.sources = action.payload.reduce((sources, source) => {
-                    sources[source.id] = source;
+                state.sources = action.payload.reduce<Record<string, Source>>((sources, source) => {
+                    sources[source.id.toString()] = source;
                     return sources;
                 }, {});
             })
@@ -115,7 +114,7 @@ const sourcesSlice = createSlice({
             })
             .addCase(fetchSource.fulfilled, (state, action: PayloadAction<Source>) => {
                 state.loading = false;
-                state.sources[action.payload.id] = action.playload;
+                state.sources[action.payload.id] = action.payload;
             })
             .addCase(fetchSource.rejected, (state, action: PayloadAction<string | undefined>) => {
                 state.loading = false;
@@ -127,7 +126,7 @@ const sourcesSlice = createSlice({
             })
             .addCase(addSource.fulfilled, (state, action: PayloadAction<Source>) => {
                 state.loading = false;
-                state.sources[action.payload.id] = action.playload;
+                state.sources[action.payload.id] = action.payload;
             })
             .addCase(addSource.rejected, (state, action: PayloadAction<string | undefined>) => {
                 state.loading = false;
