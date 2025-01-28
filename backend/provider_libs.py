@@ -1,15 +1,16 @@
 import tiktoken
 from openai import OpenAI
 
+
 class TranslationProvider:
     def __init__(self, api_key, model, prompt, target_language, paragraphs=None):
         self.client = OpenAI(api_key=api_key)
-        self.model = model                   
-        self.prompt = prompt                
-        self.target_language = target_language  
+        self.model = model
+        self.prompt = prompt
+        self.target_language = target_language
         self.encoding = tiktoken.encoding_for_model(self.model)
-        self.paragraphs = paragraphs or []  
-    
+        self.paragraphs = paragraphs or []
+
     def get_model_token_limit(self):
         model_token_limits = {
             "gpt-4o": {"context_window": 128000, "max_output_tokens": 16384},
@@ -20,7 +21,7 @@ class TranslationProvider:
             "text-davinci-003": {"context_window": 4096, "max_output_tokens": 1024},
         }
         return model_token_limits.get(self.model, {"context_window": 0, "max_output_tokens": 0})
-    
+
     def calculate_segment_token_limit(self, output_ratio=1.2):
 
         prompt_tokens = len(self.encoding.encode(self.prompt))
@@ -33,13 +34,18 @@ class TranslationProvider:
         return max(min(segment_tokens_by_output, segment_tokens_by_context), 0)
 
     def prepare_segments_for_translation(self, max_segment_tokens):
-        segments = []  
-        current_segment = [] 
-        current_tokens = 0 
+        segments = []
+        current_segment = []
+        current_tokens = 0
 
         for paragraph in self.paragraphs:
+
+            if not paragraph.strip() or paragraph.strip() == "|||":
+                continue
+
             paragraph_tokens = len(self.encoding.encode(paragraph))
-            separator_tokens = len(self.encoding.encode(" ||| ")) if current_segment else 0
+            separator_tokens = len(self.encoding.encode(
+                " ||| ")) if current_segment else 0
 
             if current_tokens + paragraph_tokens + separator_tokens > max_segment_tokens:
                 segments.append(" ||| ".join(current_segment))
@@ -80,7 +86,7 @@ class TranslationProvider:
         except Exception as e:
             print(f"Error during translation: {e}")
             return f"Translation failed for segment: {segment}"
-    
+
     def translate_text(self, output_ratio=1.2):
 
         max_segment_tokens = self.calculate_segment_token_limit(output_ratio)
@@ -95,5 +101,5 @@ class TranslationProvider:
                 translated_paragraphs.extend(translated_text.split(" ||| "))
             else:
                 print(f"Segment {i} translation failed.")
-                
+
         return translated_paragraphs

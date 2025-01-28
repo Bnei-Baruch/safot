@@ -8,12 +8,19 @@ import argparse
 # Load environment variables from .env file
 load_dotenv()
 parser = argparse.ArgumentParser(description="Providers tool")
-
 DEFAULT_PROMPT = (
-    "Translate the following text into [target language], maintaining the original meaning and structure. "
-    "The translation should reflect the precise concepts and teachings of Kabbalist Michael Laitman, "
-    "adhering closely to the authentic style and terminology of Kabbalah. Avoid rephrasing or altering the intent "
-    "of the original text while ensuring linguistic accuracy and fluency. Preserve the `|||` separator exactly as it appears in the text."
+    "Translate the following text into %(target_language)s, ensuring the translation is faithful to the original meaning "
+    "and context of the teachings of Kabbalah. This text is an excerpt from the book titled 'Thank You to Women', "
+    "which explores the spiritual role and significance of women in the wisdom of Kabbalah. "
+    "The book is intended for an audience deeply interested in Kabbalistic teachings and spiritual development, "
+    "seeking to understand the unique spiritual contributions and roles of women according to authentic Kabbalistic sources.\n\n"
+    "The translation should:\n"
+    "1. Accurately reflect the unique terminology and style of Kabbalistic wisdom, as taught by authentic Kabbalists like Baal HaSulam and Rabash.\n"
+    "2. Maintain a respectful and precise tone, suitable for readers invested in the spiritual significance of the role of women in Kabbalah.\n"
+    "3. Avoid rephrasing or altering the intent of the original text, while ensuring linguistic fluency and readability in the target language.\n"
+    "4. Preserve any cultural or conceptual nuances significant to the original message.\n\n"
+    "Separate each paragraph using the `|||` separator exactly as it appears in the original text.\n\n"
+    "Begin translating:"
 )
 
 parser.add_argument("-i", "--input", type=str, help="Docx to translate")
