@@ -37,7 +37,7 @@ export const fetchSources = createAsyncThunk<
 
 export const fetchSource = createAsyncThunk<
     Source,
-    { id: string; },
+    { id: number; },
     { rejectValue: string }
 >(
     'sources/fetchSource',

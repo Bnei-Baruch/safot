@@ -123,23 +123,25 @@ const SourceIndex: React.FC = () => {
                             </TableRow>
                         </TableHead>
                         <TableBody>
-                            {Object.values(sources).map((source) => (
-                                <TableRow key={source.id}>
-                                    <TableCell>{source.name}</TableCell>
-                                    <TableCell>{source.language}</TableCell>
-                                    <TableCell>{source.type}</TableCell>
-                                    <TableCell>{source.username}</TableCell>
-                                    <TableCell>{JSON.stringify(source.properties)}</TableCell>
-                                    <TableCell>
-                                        <IconButton aria-label="edit" onClick={() => navigate(`source-edit/${source.id}`)}>
-                                            <EditIcon />
-                                        </IconButton>
-                                        <IconButton aria-label="delete" disabled>
-                                            <DeleteIcon />
-                                        </IconButton>
-                                    </TableCell>
-                                </TableRow>
-                            ))}
+                            {Object.values(sources)
+                                .sort((a, b) => b.id - a.id)
+                                .map((source) => (
+                                    <TableRow key={source.id}>
+                                        <TableCell>{source.name}</TableCell>
+                                        <TableCell>{source.language}</TableCell>
+                                        <TableCell>{source.type}</TableCell>
+                                        <TableCell>{source.username}</TableCell>
+                                        <TableCell>{JSON.stringify(source.properties)}</TableCell>
+                                        <TableCell>
+                                            <IconButton aria-label="edit" onClick={() => navigate(`source-edit/${source.id}`)}>
+                                                <EditIcon />
+                                            </IconButton>
+                                            <IconButton aria-label="delete" disabled>
+                                                <DeleteIcon />
+                                            </IconButton>
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
                         </TableBody>
                     </Table>
                 </TableContainer>

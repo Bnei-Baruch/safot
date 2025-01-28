@@ -1,9 +1,14 @@
 import React, { useState } from 'react';
 import { Box, TextField } from "@mui/material";
+import { Segment } from '../SegmentSlice';
 
-const SegmentBox: React.FC = ({segment}) => {
+interface SegmentBoxProps {
+    segment: Segment;
+}
+
+const SegmentBox: React.FC<SegmentBoxProps> = ({ segment }) => {
     const [value, setValue] = useState<string>(segment.text);
-    
+
     const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         setValue(event.target.value);
     };

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState } from "react";
+import React, { createContext, useContext, useState, ReactNode } from "react";
 import { Snackbar, Alert } from "@mui/material";
 
 type Severity = "success" | "error" | "warning" | "info";
@@ -9,7 +9,11 @@ type ToastContextType = {
 const TOAST_DURATION = 3000;
 const ToastContext = createContext<ToastContextType | undefined>(undefined);
 
-export const ToastProvider: React.FC = ({ children }) => {
+interface ToastProviderProps {
+    children: ReactNode;
+}
+
+export const ToastProvider: React.FC<ToastProviderProps> = ({ children }) => {
     const [toast, setToast] = useState<{ message: string; severity: Severity; open: boolean }>({
         message: "",
         severity: "success",
@@ -25,10 +29,10 @@ export const ToastProvider: React.FC = ({ children }) => {
         <ToastContext.Provider value={{ showToast }}>
             {children}
             <Snackbar
-				open={toast.open}
-				autoHideDuration={TOAST_DURATION}
-				onClose={handleClose}
-				anchorOrigin={{ vertical: "top", horizontal: "right" }}>
+                open={toast.open}
+                autoHideDuration={TOAST_DURATION}
+                onClose={handleClose}
+                anchorOrigin={{ vertical: "top", horizontal: "right" }}>
                 <Alert onClose={handleClose} severity={toast.severity} sx={{ width: "100%" }}>
                     {toast.message}
                 </Alert>

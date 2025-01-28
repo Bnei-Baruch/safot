@@ -1,7 +1,7 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import { segmentService } from './services/segment.service';
 
-type Segment = {
+export type Segment = {
     id: number;
     timestamp: string;
     username: string;
@@ -13,12 +13,12 @@ type Segment = {
 };
 
 export const addSegmentsFromFile = createAsyncThunk<
-    { source_id: string; }, // Return type on success
-    { file: File; source_id: string }, // Parameters the function receives
+    { source_id: number; }, // Return type on success
+    { file: File; source_id: number }, // Parameters the function receives
     { rejectValue: string } // Value returned on rejection
 >(
     'segments/addSegmentsFromFile',
-    async ({ source_id }, thunkAPI) => {
+    async ({ file, source_id }, thunkAPI) => {
         try {
             await segmentService.addSegmentsFromFile(file, source_id);
             return { source_id };
@@ -29,15 +29,15 @@ export const addSegmentsFromFile = createAsyncThunk<
 );
 
 export const fetchSegments = createAsyncThunk<
-    { source_id: number, segments: Segment[] },  // Return type on success
-    { source_id: number },  // Parameters the functino receives
-    { rejectValue: string }  // Value returned on rejection
+    { source_id: number, segments: Segment[] },
+    { source_id: number },
+    { rejectValue: string }
 >(
     'segments/fetchSegments',
     async ({ source_id }, { rejectWithValue }) => {
         try {
-            const data = await segmentService.fetchSegments(source_id);
-            return {source_id, segments: data};
+            const segments: Segment[] = await segmentService.fetchSegments(source_id);
+            return { source_id, segments };
         } catch (err: any) {
             return rejectWithValue(err.message || 'Failed to fetch segments');
         }
@@ -46,7 +46,7 @@ export const fetchSegments = createAsyncThunk<
 
 // Initial state for segments
 interface SegmentState {
-    segments: Record<string, Segment[]>; // Mapping of source_id to segments
+    segments: Record<number, Segment[]>; // Mapping of source_id to segments
     loading: boolean;
     error: string | null;
 }
@@ -67,7 +67,7 @@ const segmentSlice = createSlice({
                 state.loading = true;
                 state.error = null;
             })
-            .addCase(fetchSegments.fulfilled, (state, action: PayloadAction<{source_id: number, segments: Segment[]}>) => {
+            .addCase(fetchSegments.fulfilled, (state, action: PayloadAction<{ source_id: number, segments: Segment[] }>) => {
                 const { source_id, segments } = action.payload;
                 state.loading = false;
                 state.segments[source_id] = segments;
@@ -80,7 +80,7 @@ const segmentSlice = createSlice({
                 state.loading = true;
                 state.error = null;
             })
-            .addCase(addSegmentsFromFile.fulfilled, (state, action: PayloadAction<{ source_id: string }>) => {
+            .addCase(addSegmentsFromFile.fulfilled, (state, action: PayloadAction<{ source_id: number }>) => {
                 const { source_id } = action.payload;
                 state.segments[source_id] = [];
                 state.loading = false;
