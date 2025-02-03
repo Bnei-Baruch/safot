@@ -6,9 +6,10 @@ interface AddSourceDialogProps {
     open: boolean;
     onClose: () => void;
     onSubmit: (data: any) => Promise<void>;
+    mode?: 'new_source' | 'translation';
 }
 
-const AddSourceDialog: React.FC<AddSourceDialogProps> = ({ open, onClose, onSubmit }) => {
+const AddSourceDialog: React.FC<AddSourceDialogProps> = ({ open, onClose, onSubmit, mode = 'new_source' }) => {
     const [loading, setLoading] = useState(false);
 
     const handleFormSubmit = async (data: any) => {
@@ -22,9 +23,9 @@ const AddSourceDialog: React.FC<AddSourceDialogProps> = ({ open, onClose, onSubm
 
     return (
         <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
-            <DialogTitle>Add New Source</DialogTitle>
+            <DialogTitle>{mode === 'new_source' ? 'Add New Source' : 'Create New Translation'}</DialogTitle>
             <DialogContent>
-                <AddSourceForm onSubmit={handleFormSubmit} />
+                <AddSourceForm onSubmit={handleFormSubmit} mode={mode} />
             </DialogContent>
             <DialogActions>
                 {loading && <CircularProgress size={20} style={{ marginRight: '8px' }} />}

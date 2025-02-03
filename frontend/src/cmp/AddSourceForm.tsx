@@ -3,7 +3,7 @@ import { TextField, MenuItem, Autocomplete, Chip } from '@mui/material';
 
 interface AddSourceFormProps {
     onSubmit: (data: {
-        file: File;
+        file?: File;
         name: string;
         labels: string[];
         language: string;
@@ -15,6 +15,7 @@ interface AddSourceFormProps {
             audience: string;
         };
     }) => void;
+    mode: 'new_source' | 'translation';
 }
 
 const labelOptions = [
@@ -39,7 +40,7 @@ const labelOptions = [
     'Economics',
 ];
 
-const AddSourceForm: React.FC<AddSourceFormProps> = ({ onSubmit }) => {
+const AddSourceForm: React.FC<AddSourceFormProps> = ({ onSubmit, mode }) => {
     const [file, setFile] = useState<File | null>(null);
     const [name, setName] = useState('');
     const [labels, setLabels] = useState<string[]>([]);
@@ -62,8 +63,9 @@ const AddSourceForm: React.FC<AddSourceFormProps> = ({ onSubmit }) => {
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
+        const processedFile: File | undefined = file ?? undefined;
         console.log('Data prepared in AddSourceForm:', {
-            file,
+            file: mode === 'new_source' ? processedFile : undefined,
             name,
             labels,
             language,
@@ -71,13 +73,13 @@ const AddSourceForm: React.FC<AddSourceFormProps> = ({ onSubmit }) => {
             order,
             properties,
         });
-        if (!file) {
+        if (mode === 'new_source' && !file) {
             alert('Please upload a file');
             return;
         }
 
         onSubmit({
-            file,
+            file: mode === 'new_source' ? processedFile : undefined,
             name,
             labels,
             language,
@@ -89,12 +91,14 @@ const AddSourceForm: React.FC<AddSourceFormProps> = ({ onSubmit }) => {
 
     return (
         <form id="add-source-form" onSubmit={handleSubmit}>
-            <input
-                type="file"
-                onChange={handleFileChange}
-                style={{ display: 'block', marginBottom: '16px' }}
-                required
-            />
+            {mode === 'new_source' && (
+                <input
+                    type="file"
+                    onChange={handleFileChange}
+                    style={{ display: 'block', marginBottom: '16px' }}
+                    required
+                />
+            )}
             <TextField
                 label="Name"
                 placeholder="e.g., The Art of Teaching"
