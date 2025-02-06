@@ -134,6 +134,30 @@ def read_sources(source_id: int, user_info: dict = Depends(get_user_info)):
     return segments
 
 
+@app.post('/segments/addSegment', response_model=dict)
+def add_segment(segment: dict, user_info: dict = Depends(get_user_info)):
+    try:
+        print(f"Received segment data: {segment}")
+        new_segment = Segment.create(
+            timestamp=datetime.utcnow(),
+            username=user_info['preferred_username'],
+            text=segment['text'],
+            source_id=segment['source_id'],
+            order=segment['order'],
+            original_segment_id=segment.get('original_segment_id'),
+            original_segment_timestamp=segment.get(
+                'original_segment_timestamp'),
+            properties={}
+        )
+        print(f"Saved segment: {model_to_dict(new_segment)}")
+        return model_to_dict(new_segment)
+
+    except Exception as e:
+        print(f"Error saving segment: {e}")  # ❌ הדפסת השגיאה
+        raise HTTPException(
+            status_code=500, detail=f"Failed to add segment: {str(e)}")
+
+
 @app.get('/sources', response_model=list[dict])
 def read_sources(user_info: dict = Depends(get_user_info)):
     sources = list(Source.select().dicts())

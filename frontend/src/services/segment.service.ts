@@ -6,6 +6,7 @@ const SEGMENTS = 'segments';
 export const segmentService = {
     addSegmentsFromFile,
     fetchSegments,
+    addSegment,
 };
 
 async function addSegmentsFromFile(file: File, source_id: number): Promise<{ source_id: number }> {
@@ -19,4 +20,9 @@ async function addSegmentsFromFile(file: File, source_id: number): Promise<{ sou
 async function fetchSegments(source_id: number): Promise<Segment[]> {
     const response = await httpService.get<Segment[]>(`/segments/${source_id}`);
     return response; // Directly return the segments array
+}
+
+async function addSegment(segmentData: Omit<Segment, 'id' | 'timestamp'>): Promise<Segment> {
+    const response = await httpService.post<Segment>(`${SEGMENTS}/addSegment`, segmentData);
+    return response;
 }
