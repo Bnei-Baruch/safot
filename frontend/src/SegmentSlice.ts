@@ -8,14 +8,18 @@ export type Segment = {
     text: string;
     source_id: number;
     order: number;
-    original_SegmentId?: number;
-    original_SegmentTimestamp?: string;
+    original_segment_id?: number;
+    original_segment_timestamp?: string;
+    properties: {
+        translation_type?: "user" | "provider" | "edited"; // Defines how the translation was created
+        [key: string]: any; // Allows flexibility for future properties
+    };
 };
 
 export const addSegmentsFromFile = createAsyncThunk<
-    { source_id: number; }, // Return type on success
+    { source_id: number; },
     { file: File; source_id: number }, // Parameters the function receives
-    { rejectValue: string } // Value returned on rejection
+    { rejectValue: string | undefined }
 >(
     'segments/addSegmentsFromFile',
     async ({ file, source_id }, thunkAPI) => {

@@ -111,6 +111,7 @@ def add_segments_from_file(
                 text=text,
                 source_id=source_id,
                 order=order,
+                properties={}
             )
             print(f"Saved segment: {model_to_dict(segment)}")
             segments.append(model_to_dict(segment))

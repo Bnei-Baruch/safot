@@ -77,6 +77,7 @@ class Segment(Model):
     order = IntegerField()
     original_segment_id = IntegerField(null=True)
     original_segment_timestamp = DateTimeField(null=True)
+    properties = JSONField()
 
     class Meta:
         database = db
