@@ -13,18 +13,15 @@ import {
     TableContainer,
     TableHead,
     TableRow,
+    IconButton,
 } from '@mui/material';
-import IconButton from "@mui/material/IconButton";
-import DeleteIcon from "@mui/icons-material/Delete";
+// import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
-
-
 import AddSourceDialog from '../cmp/AddSourceDialog';
-// import { ShowToast } from '../cmp/Toast';
 import { useToast } from '../cmp/Toast';
 
 interface AddSourceData {
-    file: File;
+    file?: File;
     name: string;
     labels: string[];
     language: string;
@@ -35,6 +32,7 @@ interface AddSourceData {
         description: string;
         audience: string;
     };
+    original_source_id?: number;
 }
 
 const SourceIndex: React.FC = () => {
@@ -43,43 +41,38 @@ const SourceIndex: React.FC = () => {
     const { showToast } = useToast();
     const { sources, loading, error } = useSelector((state: RootState) => state.sources);
     const [dialogOpen, setDialogOpen] = useState(false);
+    const [selectedSource, setSelectedSource] = useState<number | null>(null);
 
     useEffect(() => {
         dispatch(fetchSources());
     }, [dispatch]);
 
-    // Handlers for dialog open/close
-    const handleOpenDialog = () => setDialogOpen(true);
-    const handleCloseDialog = () => setDialogOpen(false);
+    const handleOpenDialog = (sourceId?: number) => {
+        setSelectedSource(sourceId ?? null);
+        setDialogOpen(true);
+    };
 
+    const handleCloseDialog = () => {
+        setDialogOpen(false);
+        setSelectedSource(null);
+    };
 
     const handleAddSource = async (data: AddSourceData) => {
-        console.info('Data received in handleAddSource:', data);
-
         const sourceData = {
-            name: data.name,
-            labels: data.labels,
-            language: data.language,
-            type: data.type,
-            order: data.order,
-            properties: data.properties,
+            ...data,
+            original_source_id: selectedSource,
         };
-
-        console.info('File to process:', data.file);
-
         try {
-            // Add source metadata
             const addedSource = await dispatch(addSource(sourceData as any)).unwrap();
-            // Ensure source ID exists
             if (!addedSource.id) {
                 throw new Error('Failed to get source ID from the backend.');
             }
-            // Add segments from file
-            const response = await dispatch(addSegmentsFromFile({
-                file: data.file,
-                source_id: addedSource.id,
-            })).unwrap();
-
+            if (data.file) {
+                await dispatch(addSegmentsFromFile({
+                    file: data.file,
+                    source_id: addedSource.id,
+                })).unwrap();
+            }
             showToast('Source and segments created successfully!', 'success');
         } catch (error) {
             console.error('Failed to add source:', error);
@@ -95,7 +88,7 @@ const SourceIndex: React.FC = () => {
             <Button
                 variant="contained"
                 color="primary"
-                onClick={handleOpenDialog}
+                onClick={() => handleOpenDialog()}
                 style={{ marginBottom: '20px' }}
             >
                 Add New Source
@@ -103,45 +96,38 @@ const SourceIndex: React.FC = () => {
             {loading && <p>Loading...</p>}
             {error && <p>Error: {error}</p>}
             {!loading && !error && (
-                <TableContainer
-                    component={Paper}
-                    sx={{
-                        margin: "auto",           // Center horizontally
-                        width: "80%",             // Optional: Set Table width
-                        mt: 4,                    // Optional: Add top margin
-                    }}
-                >
+                <TableContainer component={Paper} sx={{ margin: "auto", width: "80%", mt: 4 }}>
                     <Table>
                         <TableHead>
                             <TableRow>
                                 <TableCell>Name</TableCell>
                                 <TableCell>Language</TableCell>
                                 <TableCell>Type</TableCell>
-                                <TableCell>Owner</TableCell>
-                                <TableCell>Properties</TableCell>
-                                <TableCell></TableCell>
+                                <TableCell>Translation Of</TableCell>
+                                <TableCell>Actions</TableCell>
                             </TableRow>
                         </TableHead>
                         <TableBody>
-                            {Object.values(sources)
-                                .sort((a, b) => b.id - a.id)
-                                .map((source) => (
-                                    <TableRow key={source.id}>
-                                        <TableCell>{source.name}</TableCell>
-                                        <TableCell>{source.language}</TableCell>
-                                        <TableCell>{source.type}</TableCell>
-                                        <TableCell>{source.username}</TableCell>
-                                        <TableCell>{JSON.stringify(source.properties)}</TableCell>
-                                        <TableCell>
+                            {Object.values(sources).map((source) => (
+                                <TableRow key={source.id} sx={{ backgroundColor: source.original_source_id ? "#fff" : "#f0f0f0" }}>
+                                    <TableCell>{source.name}</TableCell>
+                                    <TableCell>{source.language}</TableCell>
+                                    <TableCell>{source.type}</TableCell>
+                                    <TableCell>
+                                        {source.original_source_id ?
+                                            `${sources[source.original_source_id]?.name || "Unknown"} (${sources[source.original_source_id]?.language || "Unknown"})`
+                                            : "Original Source"}
+                                    </TableCell>
+                                    <TableCell>
+                                        {source.original_source_id ? (
                                             <IconButton aria-label="edit" onClick={() => navigate(`source-edit/${source.id}`)}>
                                                 <EditIcon />
                                             </IconButton>
-                                            <IconButton aria-label="delete" disabled>
-                                                <DeleteIcon />
-                                            </IconButton>
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
+                                        ) : null}
+                                        <Button onClick={() => handleOpenDialog(source.id)}>➕ Create Translation</Button>
+                                    </TableCell>
+                                </TableRow>
+                            ))}
                         </TableBody>
                     </Table>
                 </TableContainer>
@@ -151,6 +137,7 @@ const SourceIndex: React.FC = () => {
                     open={dialogOpen}
                     onClose={handleCloseDialog}
                     onSubmit={handleAddSource}
+                    mode={selectedSource ? "translation" : "new_source"}
                 />
             )}
         </div>
