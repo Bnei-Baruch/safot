@@ -7,6 +7,7 @@ export const segmentService = {
     addSegmentsFromFile,
     fetchSegments,
     addSegment,
+    translateSegments
 };
 
 async function addSegmentsFromFile(file: File, source_id: number): Promise<{ source_id: number }> {
@@ -25,4 +26,11 @@ async function fetchSegments(source_id: number): Promise<Segment[]> {
 async function addSegment(segmentData: Omit<Segment, 'id' | 'timestamp'>): Promise<Segment> {
     const response = await httpService.post<Segment>(`${SEGMENTS}/addSegment`, segmentData);
     return response;
+}
+
+async function translateSegments(source_id: number, original_source_id: number): Promise<{ translated_segments: Segment[] }> {
+    return await httpService.post<{ translated_segments: Segment[] }>(`${SEGMENTS}/translate`, {
+        source_id,
+        original_source_id
+    });
 }

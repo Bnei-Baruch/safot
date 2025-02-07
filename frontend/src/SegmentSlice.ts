@@ -11,14 +11,32 @@ export type Segment = {
     original_segment_id?: number;
     original_segment_timestamp?: string;
     properties: {
-        translation_type?: "user" | "provider" | "edited"; 
+        translation_type?: "user" | "provider" | "edited";
         [key: string]: any;
     };
 };
 
+
+export const translateSegments = createAsyncThunk<
+    { source_id: number, translated_segments: Segment[] },
+    { source_id: number, original_source_id: number },
+    { rejectValue: string }
+>(
+    'segments/translateSegments',
+    async ({ source_id, original_source_id }, { rejectWithValue }) => {
+        try {
+            const response = await segmentService.translateSegments(source_id, original_source_id);
+
+            return { source_id, translated_segments: response.translated_segments };
+        } catch (err: any) {
+            return rejectWithValue(err.message || 'Failed to translate segments');
+        }
+    }
+);
+
 export const addSegment = createAsyncThunk<
     Segment,
-    Omit<Segment, 'id' | 'timestamp'>, 
+    Omit<Segment, 'id' | 'timestamp'>,
     { rejectValue: string }
 >(
     'segments/addSegment',
@@ -64,7 +82,7 @@ export const fetchSegments = createAsyncThunk<
 );
 
 interface SegmentState {
-    segments: Record<number, Segment[]>; 
+    segments: Record<number, Segment[]>;
     loading: boolean;
     error: string | null;
 }
@@ -122,6 +140,19 @@ const segmentSlice = createSlice({
             })
             .addCase(addSegment.rejected, (state, action) => {
                 state.error = action.error.message || "Failed to add segment";
+            })
+            .addCase(translateSegments.pending, (state) => {
+                state.loading = true;
+                state.error = null;
+            })
+            .addCase(translateSegments.fulfilled, (state, action: PayloadAction<{ source_id: number, translated_segments: Segment[] }>) => {
+                const { source_id, translated_segments } = action.payload;
+                state.loading = false;
+                state.segments[source_id] = translated_segments; // מחליף את הסגמנטים המתורגמים
+            })
+            .addCase(translateSegments.rejected, (state, action: PayloadAction<string | undefined>) => {
+                state.loading = false;
+                state.error = action.payload || 'Failed to translate segments';
             });
     },
 });
@@ -134,20 +165,21 @@ export default segmentSlice.reducer;
 // export type Segment = {
 //     id: number;
 //     timestamp: string;
-//     username: string;
+//     username?: string;
 //     text: string;
 //     source_id: number;
 //     order: number;
 //     original_segment_id?: number;
 //     original_segment_timestamp?: string;
 //     properties: {
-//         translation_type?: "user" | "provider" | "edited"; // Defines how the translation was created
-//         [key: string]: any; // Allows flexibility for future properties
+//         translation_type?: "user" | "provider" | "edited";
+//         [key: string]: any;
 //     };
 // };
+
 // export const addSegment = createAsyncThunk<
 //     Segment,
-//     Omit<Segment, 'id' | 'timestamp'>, 
+//     Omit<Segment, 'id' | 'timestamp'>,
 //     { rejectValue: string }
 // >(
 //     'segments/addSegment',
@@ -159,9 +191,10 @@ export default segmentSlice.reducer;
 //         }
 //     }
 // );
+
 // export const addSegmentsFromFile = createAsyncThunk<
 //     { source_id: number; },
-//     { file: File; source_id: number }, // Parameters the function receives
+//     { file: File; source_id: number },
 //     { rejectValue: string | undefined }
 // >(
 //     'segments/addSegmentsFromFile',
@@ -191,9 +224,8 @@ export default segmentSlice.reducer;
 //     }
 // );
 
-// // Initial state for segments
 // interface SegmentState {
-//     segments: Record<number, Segment[]>; // Mapping of source_id to segments
+//     segments: Record<number, Segment[]>;
 //     loading: boolean;
 //     error: string | null;
 // }
@@ -234,7 +266,6 @@ export default segmentSlice.reducer;
 //             })
 //             .addCase(addSegmentsFromFile.rejected, (state, action) => {
 //                 state.loading = false;
-
 //                 if (action.payload) {
 //                     state.error = action.payload;
 //                 } else if (action.error.message) {
@@ -242,9 +273,19 @@ export default segmentSlice.reducer;
 //                 } else {
 //                     state.error = 'Failed to create segments';
 //                 }
+//             })
+//             .addCase(addSegment.fulfilled, (state, action) => {
+//                 const segment = action.payload;
+//                 if (!state.segments[segment.source_id]) {
+//                     state.segments[segment.source_id] = [];
+//                 }
+//                 state.segments[segment.source_id].push(segment);
+//             })
+//             .addCase(addSegment.rejected, (state, action) => {
+//                 state.error = action.error.message || "Failed to add segment";
 //             });
-            
 //     },
 // });
 
 // export default segmentSlice.reducer;
+
