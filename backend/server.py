@@ -12,11 +12,14 @@ from keycloak import KeycloakOpenID
 from playhouse.shortcuts import model_to_dict
 from starlette.status import HTTP_401_UNAUTHORIZED
 
-from models import db, Source, Segment
+from services.translation_service import TranslationService
+
+from models import db, Source, Segment, SegmentsFetchRequest
 
 load_dotenv()
 
 app = FastAPI()
+translation_service = TranslationService()
 
 app.add_middleware(
     CORSMiddleware,
@@ -156,6 +159,47 @@ def add_segment(segment: dict, user_info: dict = Depends(get_user_info)):
         print(f"Error saving segment: {e}")  # ❌ הדפסת השגיאה
         raise HTTPException(
             status_code=500, detail=f"Failed to add segment: {str(e)}")
+
+
+@app.post("/segments/translate", response_model=dict)
+def get_segments_for_translation(
+    request: SegmentsFetchRequest, user_info: dict = Depends(get_user_info)
+):
+    source_id = request.source_id
+    original_source_id = request.original_source_id
+    try:
+
+        original_segments = list(Segment.select().where(
+            Segment.source_id == original_source_id).dicts())
+        existing_translations_orders = {
+            seg.order for seg in Segment.select().where(Segment.source_id == source_id)}
+        segments_to_translate = [
+            seg for seg in original_segments if seg["order"] not in existing_translations_orders]
+
+        # If there are segments that need translation, send them to OpenAI
+        if segments_to_translate:
+            translation_service.process_translation(
+                segments_to_translate, source_id, user_info['preferred_username'])
+
+        # Fetch **only** the latest segments for each `order`
+        latest_translated_segments = {}
+        translated_segments = list(Segment.select()
+                                   .where(Segment.source_id == source_id)
+                                   .order_by(Segment.order, Segment.timestamp.desc())
+                                   .dicts())
+
+        for seg in translated_segments:
+            if seg["order"] not in latest_translated_segments:
+                latest_translated_segments[seg["order"]] = seg
+        # return the latest translated segments
+        return {
+            "message": "Translation completed",
+            "translated_segments": list(latest_translated_segments.values())
+        }
+
+    except Exception as e:
+        print(f"Error starting translation: {e}")
+        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
 
 
 @app.get('/sources', response_model=list[dict])

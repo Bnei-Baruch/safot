@@ -90,3 +90,8 @@ class Segment(Model):
 
 db.connect()
 db.create_tables([Source, Segment])
+
+
+class SegmentsFetchRequest(BaseModel):
+    source_id: int  # ID of the translation source
+    original_source_id: int  # ID of the original source
