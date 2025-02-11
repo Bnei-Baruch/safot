@@ -88,8 +88,14 @@ const SourceEdit: React.FC = () => {
 
     const handleTranslateAll = async () => {
         if (!parsedId || !originalSourceId) return;
+        console.log('user clicked translate all');
         try {
-            await dispatch(translateSegments({ source_id: parsedId, original_source_id: originalSourceId })).unwrap();
+            await dispatch(translateSegments({
+                source_id: parsedId,
+                original_source_id: originalSourceId,
+                language: sourceData?.language,
+                source_language: sources[originalSourceId]?.language
+            })).unwrap();
             showToast("Translation completed successfully!", "success");
         } catch (error) {
             console.error("Error translating segments:", error);
@@ -170,4 +176,3 @@ const SourceEdit: React.FC = () => {
 };
 
 export default SourceEdit;
-

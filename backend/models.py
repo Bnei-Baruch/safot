@@ -95,3 +95,5 @@ db.create_tables([Source, Segment])
 class SegmentsFetchRequest(BaseModel):
     source_id: int  # ID of the translation source
     original_source_id: int  # ID of the original source
+    language: str  # Target language (e.g., Spanish)
+    source_language: str  # Source language (e.g., Hebrew)

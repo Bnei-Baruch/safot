@@ -12,12 +12,20 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 
 class TranslationService:
-    def __init__(self, model="gpt-4o", prompt="Translate the following text into %(target_language)s:", target_language="English"):
+    def __init__(self, model="gpt-4o", source_language="Hebrew", target_language="English"):
+
         self.client = OpenAI(api_key=OPENAI_API_KEY)
         self.model = model
-        self.prompt = prompt
+        self.source_language = source_language
         self.target_language = target_language
         self.encoding = tiktoken.encoding_for_model(self.model)
+        self.prompt = (
+            "You are a professional translator. "
+            "Translate the following text from %(source_language)s into %(target_language)s. "
+            "Preserve the meaning and context exactly. "
+            "Do not provide any explanations or additional information. "
+            "Only return the translated text."
+        )
 
     def get_model_token_limit(self):
         model_token_limits = {
@@ -61,11 +69,15 @@ class TranslationService:
     def send_chunk_for_translation(self, chunk, temperature=0.2):
         model_limits = self.get_model_token_limit()
         max_output_tokens = model_limits["max_output_tokens"]
-        prompt = self.prompt % {"target_language": self.target_language}
+        prompt = self.prompt % {
+            "source_language": self.source_language,
+            "target_language": self.target_language
+        }
         messages = [
             {"role": "system", "content": prompt},
             {"role": "user", "content": f"{chunk}"}
         ]
+        print("📨 🚀 Sending Request to OpenAI:", messages)
         try:
             response = self.client.chat.completions.create(
                 model=self.model,

@@ -99,10 +99,8 @@ def add_segments_from_file(
 ):
     try:
         source_id = int(source_id)
-
         content = file.file.read()
         document = Document(BytesIO(content))
-
         paragraphs = [p.text for p in document.paragraphs if p.text.strip()]
 
         segments = []
@@ -156,7 +154,7 @@ def add_segment(segment: dict, user_info: dict = Depends(get_user_info)):
         return model_to_dict(new_segment)
 
     except Exception as e:
-        print(f"Error saving segment: {e}")  # ❌ הדפסת השגיאה
+        print(f"Error saving segment: {e}")
         raise HTTPException(
             status_code=500, detail=f"Failed to add segment: {str(e)}")
 
@@ -167,6 +165,9 @@ def get_segments_for_translation(
 ):
     source_id = request.source_id
     original_source_id = request.original_source_id
+    language = request.language
+    source_language = request.source_language
+
     try:
 
         original_segments = list(Segment.select().where(
@@ -178,6 +179,9 @@ def get_segments_for_translation(
 
         # If there are segments that need translation, send them to OpenAI
         if segments_to_translate:
+            translation_service = TranslationService(
+                source_language=source_language,
+                target_language=language)
             translation_service.process_translation(
                 segments_to_translate, source_id, user_info['preferred_username'])
 
