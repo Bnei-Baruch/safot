@@ -18,19 +18,19 @@ export type Segment = {
 
 
 export const translateSegments = createAsyncThunk<
-    { source_id: number, translated_segments: Segment[], language: string, source_language: string },
-    { source_id: number, original_source_id: number, language: string, source_language: string },
+    { source_id: number, translated_segments: Segment[], target_language: string, source_language: string },
+    { source_id: number, original_source_id: number, target_language: string, source_language: string },
     { rejectValue: string }
 >(
     'segments/translateSegments',
-    async ({ source_id, original_source_id, language, source_language }, { rejectWithValue }) => {
+    async ({ source_id, original_source_id, target_language, source_language }, { rejectWithValue }) => {
         try {
-            const response = await segmentService.translateSegments(source_id, original_source_id, language, source_language);
+            const response = await segmentService.translateSegments(source_id, original_source_id, target_language, source_language);
 
             return {
                 source_id,
                 translated_segments: response.translated_segments,
-                language,
+                target_language,
                 source_language
             };
         } catch (err: any) {
@@ -153,7 +153,7 @@ const segmentSlice = createSlice({
             .addCase(translateSegments.fulfilled, (state, action: PayloadAction<{ source_id: number, translated_segments: Segment[] }>) => {
                 const { source_id, translated_segments } = action.payload;
                 state.loading = false;
-                state.segments[source_id] = translated_segments; // מחליף את הסגמנטים המתורגמים
+                state.segments[source_id] = translated_segments;
             })
             .addCase(translateSegments.rejected, (state, action: PayloadAction<string | undefined>) => {
                 state.loading = false;

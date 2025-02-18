@@ -1,24 +1,9 @@
 from datetime import datetime
-import logging
-import os
-
-from dotenv import load_dotenv
 from peewee import *
 from playhouse.postgres_ext import ArrayField, JSONField
 from pydantic import BaseModel
-
-load_dotenv()
-
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger('peewee')
-logger.setLevel(logging.DEBUG)
-
-db: float = PostgresqlDatabase(
-    os.getenv('PG_DATABASE'),
-    user=os.getenv('PG_USER'),
-    password=os.getenv('PG_PASSWORD'),
-    host=os.getenv('PG_HOST'),
-    port=os.getenv('PG_PORT'))
+from enum import Enum
+from db import db
 
 
 class Dictionary(Model):
@@ -88,12 +73,16 @@ class Segment(Model):
         )
 
 
-db.connect()
-db.create_tables([Source, Segment])
+class Language(str, Enum):
+    ENGLISH = "en"
+    HEBREW = "he"
+    SPANISH = "es"
+    RUSSIAN = "ru"
+    FRENCH = "fr"
 
 
 class SegmentsFetchRequest(BaseModel):
-    source_id: int  # ID of the translation source
-    original_source_id: int  # ID of the original source
-    language: str  # Target language (e.g., Spanish)
-    source_language: str  # Source language (e.g., Hebrew)
+    source_id: int
+    original_source_id: int
+    source_language: Language
+    target_language: Language

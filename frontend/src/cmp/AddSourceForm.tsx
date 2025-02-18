@@ -53,7 +53,13 @@ const AddSourceForm: React.FC<AddSourceFormProps> = ({ onSubmit, mode }) => {
         audience: '',
     });
 
-    const languages = ['Hebrew', 'English', 'Spanish', 'Russian', 'French'];
+    const languages = [
+        { label: 'Hebrew', code: 'he' },
+        { label: 'English', code: 'en' },
+        { label: 'Spanish', code: 'es' },
+        { label: 'Russian', code: 'ru' },
+        { label: 'French', code: 'fr' }
+    ];
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files.length > 0) {
@@ -146,12 +152,12 @@ const AddSourceForm: React.FC<AddSourceFormProps> = ({ onSubmit, mode }) => {
                 onChange={(e) => setLanguage(e.target.value)}
                 fullWidth
                 margin="normal"
-                helperText="Select the language of the original text."
+                helperText="Select language."
                 required
             >
                 {languages.map((lang) => (
-                    <MenuItem key={lang} value={lang}>
-                        {lang}
+                    <MenuItem key={lang.code} value={lang.code}>
+                        {lang.label}
                     </MenuItem>
                 ))}
             </TextField>

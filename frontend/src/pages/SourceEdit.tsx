@@ -93,7 +93,7 @@ const SourceEdit: React.FC = () => {
             await dispatch(translateSegments({
                 source_id: parsedId,
                 original_source_id: originalSourceId,
-                language: sourceData?.language,
+                target_language: sourceData?.language,
                 source_language: sources[originalSourceId]?.language
             })).unwrap();
             showToast("Translation completed successfully!", "success");

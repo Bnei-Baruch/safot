@@ -8,13 +8,12 @@ from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 
 class TranslationService:
-    def __init__(self, model="gpt-4o", source_language="Hebrew", target_language="English"):
+    def __init__(self, api_key, model="gpt-4o", source_language="Hebrew", target_language="English"):
 
-        self.client = OpenAI(api_key=OPENAI_API_KEY)
+        self.client = OpenAI(api_key=api_key)
         self.model = model
         self.source_language = source_language
         self.target_language = target_language
@@ -26,6 +25,16 @@ class TranslationService:
             "Do not provide any explanations or additional information. "
             "Only return the translated text."
         )
+
+    def get_language_name(self, code: str) -> str:
+        language_map = {
+            "he": "Hebrew",
+            "en": "English",
+            "es": "Spanish",
+            "ru": "Russian",
+            "fr": "French"
+        }
+        return language_map.get(code, code)
 
     def get_model_token_limit(self):
         model_token_limits = {
@@ -70,8 +79,8 @@ class TranslationService:
         model_limits = self.get_model_token_limit()
         max_output_tokens = model_limits["max_output_tokens"]
         prompt = self.prompt % {
-            "source_language": self.source_language,
-            "target_language": self.target_language
+            "source_language": self.get_language_name(self.source_language),
+            "target_language": self.get_language_name(self.target_language)
         }
         messages = [
             {"role": "system", "content": prompt},

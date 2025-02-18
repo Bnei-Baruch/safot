@@ -2,6 +2,7 @@ from datetime import datetime
 from io import BytesIO
 from typing import Union
 import os
+import logging
 
 from peewee import DoesNotExist
 from dotenv import load_dotenv
@@ -13,13 +14,19 @@ from playhouse.shortcuts import model_to_dict
 from starlette.status import HTTP_401_UNAUTHORIZED
 
 from services.translation_service import TranslationService
+from models import Source, Segment, SegmentsFetchRequest
+from db import db
 
-from models import db, Source, Segment, SegmentsFetchRequest
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger('peewee')
+logger.setLevel(logging.DEBUG)
 
 load_dotenv()
 
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
 app = FastAPI()
-translation_service = TranslationService()
 
 app.add_middleware(
     CORSMiddleware,
@@ -63,15 +70,15 @@ async def get_user_info(request: Request):
 def startup():
     if db.is_closed():
         db.connect()
-
-      # Ensure all tables exist
-    db.create_tables([Source, Segment], safe=True)
+        db.create_tables([Source, Segment], safe=True)
+    logger.info('Database connected and tables ensured')
 
 
 @app.on_event('shutdown')
 def shutdown():
     if not db.is_closed():
         db.close()
+    logger.info('Database connection closed')
 
 
 @app.get('/')
@@ -165,8 +172,8 @@ def get_segments_for_translation(
 ):
     source_id = request.source_id
     original_source_id = request.original_source_id
-    language = request.language
-    source_language = request.source_language
+    target_language = request.target_language.value
+    source_language = request.source_language.value
 
     try:
 
@@ -180,8 +187,10 @@ def get_segments_for_translation(
         # If there are segments that need translation, send them to OpenAI
         if segments_to_translate:
             translation_service = TranslationService(
+                api_key=OPENAI_API_KEY,
                 source_language=source_language,
-                target_language=language)
+                target_language=target_language
+            )
             translation_service.process_translation(
                 segments_to_translate, source_id, user_info['preferred_username'])
 
