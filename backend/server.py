@@ -3,6 +3,7 @@ from io import BytesIO
 from typing import Union
 import os
 import logging
+import json
 
 from peewee import DoesNotExist
 from dotenv import load_dotenv
@@ -14,8 +15,10 @@ from playhouse.shortcuts import model_to_dict
 from starlette.status import HTTP_401_UNAUTHORIZED
 
 from services.translation_service import TranslationService
+from services.segment_service import save_segments_from_file
 from models import Source, Segment, SegmentsFetchRequest
 from db import db
+
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -96,6 +99,42 @@ def docx2text(file: UploadFile, _: dict = Depends(get_user_info)):
     for p in document.paragraphs:
         ret.append(p.text)
     return ret
+
+
+@app.post('/segments/save')
+async def save_segments_handler(
+    request: Request,
+    file: UploadFile = None,  # If present, it means the request contains a file
+    source_id: str = Form(None),
+    properties: str = Form(None),
+    user_info: dict = Depends(get_user_info)
+):
+    try:
+        if file:  # form-data
+            if not source_id:
+                raise HTTPException(
+                    status_code=400, detail="Missing source_id for file upload")
+
+            # Convert `properties` from JSON string to dict
+            properties_dict = json.loads(properties) if properties else {}
+
+            # Send the data to `segment_service.py`
+            return save_segments_from_file(file, int(source_id), properties_dict, user_info)
+
+        # If this is a regular JSON request - get the properties from the JSON data
+        json_data = await request.json()
+        properties_dict = json_data.get("properties", {})
+        segment_type = properties_dict.get("segment_type", "")
+
+        if segment_type == "provider_translation":
+            return process_translation(json_data, user_info)
+
+        # If not a translation request - save manual segments
+        return save_segments(json_data, user_info)
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Error processing request: {str(e)}")
 
 
 @app.post('/segments', response_model=dict)

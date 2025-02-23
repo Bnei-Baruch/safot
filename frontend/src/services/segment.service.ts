@@ -10,12 +10,13 @@ export const segmentService = {
     translateSegments
 };
 
-async function addSegmentsFromFile(file: File, source_id: number): Promise<{ source_id: number }> {
+async function addSegmentsFromFile(file: File, source_id: number, properties: object = {}): Promise<{ source_id: number }> {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('source_id', source_id.toString());
+    formData.append('properties', JSON.stringify(properties));
 
-    return await httpService.post(`${SEGMENTS}`, formData);
+    return await httpService.post(`${SEGMENTS}/save`, formData);
 }
 
 async function fetchSegments(source_id: number): Promise<Segment[]> {

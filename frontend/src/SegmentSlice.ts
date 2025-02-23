@@ -11,7 +11,7 @@ export type Segment = {
     original_segment_id?: number;
     original_segment_timestamp?: string;
     properties: {
-        translation_type?: "user" | "provider" | "edited";
+        segment_type?: "user_translation" | "provider_translation" | "edited" | "file";
         [key: string]: any;
     };
 };
@@ -56,13 +56,13 @@ export const addSegment = createAsyncThunk<
 
 export const addSegmentsFromFile = createAsyncThunk<
     { source_id: number; },
-    { file: File; source_id: number },
+    { file: File; source_id: number, properties?: object },
     { rejectValue: string | undefined }
 >(
     'segments/addSegmentsFromFile',
-    async ({ file, source_id }, thunkAPI) => {
+    async ({ file, source_id, properties }, thunkAPI) => {
         try {
-            await segmentService.addSegmentsFromFile(file, source_id);
+            await segmentService.addSegmentsFromFile(file, source_id, properties);
             return { source_id };
         } catch (error: any) {
             return thunkAPI.rejectWithValue(error.message || 'Failed to create segments');
