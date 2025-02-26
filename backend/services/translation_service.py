@@ -5,19 +5,21 @@ from datetime import datetime
 from models import Segment
 from peewee import IntegrityError
 from dotenv import load_dotenv
+from services.segment_service import save_segment
 
 # Load environment variables
 load_dotenv()
 
 
 class TranslationService:
-    def __init__(self, api_key, model="gpt-4o", source_language="Hebrew", target_language="English"):
+    def __init__(self, api_key, model="gpt-4o", source_language="Hebrew", target_language="English", provider="openAi"):
 
         self.client = OpenAI(api_key=api_key)
         self.model = model
         self.source_language = source_language
         self.target_language = target_language
         self.encoding = tiktoken.encoding_for_model(self.model)
+        self.provider = provider
         self.prompt = (
             "You are a professional translator. "
             "Translate the following text from %(source_language)s into %(target_language)s. "
@@ -104,6 +106,9 @@ class TranslationService:
         prepared_chunks = self.prepare_chunks_for_translation(
             segments, max_chunk_tokens)
         translated_paragraphs = []
+
+        now = datetime.utcnow()
+
         for i, chunk in enumerate(prepared_chunks, 1):
             print(f"Translating chunk {i}...")
             translated_text = self.send_chunk_for_translation(chunk)
@@ -111,18 +116,29 @@ class TranslationService:
                 translated_paragraphs.extend(translated_text.split(" ||| "))
             else:
                 print(f"Chunk {i} translation failed.")
+
         for seg, translated_text in zip(segments, translated_paragraphs):
             try:
-                Segment.create(
-                    timestamp=datetime.utcnow(),
+                save_segment(
                     username=username,
                     text=translated_text,
                     source_id=source_id,
                     order=seg["order"],
+                    properties={
+                        "segment_type": "provider",
+                        "translation": {
+                            "provider": self.provider,
+                            "model": self.model,
+                            "source_language": self.source_language,
+                            "target_language": self.target_language,
+                            "prompt": self.prompt
+                        }
+                    },
                     original_segment_id=seg["id"],
                     original_segment_timestamp=seg["timestamp"],
-                    properties={"translation_type": "provider"}
+                    custom_timestamp=now
                 )
             except IntegrityError:
                 print(f"Skipping duplicate segment for order {seg['order']}")
-        print("Translation completed.")
+
+        print("✅ Translation completed.")

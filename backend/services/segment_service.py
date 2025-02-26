@@ -27,7 +27,7 @@ def save_segment(
             order=order,
             original_segment_id=original_segment_id or existing_segment.original_segment_id,
             original_segment_timestamp=original_segment_timestamp or existing_segment.original_segment_timestamp,
-            properties={**properties, "segment_type": "edited"}
+            properties=properties
         ).execute()
     else:
         query = Segment.create(
@@ -38,7 +38,7 @@ def save_segment(
             order=order,
             original_segment_id=original_segment_id,
             original_segment_timestamp=original_segment_timestamp,
-            properties={**properties, "segment_type": "user_translation"}
+            properties=properties
         )
 
     # Fetch the segment to ensure ID is loaded properly
@@ -87,7 +87,8 @@ def create_segment(segment_data, user_info):
             text=segment_data["text"],
             source_id=segment_data["source_id"],
             order=segment_data["order"],
-            properties=segment_data.get("properties", {}),
+            properties={
+                **segment_data.get("properties", {}), "segment_type": "user_translation"},
             original_segment_id=segment_data.get("original_segment_id"),
             original_segment_timestamp=segment_data.get(
                 "original_segment_timestamp")
@@ -117,10 +118,12 @@ def update_segment(segment_data, user_info):
             text=segment_data["text"],
             source_id=segment_data["source_id"],
             order=segment_data["order"],
-            properties=segment_data.get("properties", {}),
+            properties={
+                **segment_data.get("properties", {}), "segment_type": "edited"},
             original_segment_id=segment_data.get("original_segment_id"),
             original_segment_timestamp=segment_data.get(
                 "original_segment_timestamp"),
+
             existing_segment=existing_segment
         )
 
