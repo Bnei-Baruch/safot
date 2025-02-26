@@ -2,7 +2,7 @@ import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import { segmentService } from './services/segment.service';
 
 export type Segment = {
-    id: number;
+    id?: number;
     timestamp: string;
     username?: string;
     text: string;
@@ -41,7 +41,7 @@ export const translateSegments = createAsyncThunk<
 
 export const addSegment = createAsyncThunk<
     Segment,
-    Omit<Segment, 'id' | 'timestamp'>,
+    Omit<Segment, 'timestamp'>,
     { rejectValue: string }
 >(
     'segments/addSegment',
@@ -141,7 +141,13 @@ const segmentSlice = createSlice({
                 if (!state.segments[segment.source_id]) {
                     state.segments[segment.source_id] = [];
                 }
-                state.segments[segment.source_id].push(segment);
+                //Check if an existing segment with the same `order` already exists
+                const existingIndex = state.segments[segment.source_id].findIndex(t => t.order === segment.order);
+
+                if (existingIndex !== -1)   // If a segment exists, replace it (keeping history in backend but only showing the latest in UI)
+                    state.segments[segment.source_id][existingIndex] = segment;
+                else   // If it's a new translation, add it to the store
+                    state.segments[segment.source_id].push(segment);
             })
             .addCase(addSegment.rejected, (state, action) => {
                 state.error = action.error.message || "Failed to add segment";

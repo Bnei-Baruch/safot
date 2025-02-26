@@ -24,9 +24,8 @@ async function fetchSegments(source_id: number): Promise<Segment[]> {
     return response; // Directly return the segments array
 }
 
-async function addSegment(segmentData: Omit<Segment, 'id' | 'timestamp'>): Promise<Segment> {
-    const response = await httpService.post<Segment>(`${SEGMENTS}/addSegment`, segmentData);
-    return response;
+async function addSegment(segmentData: Omit<Segment, 'timestamp'>): Promise<Segment> {
+    return await httpService.post<Segment>(`${SEGMENTS}/save`, segmentData);
 }
 
 async function translateSegments(source_id: number, original_source_id: number, target_language: string, source_language: string): Promise<{ translated_segments: Segment[] }> {

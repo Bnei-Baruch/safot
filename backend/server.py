@@ -15,7 +15,7 @@ from playhouse.shortcuts import model_to_dict
 from starlette.status import HTTP_401_UNAUTHORIZED
 
 from services.translation_service import TranslationService
-from services.segment_service import save_segments_from_file
+from services.segment_service import save_segments_from_file, create_segment, update_segment
 from models import Source, Segment, SegmentsFetchRequest
 from db import db
 
@@ -84,11 +84,6 @@ def shutdown():
     logger.info('Database connection closed')
 
 
-@app.get('/')
-def read_root():
-    return {'Hello': 'World'}
-
-
 @app.post('/docx2text')
 def docx2text(file: UploadFile, _: dict = Depends(get_user_info)):
     ret = []
@@ -104,24 +99,20 @@ def docx2text(file: UploadFile, _: dict = Depends(get_user_info)):
 @app.post('/segments/save')
 async def save_segments_handler(
     request: Request,
-    file: UploadFile = None,  # If present, it means the request contains a file
+    file: UploadFile = None,
     source_id: str = Form(None),
     properties: str = Form(None),
     user_info: dict = Depends(get_user_info)
 ):
     try:
-        if file:  # form-data
+        if file:  # uploadfile
             if not source_id:
                 raise HTTPException(
                     status_code=400, detail="Missing source_id for file upload")
 
-            # Convert `properties` from JSON string to dict
             properties_dict = json.loads(properties) if properties else {}
-
-            # Send the data to `segment_service.py`
             return save_segments_from_file(file, int(source_id), properties_dict, user_info)
 
-        # If this is a regular JSON request - get the properties from the JSON data
         json_data = await request.json()
         properties_dict = json_data.get("properties", {})
         segment_type = properties_dict.get("segment_type", "")
@@ -129,80 +120,38 @@ async def save_segments_handler(
         if segment_type == "provider_translation":
             return process_translation(json_data, user_info)
 
-        # If not a translation request - save manual segments
-        return save_segments(json_data, user_info)
+        # update or create segment
+        if "id" in json_data and json_data["id"]:
+            return update_segment(json_data, user_info)
+        else:
+            return create_segment(json_data, user_info)
 
     except Exception as e:
+        print(f"❌ Error in /segments/save: {e}")
         raise HTTPException(
             status_code=500, detail=f"Error processing request: {str(e)}")
 
 
-@app.post('/segments', response_model=dict)
-def add_segments_from_file(
-    file: UploadFile,
-    source_id: str = Form(...),
-    user_info: dict = Depends(get_user_info)
-):
-    try:
-        source_id = int(source_id)
-        content = file.file.read()
-        document = Document(BytesIO(content))
-        paragraphs = [p.text for p in document.paragraphs if p.text.strip()]
-
-        segments = []
-        now = datetime.utcnow()
-        for order, text in enumerate(paragraphs):
-            segment = Segment.create(
-                timestamp=now,
-                username=user_info['preferred_username'],
-                text=text,
-                source_id=source_id,
-                order=order,
-                properties={}
-            )
-            print(f"Saved segment: {model_to_dict(segment)}")
-            segments.append(model_to_dict(segment))
-
-        return {"source_id": source_id}
-
-    except ValueError as e:
-        raise HTTPException(
-            status_code=400, detail=f"Invalid source_id format: {str(e)} ")
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to process file: {str(e)}")
-
-
 @app.get('/segments/{source_id}', response_model=list[dict])
 def read_sources(source_id: int, user_info: dict = Depends(get_user_info)):
-    segments = list(Segment.select().where(
-        Segment.source_id == source_id).dicts())
-    print("Fetched segments:", segments)
-    return segments
 
-
-@app.post('/segments/addSegment', response_model=dict)
-def add_segment(segment: dict, user_info: dict = Depends(get_user_info)):
     try:
-        print(f"Received segment data: {segment}")
-        new_segment = Segment.create(
-            timestamp=datetime.utcnow(),
-            username=user_info['preferred_username'],
-            text=segment['text'],
-            source_id=segment['source_id'],
-            order=segment['order'],
-            original_segment_id=segment.get('original_segment_id'),
-            original_segment_timestamp=segment.get(
-                'original_segment_timestamp'),
-            properties={}
-        )
-        print(f"Saved segment: {model_to_dict(new_segment)}")
-        return model_to_dict(new_segment)
+        # Fetch only the latest segment for each order
+        latest_segments_query = """
+        SELECT DISTINCT ON ("order") * 
+        FROM segment 
+        WHERE source_id = %s 
+        ORDER BY "order", timestamp DESC
+        """
+
+        # Execute the raw SQL query
+        segments = list(Segment.raw(latest_segments_query, source_id).dicts())
+
+        return segments
 
     except Exception as e:
-        print(f"Error saving segment: {e}")
         raise HTTPException(
-            status_code=500, detail=f"Failed to add segment: {str(e)}")
+            status_code=500, detail=f"Failed to fetch segments: {str(e)}")
 
 
 @app.post("/segments/translate", response_model=dict)
@@ -306,6 +255,8 @@ def delete_source(source_id: int, _: dict = Depends(get_user_info)):
     if rows_deleted == 0:
         raise HTTPException(status_code=404, detail='Source not found')
     return rows_deleted
+
+############################################################################################################################
 
 
 @app.post('/dictionaries', response_model=dict)

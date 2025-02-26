@@ -71,7 +71,7 @@ const SourceIndex: React.FC = () => {
                 await dispatch(addSegmentsFromFile({
                     file: data.file,
                     source_id: addedSource.id,
-                    properties: { source_type: "file" }
+                    properties: { segment_type: "file" }
                 })).unwrap();
             }
             showToast('Source and segments created successfully!', 'success');

@@ -69,7 +69,8 @@ class Segment(Model):
         table_name = 'segment'
         primary_key = CompositeKey('id', 'timestamp')
         indexes = (
-            (('source_id', 'order'), True),  # Ensures unique order per source
+            # Ensures unique order per source
+            (('source_id', 'order', 'timestamp'), True),
         )
 
 

@@ -44,40 +44,45 @@ const SourceEdit: React.FC = () => {
         if (parsedId && !(parsedId in segments)) {
             dispatch(fetchSegments({ source_id: parsedId }));
         }
+        console.log("📝 Segments in Redux store:", segments);
     }, [dispatch, parsedId, originalSourceId, segments]);
 
-    const handleTranslationChange = (segmentId: number, order: number, timestamp: string, value: string) => {
+    const handleTranslationChange = (sourceSegmentId: number, order: number, timestamp: string, value: string) => {
         setTranslations(prev => ({
             ...prev,
-            [segmentId]: {
+            [sourceSegmentId]: {
                 text: value,
                 order,
-                original_segment_id: segmentId,
+                original_segment_id: sourceSegmentId,
                 original_segment_timestamp: timestamp
             }
         }));
     };
 
-    const handleSaveTranslation = async (segmentId: number) => {
-        if (!parsedId || !translations[segmentId]) return;
+    const handleSaveTranslation = async (sourceSegmentId: number) => {
+        if (!parsedId || !translations[sourceSegmentId]) return;
 
+        // Find an existing translation for the same `order`
+        const existingTranslation = segments[parsedId]?.find(translateSegment => translateSegment.order === translations[sourceSegmentId].order);
+        console.log(" Found existing translation:", existingTranslation);
         const segmentToSave = {
+            id: existingTranslation ? existingTranslation.id : null,
             source_id: parsedId,
-            order: translations[segmentId].order,
-            text: translations[segmentId].text,
-            original_segment_id: translations[segmentId].original_segment_id,
-            original_segment_timestamp: translations[segmentId].original_segment_timestamp || undefined,
+            order: translations[sourceSegmentId].order,
+            text: translations[sourceSegmentId].text,
+            original_segment_id: translations[sourceSegmentId].original_segment_id,
+            original_segment_timestamp: translations[sourceSegmentId].original_segment_timestamp || undefined,
             properties: {
-                translation_type: "user" as "user"
+                segment_type: existingTranslation ? "edited" : "user_translation"
             }
         };
         console.log("Sending segment data to backend:", segmentToSave);
         try {
-            await dispatch(addSegment(segmentToSave)).unwrap();
+            await dispatch(addSegment(segmentToSave as Omit<Segment, "timestamp">)).unwrap();
             showToast("Translation saved successfully!", "success");
             setTranslations(prev => {
                 const updated = { ...prev };
-                delete updated[segmentId];
+                delete updated[sourceSegmentId];
                 return updated;
             });
         } catch (error) {
@@ -128,7 +133,7 @@ const SourceEdit: React.FC = () => {
                         {originalSourceId && segments[originalSourceId] && parsedId ? (
                             segments[originalSourceId].map((sourceSegment: Segment) => {
                                 const existingTranslation = segments[parsedId]?.find(t => t.order === sourceSegment.order)?.text || '';
-                                const hasChanged = (translations[sourceSegment.id]?.text ?? existingTranslation) !== existingTranslation;
+                                const hasChanged = sourceSegment.id !== undefined && (translations[sourceSegment.id]?.text ?? existingTranslation) !== existingTranslation;
 
                                 return (
                                     <TableRow key={sourceSegment.id}>
@@ -140,11 +145,11 @@ const SourceEdit: React.FC = () => {
                                                 multiline
                                                 minRows={2}
                                                 maxRows={8}
-                                                value={translations[sourceSegment.id]?.text ?? existingTranslation}
+                                                value={sourceSegment.id !== undefined ? translations[sourceSegment.id]?.text ?? existingTranslation : existingTranslation}
                                                 onChange={(e) => handleTranslationChange(
-                                                    sourceSegment.id,
+                                                    sourceSegment.id!,
                                                     sourceSegment.order,
-                                                    sourceSegment.original_segment_timestamp ?? '',
+                                                    sourceSegment.timestamp,
                                                     e.target.value
                                                 )}
                                                 placeholder="Enter translation"
@@ -154,7 +159,7 @@ const SourceEdit: React.FC = () => {
                                             <Button
                                                 variant="contained"
                                                 color="primary"
-                                                onClick={() => handleSaveTranslation(sourceSegment.id)}
+                                                onClick={() => handleSaveTranslation(sourceSegment.id!)}
                                                 disabled={!hasChanged}
                                             >
                                                 Save
