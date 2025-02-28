@@ -108,9 +108,21 @@ const SourceEdit: React.FC = () => {
         }
     };
 
+    const getLanguageName = (code: string): string => {
+        const languageMap: { [key: string]: string } = {
+            'he': 'Hebrew',
+            'en': 'English',
+            'es': 'Spanish',
+            'ru': 'Russian',
+            'fr': 'French'
+        }
+        return languageMap[code] || 'Unknown';
+    };
+
+
     return (
         <div>
-            <h1>Edit Translation - {sourceData?.name} ({sourceData?.language})</h1>
+            <h1>Edit Translation - {sourceData?.name} ({getLanguageName(sourceData?.language || '')})</h1>
             <Button
                 variant="contained"
                 color="secondary"
@@ -124,8 +136,8 @@ const SourceEdit: React.FC = () => {
                     <TableHead>
                         <TableRow>
                             <TableCell>Order</TableCell>
-                            <TableCell style={{ width: "40%" }}>Source ({originalSourceId && sources[originalSourceId]?.language || 'Unknown'})</TableCell>
-                            <TableCell style={{ width: "40%" }}>Translation ({sourceData?.language})</TableCell>
+                            <TableCell style={{ width: "40%" }}>Source ({originalSourceId && getLanguageName(sources[originalSourceId]?.language) || 'Unknown'})</TableCell>
+                            <TableCell style={{ width: "40%" }}>Translation ({getLanguageName(sourceData?.language || '')})</TableCell>
                             <TableCell style={{ width: "20%" }}>Actions</TableCell>
                         </TableRow>
                     </TableHead>

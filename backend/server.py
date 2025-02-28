@@ -16,7 +16,7 @@ from starlette.status import HTTP_401_UNAUTHORIZED
 
 from services.translation_service import TranslationService
 from services.segment_service import save_segments_from_file, create_segment, update_segment
-from models import Source, Segment, SegmentsFetchRequest
+from models import Source, Segment, SegmentsFetchRequest, Language, TranslationServiceOptions
 from db import db
 
 
@@ -160,8 +160,10 @@ def get_segments_for_translation(
 ):
     source_id = request.source_id
     original_source_id = request.original_source_id
-    target_language = request.target_language.value
-    source_language = request.source_language.value
+    target_language = request.target_language
+    source_language = request.source_language
+
+    print(f"Translating segments from {source_language} to {target_language}")
 
     try:
 
@@ -172,13 +174,17 @@ def get_segments_for_translation(
         segments_to_translate = [
             seg for seg in original_segments if seg["order"] not in existing_translations_orders]
 
-        # If there are segments that need translation, send them to OpenAI
         if segments_to_translate:
-            translation_service = TranslationService(
-                api_key=OPENAI_API_KEY,
+            options = TranslationServiceOptions(
                 source_language=source_language,
                 target_language=target_language
             )
+
+            translation_service = TranslationService(
+                api_key=OPENAI_API_KEY,
+                options=options
+            )
+
             translation_service.process_translation(
                 segments_to_translate, source_id, user_info['preferred_username'])
 
@@ -192,9 +198,9 @@ def get_segments_for_translation(
         for seg in translated_segments:
             if seg["order"] not in latest_translated_segments:
                 latest_translated_segments[seg["order"]] = seg
-        # return the latest translated segments
         return {
             "message": "Translation completed",
+            "total_segments_translated": len(latest_translated_segments),
             "translated_segments": list(latest_translated_segments.values())
         }
 

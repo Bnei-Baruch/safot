@@ -1,7 +1,7 @@
 from datetime import datetime
 from peewee import *
 from playhouse.postgres_ext import ArrayField, JSONField
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 from enum import Enum
 from db import db
 
@@ -75,15 +75,57 @@ class Segment(Model):
 
 
 class Language(str, Enum):
-    ENGLISH = "en"
-    HEBREW = "he"
-    SPANISH = "es"
-    RUSSIAN = "ru"
-    FRENCH = "fr"
+    ENGLISH = "English"
+    HEBREW = "Hebrew"
+    SPANISH = "Spanish"
+    RUSSIAN = "Russian"
+    FRENCH = "French"
 
+    @classmethod
+    def from_code(cls, code: str):
+        language_map = {
+            "en": cls.ENGLISH,
+            "he": cls.HEBREW,
+            "es": cls.SPANISH,
+            "ru": cls.RUSSIAN,
+            "fr": cls.FRENCH
+        }
+        return language_map.get(code, code)
+
+
+# class SegmentsFetchRequest(BaseModel):
+#     source_id: int
+#     original_source_id: int
+#     source_language: str
+#     target_language: str
+
+#     @validator("source_language", "target_language", pre=True)
+#     def convert_language(cls, value):
+#         if value in Language.__members__.values():
+#             return value
+#         return Language.from_code(value)
 
 class SegmentsFetchRequest(BaseModel):
     source_id: int
     original_source_id: int
     source_language: Language
     target_language: Language
+
+    @validator("source_language", "target_language", pre=True)
+    def convert_language(cls, value):
+        return Language.from_code(value)
+
+
+class Provider(str, Enum):
+    DEFAULT_DEV = "dev"
+    SIMPLE_GPT_1 = "simple-gpt-1"
+    OPENAI = "openai"
+
+
+class TranslationServiceOptions(BaseModel):
+    source_language: Language
+    target_language: Language
+    model: str = "gpt-4o"
+    provider: Provider = Provider.OPENAI
+    temperature: float = 0.2
+    prompt_key: str = "prompt_1"

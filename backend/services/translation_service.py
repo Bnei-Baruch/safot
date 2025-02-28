@@ -2,41 +2,23 @@ import os
 import tiktoken
 from openai import OpenAI
 from datetime import datetime
-from models import Segment
+from models import Segment, Language, Provider, TranslationServiceOptions
 from peewee import IntegrityError
 from dotenv import load_dotenv
 from services.segment_service import save_segment
+from services.translation_prompts import TRANSLATION_PROMPTS
+from pprint import pprint
 
 # Load environment variables
 load_dotenv()
 
 
 class TranslationService:
-    def __init__(self, api_key, model="gpt-4o", source_language="Hebrew", target_language="English", provider="openAi"):
-
+    def __init__(self, api_key: str, options: TranslationServiceOptions):
         self.client = OpenAI(api_key=api_key)
-        self.model = model
-        self.source_language = source_language
-        self.target_language = target_language
-        self.encoding = tiktoken.encoding_for_model(self.model)
-        self.provider = provider
-        self.prompt = (
-            "You are a professional translator. "
-            "Translate the following text from %(source_language)s into %(target_language)s. "
-            "Preserve the meaning and context exactly. "
-            "Do not provide any explanations or additional information. "
-            "Only return the translated text."
-        )
-
-    def get_language_name(self, code: str) -> str:
-        language_map = {
-            "he": "Hebrew",
-            "en": "English",
-            "es": "Spanish",
-            "ru": "Russian",
-            "fr": "French"
-        }
-        return language_map.get(code, code)
+        self.options = options
+        self.encoding = tiktoken.encoding_for_model(self.options.model)
+        self.prompt = TRANSLATION_PROMPTS[self.options.prompt_key]
 
     def get_model_token_limit(self):
         model_token_limits = {
@@ -44,7 +26,7 @@ class TranslationService:
             "gpt-4": {"context_window": 8192, "max_output_tokens": 2048},
             "gpt-3.5-turbo": {"context_window": 4096, "max_output_tokens": 1024},
         }
-        return model_token_limits.get(self.model, {"context_window": 0, "max_output_tokens": 0})
+        return model_token_limits.get(self.options.model, {"context_window": 0, "max_output_tokens": 0})
 
     def calculate_chunk_token_limit(self, output_ratio=1.2):
         prompt_tokens = len(self.encoding.encode(self.prompt))
@@ -77,13 +59,15 @@ class TranslationService:
             chunks.append(" ||| ".join(current_chunk))
         return chunks
 
-    def send_chunk_for_translation(self, chunk, temperature=0.2):
+    def send_chunk_for_translation(self, chunk):
         model_limits = self.get_model_token_limit()
         max_output_tokens = model_limits["max_output_tokens"]
-        prompt = self.prompt % {
-            "source_language": self.get_language_name(self.source_language),
-            "target_language": self.get_language_name(self.target_language)
-        }
+        prompt = self.prompt.format(
+            source_language=self.options.source_language.value,
+            target_language=self.options.target_language.value
+        )
+        print(f"📌 Final prompt used: {prompt}")
+
         messages = [
             {"role": "system", "content": prompt},
             {"role": "user", "content": f"{chunk}"}
@@ -91,12 +75,17 @@ class TranslationService:
         print("📨 🚀 Sending Request to OpenAI:", messages)
         try:
             response = self.client.chat.completions.create(
-                model=self.model,
+                model=self.options.model,
                 messages=messages,
                 max_tokens=max_output_tokens,
-                temperature=temperature
+                temperature=self.options.temperature
             )
+            if not response or not response.choices or not response.choices[0].message.content:
+                print("⚠️ OpenAI returned an empty response!")
+                return "Translation failed due to an empty response."
+
             return response.choices[0].message.content.strip()
+
         except Exception as e:
             print(f"Error during translation: {e}")
             return f"Translation failed for chunk: {chunk}"
@@ -127,11 +116,13 @@ class TranslationService:
                     properties={
                         "segment_type": "provider",
                         "translation": {
-                            "provider": self.provider,
-                            "model": self.model,
-                            "source_language": self.source_language,
-                            "target_language": self.target_language,
-                            "prompt": self.prompt
+                            "provider": self.options.provider.value,
+                            "model": self.options.model,
+                            "source_language": self.options.source_language.value,
+                            "target_language": self.options.target_language.value,
+                            "prompt_key": self.options.prompt_key,
+                            "prompt": self.prompt,
+                            "temperature": self.options.temperature
                         }
                     },
                     original_segment_id=seg["id"],
