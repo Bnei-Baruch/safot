@@ -15,7 +15,7 @@ from playhouse.shortcuts import model_to_dict
 from starlette.status import HTTP_401_UNAUTHORIZED
 
 from services.translation_service import TranslationService
-from services.segment_service import save_segments_from_file, create_segment, update_segment
+from services.segment_service import save_segments_from_file, create_segment, update_segment, get_latest_segments
 from models import Source, Segment, SegmentsFetchRequest, Language, TranslationServiceOptions
 from db import db
 
@@ -136,18 +136,8 @@ async def save_segments_handler(
 def read_sources(source_id: int, user_info: dict = Depends(get_user_info)):
 
     try:
-        # Fetch only the latest segment for each order
-        latest_segments_query = """
-        SELECT DISTINCT ON ("order") * 
-        FROM segment 
-        WHERE source_id = %s 
-        ORDER BY "order", timestamp DESC
-        """
-
-        # Execute the raw SQL query
-        segments = list(Segment.raw(latest_segments_query, source_id).dicts())
-
-        return segments
+        latest_segments = get_latest_segments(source_id)
+        return latest_segments
 
     except Exception as e:
         raise HTTPException(
@@ -188,16 +178,9 @@ def get_segments_for_translation(
             translation_service.process_translation(
                 segments_to_translate, source_id, user_info['preferred_username'])
 
-        # Fetch **only** the latest segments for each `order`
-        latest_translated_segments = {}
-        translated_segments = list(Segment.select()
-                                   .where(Segment.source_id == source_id)
-                                   .order_by(Segment.order, Segment.timestamp.desc())
-                                   .dicts())
+        # Fetch the latest segments for each `order`
+        latest_translated_segments = get_latest_segments(source_id)
 
-        for seg in translated_segments:
-            if seg["order"] not in latest_translated_segments:
-                latest_translated_segments[seg["order"]] = seg
         return {
             "message": "Translation completed",
             "total_segments_translated": len(latest_translated_segments),

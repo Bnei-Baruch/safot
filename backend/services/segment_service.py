@@ -1,8 +1,32 @@
 from datetime import datetime
 from io import BytesIO
 from docx import Document
+from peewee import fn
 from models import Segment
 from playhouse.shortcuts import model_to_dict
+
+
+def get_latest_segments(source_id):
+    """
+    Fetch only the latest translated segments per `order`.
+    """
+    max_timestamp_subquery = (
+        Segment
+        .select(Segment.order, fn.MAX(Segment.timestamp).alias('max_timestamp'))
+        .where(Segment.source_id == source_id)
+        .group_by(Segment.order)
+    )
+
+    latest_segments_query = (
+        Segment
+        .select()
+        .where(
+            (Segment.source_id == source_id) &
+            ((Segment.order, Segment.timestamp).in_(max_timestamp_subquery))
+        )
+    )
+
+    return list(latest_segments_query.dicts())
 
 
 def save_segment(
