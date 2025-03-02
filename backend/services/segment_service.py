@@ -7,9 +7,7 @@ from playhouse.shortcuts import model_to_dict
 
 
 def get_latest_segments(source_id):
-    """
-    Fetch only the latest translated segments per `order`.
-    """
+
     max_timestamp_subquery = (
         Segment
         .select(Segment.order, fn.MAX(Segment.timestamp).alias('max_timestamp'))
@@ -20,13 +18,18 @@ def get_latest_segments(source_id):
     latest_segments_query = (
         Segment
         .select()
-        .where(
-            (Segment.source_id == source_id) &
-            ((Segment.order, Segment.timestamp).in_(max_timestamp_subquery))
-        )
+        .join(max_timestamp_subquery, on=(
+            (Segment.order == max_timestamp_subquery.c.order) &
+            (Segment.timestamp == max_timestamp_subquery.c.max_timestamp)
+        ))
+        .where(Segment.source_id == source_id)
     )
 
-    return list(latest_segments_query.dicts())
+    latest_segments = list(latest_segments_query.dicts())
+
+    print(f"✅ Latest segments fetched: {latest_segments}")  # Debug Output
+
+    return latest_segments
 
 
 def save_segment(
