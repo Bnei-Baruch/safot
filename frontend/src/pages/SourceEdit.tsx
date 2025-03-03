@@ -1,13 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
-import { useParams } from "react-router-dom";
-import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, TextField, Button } from "@mui/material";
+import { useParams, useNavigate } from "react-router-dom";
+import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, TextField, Button, Box } from "@mui/material";
+import SaveIcon from '@mui/icons-material/Save';
+import TranslateIcon from '@mui/icons-material/Translate';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { fetchSegments, addSegment, translateSegments, Segment } from '../SegmentSlice';
 import { fetchSource } from '../SourceSlice';
 import { useAppDispatch, RootState } from '../store';
 import { useToast } from '../cmp/Toast';
 
 const SourceEdit: React.FC = () => {
+    const navigate = useNavigate();
     const dispatch = useAppDispatch();
     const { showToast } = useToast();
     const { id } = useParams<{ id: string }>();
@@ -123,14 +127,16 @@ const SourceEdit: React.FC = () => {
     return (
         <div>
             <h1>Edit Translation - {sourceData?.name} ({getLanguageName(sourceData?.language || '')})</h1>
-            <Button
-                variant="contained"
-                color="secondary"
-                onClick={handleTranslateAll}
-                style={{ marginBottom: "20px" }}
-            >
-                Translate All
-            </Button>
+            <Box sx={{ display: "flex", justifyContent: "center", gap: "16px", mb: "20px" }}>
+                <Button variant="outlined" color="primary" onClick={() => navigate("/")} style={{ marginBottom: "16px" }}>
+                    <ArrowBackIcon /> Back to Sources
+                </Button>
+
+                <Button variant="contained" color="primary" onClick={() => console.log("Translate All")} style={{ marginBottom: "16px" }}>
+                    <TranslateIcon /> Translate All
+                </Button>
+
+            </Box>
             <TableContainer component={Paper} >
                 <Table>
                     <TableHead>
@@ -174,7 +180,7 @@ const SourceEdit: React.FC = () => {
                                                 onClick={() => handleSaveTranslation(sourceSegment.id!)}
                                                 disabled={!hasChanged}
                                             >
-                                                Save
+                                                <SaveIcon />
                                             </Button>
                                         </TableCell>
                                     </TableRow>

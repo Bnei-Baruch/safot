@@ -40,12 +40,19 @@ const labelOptions = [
     'Economics',
 ];
 
+enum SourceType {
+    BOOK = "Book",
+    CHAPTER = "Chapter",
+    ARTICLE = "Article",
+}
+
+
 const AddSourceForm: React.FC<AddSourceFormProps> = ({ onSubmit, mode }) => {
     const [file, setFile] = useState<File | null>(null);
     const [name, setName] = useState('');
     const [labels, setLabels] = useState<string[]>([]);
     const [language, setLanguage] = useState('');
-    const [type, setType] = useState('');
+    const [type, setType] = useState<SourceType | "">("");
     const [order, setOrder] = useState<number | null>(null);
     const [properties, setProperties] = useState({
         category: '',
@@ -89,7 +96,7 @@ const AddSourceForm: React.FC<AddSourceFormProps> = ({ onSubmit, mode }) => {
             name,
             labels,
             language,
-            type,
+            type: type as SourceType,
             order,
             properties,
         });
@@ -162,15 +169,24 @@ const AddSourceForm: React.FC<AddSourceFormProps> = ({ onSubmit, mode }) => {
                 ))}
             </TextField>
             <TextField
+                select
                 label="Type"
+                value={type}
+                // onChange={(e) => setType(e.target.value)}
+                onChange={(e) => setType(e.target.value as SourceType)}
                 placeholder="e.g., Book, Chapter, Article"
-                helperText="Enter the type of the text."
+                // helperText="Enter the type of the text."
                 fullWidth
                 margin="normal"
-                value={type}
-                onChange={(e) => setType(e.target.value)}
                 required
-            />
+            >
+                {Object.values(SourceType).map((source) => (
+                    <MenuItem key={source} value={source}>
+                        {source}
+                    </MenuItem>
+                ))}
+            </TextField>
+
             <TextField
                 label="Order"
                 placeholder="e.g., 1, 2, 3"

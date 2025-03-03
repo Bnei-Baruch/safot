@@ -15,6 +15,7 @@ import {
     TableRow,
     IconButton,
 } from '@mui/material';
+// import RemoveRedEyeIcon from '@mui/icons-material/RemoveRedEye';
 // import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import AddSourceDialog from '../cmp/AddSourceDialog';
@@ -125,6 +126,14 @@ const SourceIndex: React.FC = () => {
                                                 <EditIcon />
                                             </IconButton>
                                         ) : null}
+
+                                        {/* ) : ( */}
+                                        {/* <Button onClick={() => navigate(`source-view/${source.id}`)} // Navigate to view mode */}
+                                        {/* //     >
+                                        //         <RemoveRedEyeIcon />
+                                        //     </Button>
+                                        // )} */}
+
                                         <Button onClick={() => handleOpenDialog(source.id)}>➕ Create Translation</Button>
                                     </TableCell>
                                 </TableRow>
