@@ -1,6 +1,6 @@
 from datetime import datetime
 from io import BytesIO
-from typing import Union
+from typing import Union, List
 import os
 import logging
 import json
@@ -149,7 +149,7 @@ def get_segments_for_translation(
     request: SegmentsFetchRequest, user_info: dict = Depends(get_user_info)
 ):
     source_id = request.source_id
-    original_source_id = request.original_source_id
+    original_segments = request.segments
     target_language = request.target_language
     source_language = request.source_language
 
@@ -157,8 +157,10 @@ def get_segments_for_translation(
 
     try:
 
-        original_segments = list(Segment.select().where(
-            Segment.source_id == original_source_id).dicts())
+        if not original_segments:
+            raise HTTPException(
+                status_code=400, detail="No segments provided for translation.")
+
         existing_translations_orders = {
             seg.order for seg in Segment.select().where(Segment.source_id == source_id)}
         segments_to_translate = [
@@ -182,9 +184,9 @@ def get_segments_for_translation(
         latest_translated_segments = get_latest_segments(source_id)
 
         return {
-            "message": "Translation completed",
-            "total_segments_translated": len(latest_translated_segments),
-            "translated_segments": list(latest_translated_segments.values())
+
+            "translated_segments": latest_translated_segments,
+            "total_segments_translated": len(latest_translated_segments)
         }
 
     except Exception as e:

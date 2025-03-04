@@ -28,10 +28,10 @@ async function addSegment(segmentData: Omit<Segment, 'timestamp'>): Promise<Segm
     return await httpService.post<Segment>(`${SEGMENTS}/save`, segmentData);
 }
 
-async function translateSegments(source_id: number, original_source_id: number, target_language: string, source_language: string): Promise<{ translated_segments: Segment[] }> {
-    return await httpService.post<{ translated_segments: Segment[] }>(`${SEGMENTS}/translate`, {
+async function translateSegments(source_id: number, original_segments: Segment[], target_language: string, source_language: string): Promise<{ translated_segments: Segment[], total_segments_translated: number }> {
+    return await httpService.post<{ translated_segments: Segment[], total_segments_translated: number }>(`${SEGMENTS}/translate`, {
         source_id,
-        original_source_id,
+        segments: original_segments,
         target_language,
         source_language
     });

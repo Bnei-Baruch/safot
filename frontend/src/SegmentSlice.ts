@@ -18,20 +18,23 @@ export type Segment = {
 
 
 export const translateSegments = createAsyncThunk<
-    { source_id: number, translated_segments: Segment[], target_language: string, source_language: string },
-    { source_id: number, original_source_id: number, target_language: string, source_language: string },
+    { translated_segments: Segment[], total_segments_translated: number },
+    { source_id: number, segments: Segment[], target_language: string, source_language: string },
     { rejectValue: string }
 >(
     'segments/translateSegments',
-    async ({ source_id, original_source_id, target_language, source_language }, { rejectWithValue }) => {
+    async ({ source_id, segments, target_language, source_language }, { rejectWithValue }) => {
         try {
-            const response = await segmentService.translateSegments(source_id, original_source_id, target_language, source_language);
-
-            return {
+            const response = await segmentService.translateSegments(
                 source_id,
-                translated_segments: response.translated_segments,
+                segments,
                 target_language,
                 source_language
+            );
+
+            return {
+                translated_segments: response.translated_segments,
+                total_segments_translated: response.total_segments_translated,
             };
         } catch (err: any) {
             return rejectWithValue(err.message || 'Failed to translate segments');
@@ -156,11 +159,21 @@ const segmentSlice = createSlice({
                 state.loading = true;
                 state.error = null;
             })
-            .addCase(translateSegments.fulfilled, (state, action: PayloadAction<{ source_id: number, translated_segments: Segment[] }>) => {
-                const { source_id, translated_segments } = action.payload;
+            // .addCase(translateSegments.fulfilled, (state, action: PayloadAction<{ translated_segments: Segment[], total_segments_translated: number }>) => {
+            //     const { translated_segments, total_segments_translated } = action.payload;
+            //     const source_id = action.meta.arg.source_id;
+            //     state.loading = false;
+            //     state.segments[source_id] = translated_segments;
+            // })
+            .addCase(translateSegments.fulfilled, (state, action) => {
+                const { translated_segments, total_segments_translated } = action.payload;
+                const source_id = action.meta.arg.source_id;
                 state.loading = false;
                 state.segments[source_id] = translated_segments;
+
+                console.log(`✅ ${total_segments_translated} segments were translated successfully.`);
             })
+
             .addCase(translateSegments.rejected, (state, action: PayloadAction<string | undefined>) => {
                 state.loading = false;
                 state.error = action.payload || 'Failed to translate segments';

@@ -96,16 +96,23 @@ const SourceEdit: React.FC = () => {
     };
 
     const handleTranslateAll = async () => {
-        if (!parsedId || !originalSourceId) return;
+        if (!parsedId || !originalSourceId || !segments[originalSourceId]) return;
         console.log('user clicked translate all');
+
+        const originalSegments = segments[originalSourceId];
+        if (originalSegments.length === 0) {
+            showToast("No segments available for translation.", "warning");
+            return;
+        }
+        console.log(`Translating ${originalSegments.length} segments from ${sources[originalSourceId]?.language} to ${sourceData?.language}`);
         try {
-            await dispatch(translateSegments({
+            const response = await dispatch(translateSegments({
                 source_id: parsedId,
-                original_source_id: originalSourceId,
+                segments: originalSegments,
                 target_language: sourceData?.language,
                 source_language: sources[originalSourceId]?.language
             })).unwrap();
-            showToast("Translation completed successfully!", "success");
+            showToast(`${response.total_segments_translated} segments translated successfully!`, "success");
         } catch (error) {
             console.error("Error translating segments:", error);
             showToast("Failed to translate. Please try again.", "error");
@@ -132,7 +139,7 @@ const SourceEdit: React.FC = () => {
                     <ArrowBackIcon /> Back to Sources
                 </Button>
 
-                <Button variant="contained" color="primary" onClick={() => console.log("Translate All")} style={{ marginBottom: "16px" }}>
+                <Button variant="contained" color="primary" onClick={handleTranslateAll} style={{ marginBottom: "16px" }}>
                     <TranslateIcon /> Translate All
                 </Button>
 

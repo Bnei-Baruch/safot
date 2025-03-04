@@ -4,6 +4,7 @@ from playhouse.postgres_ext import ArrayField, JSONField
 from pydantic import BaseModel, validator
 from enum import Enum
 from db import db
+from typing import List
 
 
 class Dictionary(Model):
@@ -93,21 +94,9 @@ class Language(str, Enum):
         return language_map.get(code, code)
 
 
-# class SegmentsFetchRequest(BaseModel):
-#     source_id: int
-#     original_source_id: int
-#     source_language: str
-#     target_language: str
-
-#     @validator("source_language", "target_language", pre=True)
-#     def convert_language(cls, value):
-#         if value in Language.__members__.values():
-#             return value
-#         return Language.from_code(value)
-
 class SegmentsFetchRequest(BaseModel):
     source_id: int
-    original_source_id: int
+    segments: List[dict]
     source_language: Language
     target_language: Language
 
