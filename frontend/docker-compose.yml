@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  safot_frontend:
+    image: bneibaruch/safot_frontend:${SAFOT_VERSION}
+    container_name: safot_frontend
+    ports:
+      - "80:80"
+    restart: no
+    env_file:
+      - .env
+    environment:
+      - REACT_APP_KEYCLOAK_URL=${REACT_APP_KEYCLOAK_URL}
+      - REACT_APP_KEYCLOAK_REALM=${REACT_APP_KEYCLOAK_REALM}
+      - REACT_APP_KEYCLOAK_CLIENT_ID=${REACT_APP_KEYCLOAK_CLIENT_ID}
+      - REACT_APP_BACKEND_URL=${REACT_APP_BACKEND_URL}
