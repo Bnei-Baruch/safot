@@ -16,7 +16,7 @@ from starlette.status import HTTP_401_UNAUTHORIZED
 
 from services.translation_service import TranslationService
 from services.segment_service import save_segments_from_file, create_segment, update_segment, get_latest_segments
-from models import Source, Segment, SegmentsFetchRequest, Language, TranslationServiceOptions
+from models import Source, Segment, SegmentsTranslateRequest, Language, TranslationServiceOptions
 from db import db
 
 
@@ -146,7 +146,7 @@ def read_sources(source_id: int, user_info: dict = Depends(get_user_info)):
 
 @app.post("/segments/translate", response_model=dict)
 def get_segments_for_translation(
-    request: SegmentsFetchRequest, user_info: dict = Depends(get_user_info)
+    request: SegmentsTranslateRequest, user_info: dict = Depends(get_user_info)
 ):
     source_id = request.source_id
     original_segments = request.segments

@@ -65,7 +65,8 @@ const AddSourceForm: React.FC<AddSourceFormProps> = ({ onSubmit, mode }) => {
         { label: 'English', code: 'en' },
         { label: 'Spanish', code: 'es' },
         { label: 'Russian', code: 'ru' },
-        { label: 'French', code: 'fr' }
+        { label: 'French', code: 'fr' },
+        { label: 'Arabic', code: 'ar' }
     ];
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {

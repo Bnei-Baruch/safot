@@ -81,6 +81,7 @@ class Language(str, Enum):
     SPANISH = "Spanish"
     RUSSIAN = "Russian"
     FRENCH = "French"
+    ARABIC = "Arabic"
 
     @classmethod
     def from_code(cls, code: str):
@@ -89,12 +90,13 @@ class Language(str, Enum):
             "he": cls.HEBREW,
             "es": cls.SPANISH,
             "ru": cls.RUSSIAN,
-            "fr": cls.FRENCH
+            "fr": cls.FRENCH,
+            "ar": cls.ARABIC
         }
         return language_map.get(code, code)
 
 
-class SegmentsFetchRequest(BaseModel):
+class SegmentsTranslateRequest(BaseModel):
     source_id: int
     segments: List[dict]
     source_language: Language
