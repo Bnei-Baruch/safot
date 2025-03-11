@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from docx import Document
 from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from keycloak import KeycloakOpenID
 from playhouse.shortcuts import model_to_dict
 from starlette.status import HTTP_401_UNAUTHORIZED
@@ -94,6 +95,37 @@ def docx2text(file: UploadFile, _: dict = Depends(get_user_info)):
     for p in document.paragraphs:
         ret.append(p.text)
     return ret
+
+
+@app.get("/export/{source_id}", response_class=FileResponse)
+def export_translation(source_id: int):
+
+    try:
+        segments = get_latest_segments(source_id)
+
+        if not segments:
+            raise HTTPException(
+                status_code=404, detail="No translated segments found.")
+
+        # create a new document
+        doc = Document()
+        doc.add_heading("Translated Document", level=1)
+
+        for segment in sorted(segments, key=lambda s: s['order']):
+            doc.add_paragraph(segment["text"])
+
+        # save the document to a temporary file
+        file_path = f"/tmp/translated_{source_id}.docx"
+        doc.save(file_path)
+
+        return FileResponse(file_path, filename=f"translated_{source_id}.docx",
+                            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Error generating DOCX: {str(e)}")
 
 
 @app.post('/segments/save')

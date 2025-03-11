@@ -39,6 +39,15 @@ class HttpService {
         const response = await this.client.delete(url);
         return response.data;
     }
+
+    async downloadFile(url: string): Promise<Blob> {
+        const response = await this.client.get(url, {
+            responseType: 'blob',
+        });
+
+        return response.data;
+    }
+
 }
 
 export const httpService = new HttpService();

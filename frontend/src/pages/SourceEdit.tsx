@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useParams, useNavigate } from "react-router-dom";
 import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, TextField, Button, Box } from "@mui/material";
+import { segmentService } from '../services/segment.service';
 import SaveIcon from '@mui/icons-material/Save';
 import TranslateIcon from '@mui/icons-material/Translate';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
@@ -31,6 +32,12 @@ const SourceEdit: React.FC = () => {
             original_segment_timestamp: string;
         }
     }>({});
+
+    const isAllTranslated = parsedId && originalSourceId &&
+        segments[originalSourceId] &&
+        segments[parsedId] &&
+        segments[originalSourceId].length === segments[parsedId].length &&
+        segments[parsedId].every(segment => segment.text?.trim() !== '');
 
     useEffect(() => {
         if (parsedId && !(parsedId in sources)) {
@@ -130,11 +137,37 @@ const SourceEdit: React.FC = () => {
         return languageMap[code] || 'Unknown';
     };
 
+    const handleExportDocx = async () => {
+        if (!parsedId) return;
+
+        try {
+
+            const blob = await segmentService.exportTranslationDocx(parsedId);
+            if (!(blob instanceof Blob)) {
+                throw new Error("Response is not a valid Blob");
+            }
+
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `${sourceData?.name || "translated"}_${sourceData?.language}.docx`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            showToast("Document exported successfully!", "success");
+        } catch (error) {
+            console.error("Error exporting document:", error);
+            showToast("Failed to export document. Please try again.", "error");
+        }
+    };
 
     return (
         <div>
             <h1>Edit Translation - {sourceData?.name} ({getLanguageName(sourceData?.language || '')})</h1>
             <Box sx={{ display: "flex", justifyContent: "center", gap: "16px", mb: "20px" }}>
+                <Button variant="contained" color="primary" disabled={!isAllTranslated} onClick={handleExportDocx} style={{ marginBottom: "16px" }}>
+                    Export to DOCX
+                </Button>
                 <Button variant="outlined" color="primary" onClick={() => navigate("/")} style={{ marginBottom: "16px" }}>
                     <ArrowBackIcon /> Back to Sources
                 </Button>

@@ -7,7 +7,8 @@ export const segmentService = {
     addSegmentsFromFile,
     fetchSegments,
     addSegment,
-    translateSegments
+    translateSegments,
+    exportTranslationDocx,
 };
 
 async function addSegmentsFromFile(file: File, source_id: number, properties: object = {}): Promise<{ source_id: number }> {
@@ -35,4 +36,9 @@ async function translateSegments(source_id: number, original_segments: Segment[]
         target_language,
         source_language
     });
+}
+
+
+async function exportTranslationDocx(source_id: number): Promise<Blob> {
+    return await httpService.downloadFile(`/export/${source_id}`);
 }
