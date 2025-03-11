@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  safot_backend:
+    build: .
+    container_name: safot_backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://${PG_USER}:${PG_PASSWORD}@${PG_HOST}:${PG_PORT}/${PG_DATABASE}
+    depends_on:
+      - safot_db
+    restart: always
+    env_file:
+      - .env
+    networks:
+      - mynetwork
+
+  safot_db:
+    image: postgres:latest
+    container_name: safot_db
+    ports:
+      - "${PG_PORT}:5432"
+    environment:
+      - POSTGRES_USER=${PG_USER}
+      - POSTGRES_PASSWORD=${PG_PASSWORD}
+      - POSTGRES_DB=${PG_DATABASE}
+    volumes:
+      - safot_postgres_data:/var/lib/postgresql/data
+    restart: always
+    env_file:
+      - .env
+    networks:
+      - mynetwork
+
+volumes:
+  safot_postgres_data:
+
+networks:
+  mynetwork:
