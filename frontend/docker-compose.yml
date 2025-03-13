@@ -9,8 +9,9 @@ services:
     restart: no
     env_file:
       - .env
-    environment:
-      - REACT_APP_KEYCLOAK_URL=${REACT_APP_KEYCLOAK_URL}
-      - REACT_APP_KEYCLOAK_REALM=${REACT_APP_KEYCLOAK_REALM}
-      - REACT_APP_KEYCLOAK_CLIENT_ID=${REACT_APP_KEYCLOAK_CLIENT_ID}
-      - REACT_APP_BACKEND_URL=${REACT_APP_BACKEND_URL}
+    networks:
+      - mynetwork
+
+networks:
+  mynetwork:
+    external: true
