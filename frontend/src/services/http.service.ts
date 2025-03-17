@@ -1,6 +1,10 @@
 import axios, { AxiosInstance } from 'axios';
 
+console.log("🔍 From http.service: Backend URL:", process.env.REACT_APP_BACKEND_URL);
+
+
 const BASE_URL = process.env.REACT_APP_BACKEND_URL;
+console.log("🔍 From http.service:  Backend URL:", BASE_URL);
 
 class HttpService {
     private client: AxiosInstance;
@@ -21,6 +25,7 @@ class HttpService {
     }
 
     async get<T>(url: string, params?: Record<string, any>): Promise<T> {
+        console.log("📡 From http.service:  GET request to:", this.client.defaults.baseURL + url);
         const response = await this.client.get(url, { params });
         return response.data;
     }

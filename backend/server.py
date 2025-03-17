@@ -166,12 +166,16 @@ async def save_segments_handler(
 
 @app.get('/segments/{source_id}', response_model=list[dict])
 def read_sources(source_id: int, user_info: dict = Depends(get_user_info)):
-
     try:
+        print(
+            f"📡 from server.py :Received request for segments - source_id: {source_id}")
         latest_segments = get_latest_segments(source_id)
+        print(
+            f"✅ from server.py : Segments fetched successfully: {latest_segments}")
         return latest_segments
 
     except Exception as e:
+        print(f"❌ Error fetching segments: {e}")
         raise HTTPException(
             status_code=500, detail=f"Failed to fetch segments: {str(e)}")
 
