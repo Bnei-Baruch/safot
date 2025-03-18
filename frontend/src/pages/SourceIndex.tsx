@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useNavigate } from "react-router-dom";
 import { fetchSources, addSource } from '../SourceSlice';
-import { addSegmentsFromFile } from '../SegmentSlice';
+import { addSegmentsFromFile, fetchSegments } from '../SegmentSlice';
 import { useAppDispatch, RootState } from '../store';
 import {
     Button,
@@ -75,6 +75,8 @@ const SourceIndex: React.FC = () => {
                     properties: { segment_type: "file" }
                 })).unwrap();
             }
+            dispatch(fetchSegments({ source_id: addedSource.id }));
+
             showToast('Source and segments created successfully!', 'success');
         } catch (error) {
             console.error('Failed to add source:', error);

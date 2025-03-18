@@ -49,21 +49,14 @@ const SourceEdit: React.FC = () => {
     }, [dispatch, parsedId, originalSourceId, sources]);
 
     useEffect(() => {
-        console.log("🛠️From cmp:  Fetching segments-- ");
-        if (originalSourceId && !(originalSourceId in segments)) {
-            console.log(`📡 Dispatching fetchSegments for originalSourceId: ${originalSourceId}`);
-            dispatch(fetchSegments({ source_id: originalSourceId }));
 
-        } else {
-            console.log(`✅ originalSourceId ${originalSourceId} already exists in Redux store.`);
+        if (originalSourceId && !(originalSourceId in segments)) {
+            dispatch(fetchSegments({ source_id: originalSourceId }));
         }
         if (parsedId && !(parsedId in segments)) {
-            console.log(`📡 Dispatching fetchSegments for parsedId: ${parsedId}`);
             dispatch(fetchSegments({ source_id: parsedId }));
-        } else {
-            console.log(`✅ parsedId ${parsedId} already exists in Redux store.`);
         }
-        // console.log("📝 Segments in Redux store:", segments);
+        console.log("📝 Segments in Redux store:", segments);
     }, [dispatch, parsedId, originalSourceId, segments]);
 
     const handleTranslationChange = (sourceSegmentId: number, order: number, timestamp: string, value: string) => {
