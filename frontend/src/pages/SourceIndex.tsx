@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useKeycloak } from '@react-keycloak/web';
 import { useSelector } from 'react-redux';
 import { useNavigate } from "react-router-dom";
 import { fetchSources, addSource } from '../SourceSlice';
@@ -14,6 +15,8 @@ import {
     TableHead,
     TableRow,
     IconButton,
+    Box,
+    Typography
 } from '@mui/material';
 // import RemoveRedEyeIcon from '@mui/icons-material/RemoveRedEye';
 // import DeleteIcon from "@mui/icons-material/Delete";
@@ -37,6 +40,7 @@ interface AddSourceData {
 }
 
 const SourceIndex: React.FC = () => {
+    const { keycloak } = useKeycloak();
     const navigate = useNavigate();
     const dispatch = useAppDispatch();
     const { showToast } = useToast();
@@ -44,9 +48,15 @@ const SourceIndex: React.FC = () => {
     const [dialogOpen, setDialogOpen] = useState(false);
     const [selectedSource, setSelectedSource] = useState<number | null>(null);
 
+    // useEffect(() => {
+    //     dispatch(fetchSources());
+    // }, [dispatch]);
+
     useEffect(() => {
-        dispatch(fetchSources());
-    }, [dispatch]);
+        if (keycloak.authenticated) {
+            dispatch(fetchSources());
+        }
+    }, [dispatch, keycloak.authenticated]);
 
     const handleOpenDialog = (sourceId?: number) => {
         setSelectedSource(sourceId ?? null);
@@ -85,6 +95,32 @@ const SourceIndex: React.FC = () => {
             handleCloseDialog();
         }
     };
+
+    if (!keycloak.authenticated) {
+        return (
+            <Box
+                display="flex"
+                flexDirection="column"
+                justifyContent="center"
+                alignItems="center"
+                height="100vh"
+                textAlign="center"
+                sx={{
+                    backgroundColor: "#f5f5f5",
+                    padding: "2rem",
+                    borderRadius: "12px",
+                    boxShadow: "0px 4px 10px rgba(0, 0, 0, 0.1)"
+                }}
+            >
+                <Typography variant="h4" sx={{ mb: 2, fontWeight: "bold", color: "#333" }}>
+                    Welcome to Safot
+                </Typography>
+                <Typography variant="body1" sx={{ mb: 3, color: "#666" }}>
+                    Please log in using the button in the top right corner.
+                </Typography>
+            </Box>
+        );
+    }
 
     return (
         <div className="source-index">
