@@ -80,7 +80,7 @@ class TranslationService:
             {"role": "user", "content": f"{chunk}"}
         ]
         # print("📨 🚀 Sending Request to OpenAI:", messages)
-         debug_print(f"📨 Sending request to OpenAI:\n{messages}")
+        debug_print(f"📨 Sending request to OpenAI:\n{messages}")
         try:
             response = self.client.chat.completions.create(
                 model=self.options.model,
