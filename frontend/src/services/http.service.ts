@@ -25,7 +25,7 @@ class HttpService {
     }
 
     async get<T>(url: string, params?: Record<string, any>): Promise<T> {
-        console.log("📡 From http.service:  GET request to:", this.client.defaults.baseURL + url);
+        // console.log("📡 From http.service:  GET request to:", this.client.defaults.baseURL + url);
         const response = await this.client.get(url, { params });
         return response.data;
     }

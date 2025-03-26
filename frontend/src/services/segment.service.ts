@@ -21,7 +21,7 @@ async function addSegmentsFromFile(file: File, source_id: number, properties: ob
 }
 
 async function fetchSegments(source_id: number): Promise<Segment[]> {
-    console.log("🛠️From segment.service :  Fetching segments for:", source_id);
+    // console.log("🛠️From segment.service :  Fetching segments for:", source_id);
     const response = await httpService.get<Segment[]>(`${SEGMENTS}/${source_id}`);
     return response; // Directly return the segments array
 }

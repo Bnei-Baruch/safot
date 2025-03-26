@@ -56,7 +56,7 @@ const SourceEdit: React.FC = () => {
         if (parsedId && !(parsedId in segments)) {
             dispatch(fetchSegments({ source_id: parsedId }));
         }
-        console.log("📝 Segments in Redux store:", segments);
+        // console.log("📝 Segments in Redux store:", segments);
     }, [dispatch, parsedId, originalSourceId, segments]);
 
     const handleTranslationChange = (sourceSegmentId: number, order: number, timestamp: string, value: string) => {

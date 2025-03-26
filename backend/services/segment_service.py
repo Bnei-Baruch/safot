@@ -27,7 +27,7 @@ def get_latest_segments(source_id):
 
     latest_segments = list(latest_segments_query.dicts())
 
-    print(f"✅ Latest segments fetched: {latest_segments}")  # Debug Output
+    # print(f"✅ Latest segments fetched: {latest_segments}")  # Debug Output
 
     return latest_segments
 

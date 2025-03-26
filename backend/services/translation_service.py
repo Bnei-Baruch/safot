@@ -8,10 +8,16 @@ from dotenv import load_dotenv
 from services.segment_service import save_segment
 from services.translation_prompts import TRANSLATION_PROMPTS
 from pprint import pprint
+import inspect
 
 # Load environment variables
 load_dotenv()
 
+def debug_print(message):
+    frame = inspect.currentframe().f_back
+    lineno = frame.f_lineno
+    filename = os.path.basename(frame.f_globals["__file__"])
+    print(f"[{filename}:{lineno}] {message}")
 
 class TranslationService:
     def __init__(self, api_key: str, options: TranslationServiceOptions):
@@ -66,13 +72,15 @@ class TranslationService:
             source_language=self.options.source_language.value,
             target_language=self.options.target_language.value
         )
-        print(f"📌 Final prompt used: {prompt}")
+        # print(f"📌 Final prompt used: {prompt}")
+        debug_print(f"📌 Final prompt used:\n{prompt}")
 
         messages = [
             {"role": "system", "content": prompt},
             {"role": "user", "content": f"{chunk}"}
         ]
-        print("📨 🚀 Sending Request to OpenAI:", messages)
+        # print("📨 🚀 Sending Request to OpenAI:", messages)
+         debug_print(f"📨 Sending request to OpenAI:\n{messages}")
         try:
             response = self.client.chat.completions.create(
                 model=self.options.model,
@@ -81,13 +89,15 @@ class TranslationService:
                 temperature=self.options.temperature
             )
             if not response or not response.choices or not response.choices[0].message.content:
-                print("⚠️ OpenAI returned an empty response!")
+                # print("⚠️ OpenAI returned an empty response!")
+                debug_print("⚠️ OpenAI returned an empty response!")
                 return "Translation failed due to an empty response."
 
             return response.choices[0].message.content.strip()
 
         except Exception as e:
-            print(f"Error during translation: {e}")
+            # print(f"Error during translation: {e}")
+            debug_print(f"⚠️ Error during OpenAI call: {e}")
             return f"Translation failed for chunk: {chunk}"
 
     def process_translation(self, segments, source_id, username):
@@ -99,12 +109,12 @@ class TranslationService:
         now = datetime.utcnow()
 
         for i, chunk in enumerate(prepared_chunks, 1):
-            print(f"Translating chunk {i}...")
+            debug_print(f"Translating chunk {i}...")
             translated_text = self.send_chunk_for_translation(chunk)
             if translated_text:
                 translated_paragraphs.extend(translated_text.split(" ||| "))
             else:
-                print(f"Chunk {i} translation failed.")
+                debug_print(f"Chunk {i} translation failed.")
 
         for seg, translated_text in zip(segments, translated_paragraphs):
             try:
@@ -130,6 +140,6 @@ class TranslationService:
                     custom_timestamp=now
                 )
             except IntegrityError:
-                print(f"Skipping duplicate segment for order {seg['order']}")
+                debug_print(f"Skipping duplicate segment for order {seg['order']}")
 
-        print("✅ Translation completed.")
+        debug_print("✅ Translation completed.")
