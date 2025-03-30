@@ -42,7 +42,7 @@ class TranslationService:
         max_output_tokens = model_limits["max_output_tokens"]
         chunk_tokens_by_output = int(max_output_tokens / output_ratio)
         chunk_tokens_by_context = context_window - prompt_tokens - max_output_tokens
-        return max(min(chunk_tokens_by_output, chunk_tokens_by_context), 0)
+        return max(min(chunk_tokens_by_output, chunk_tokens_by_context, 4000), 0)
 
     def prepare_chunks_for_translation(self, segments, max_chunk_tokens):
         chunks = []
@@ -93,7 +93,7 @@ class TranslationService:
             )
             end_time = datetime.utcnow()
             debug_print(f"⏱️ API call duration: {(end_time - start_time).total_seconds()} seconds")
-            
+
             if not response or not response.choices or not response.choices[0].message.content:
                 debug_print("⚠️ OpenAI returned an empty response.")
                 return "Translation failed due to an empty response."
