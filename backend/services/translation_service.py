@@ -1,6 +1,7 @@
 import os
 import tiktoken
 from openai import OpenAI
+from openai import OpenAIError, Timeout
 from datetime import datetime
 from models import Segment, Language, Provider, TranslationServiceOptions
 from peewee import IntegrityError
@@ -65,40 +66,86 @@ class TranslationService:
             chunks.append(" ||| ".join(current_chunk))
         return chunks
 
+
     def send_chunk_for_translation(self, chunk):
         model_limits = self.get_model_token_limit()
-        max_output_tokens = model_limits["max_output_tokens"]
+        max_output_tokens = min(model_limits["max_output_tokens"], 8000)  # cap at 8000 for safety
         prompt = self.prompt.format(
             source_language=self.options.source_language.value,
             target_language=self.options.target_language.value
         )
-        # print(f"📌 Final prompt used: {prompt}")
         debug_print(f"📌 Final prompt used:\n{prompt}")
 
         messages = [
             {"role": "system", "content": prompt},
             {"role": "user", "content": f"{chunk}"}
         ]
-        # print("📨 🚀 Sending Request to OpenAI:", messages)
         debug_print(f"📨 Sending request to OpenAI:\n{messages}")
+
         try:
+            start_time = datetime.utcnow()
             response = self.client.chat.completions.create(
                 model=self.options.model,
                 messages=messages,
                 max_tokens=max_output_tokens,
-                temperature=self.options.temperature
+                temperature=self.options.temperature,
+                timeout=120  # set timeout in seconds
             )
+            end_time = datetime.utcnow()
+            debug_print(f"⏱️ API call duration: {(end_time - start_time).total_seconds()} seconds")
+            
             if not response or not response.choices or not response.choices[0].message.content:
-                # print("⚠️ OpenAI returned an empty response!")
-                debug_print("⚠️ OpenAI returned an empty response!")
+                debug_print("⚠️ OpenAI returned an empty response.")
                 return "Translation failed due to an empty response."
 
             return response.choices[0].message.content.strip()
 
+        except Timeout:
+            debug_print("⏱️ Request to OpenAI timed out.")
+            return "Translation failed due to timeout."
+
+        except OpenAIError as e:
+            debug_print(f"⚠️ OpenAI API error: {e}")
+            return f"Translation failed due to API error: {str(e)}"
+
         except Exception as e:
-            # print(f"Error during translation: {e}")
-            debug_print(f"⚠️ Error during OpenAI call: {e}")
-            return f"Translation failed for chunk: {chunk}"
+            debug_print(f"⚠️ Unexpected error during OpenAI call: {e}")
+            return f"Translation failed due to unexpected error: {str(e)}"
+
+    # def send_chunk_for_translation(self, chunk):
+    #     model_limits = self.get_model_token_limit()
+    #     max_output_tokens = model_limits["max_output_tokens"]
+    #     prompt = self.prompt.format(
+    #         source_language=self.options.source_language.value,
+    #         target_language=self.options.target_language.value
+    #     )
+    #     # print(f"📌 Final prompt used: {prompt}")
+    #     debug_print(f"📌 Final prompt used:\n{prompt}")
+
+    #     messages = [
+    #         {"role": "system", "content": prompt},
+    #         {"role": "user", "content": f"{chunk}"}
+    #     ]
+    #     # print("📨 🚀 Sending Request to OpenAI:", messages)
+    #     debug_print(f"📨 Sending request to OpenAI:\n{messages}")
+    #     try:
+    #         response = self.client.chat.completions.create(
+    #             model=self.options.model,
+    #             messages=messages,
+    #             max_tokens=max_output_tokens,
+    #             temperature=self.options.temperature
+    #         )
+    #         if not response or not response.choices or not response.choices[0].message.content:
+    #             # print("⚠️ OpenAI returned an empty response!")
+    #             debug_print("⚠️ OpenAI returned an empty response!")
+    #             return "Translation failed due to an empty response."
+
+    #         return response.choices[0].message.content.strip()
+
+    #     except Exception as e:
+    #         # print(f"Error during translation: {e}")
+    #         debug_print(f"⚠️ Error during OpenAI call: {e}")
+    #         return f"Translation failed for chunk: {chunk}"
 
     def process_translation(self, segments, source_id, username):
         max_chunk_tokens = self.calculate_chunk_token_limit()
