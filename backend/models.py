@@ -41,13 +41,13 @@ class Source(Model):
     id = IntegerField(sequence='source_id_seq')
     username = CharField()
     name = CharField()
-    labels = ArrayField(CharField)
     language = CharField()
-    type = CharField()  # Type of the source (e.g., book, chapter)
+    original_source_id = IntegerField(null=True)
+    labels = ArrayField(CharField, null=True)
+    type = CharField(null=True)  # Type of the source (e.g., book, chapter)
     order = IntegerField(null=True)
     parent_source_id = IntegerField(null=True)
-    original_source_id = IntegerField(null=True)
-    properties = JSONField()
+    properties = JSONField(null=True)
 
     class Meta:
         database = db
