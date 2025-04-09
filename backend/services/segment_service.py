@@ -29,8 +29,6 @@ def get_latest_segments(source_id):
 
 
     return latest_segments
-
-
 def save_segment(
     username, text, source_id, order, properties,
     original_segment_id=None, original_segment_timestamp=None, existing_segment=None, custom_timestamp=None
@@ -72,7 +70,6 @@ def save_segment(
                           Segment.source_id == source_id, Segment.order == order)
 
     return model_to_dict(segment)  # Return JSON to frontend
-
 
 def save_segments_from_file(file, source_id, properties_dict, user_info):
     """
@@ -148,7 +145,6 @@ def create_segment(segment_data, user_info):
     except Exception as e:
         raise Exception(f"Failed to create segment: {str(e)}")
 
-
 def update_segment(segment_data, user_info):
     """
     new row is created with the same `id` but a new `timestamp`.
@@ -181,3 +177,25 @@ def update_segment(segment_data, user_info):
 
     except Exception as e:
         raise Exception(f"Failed to update segment: {str(e)}")
+
+
+def store_segments(segments: list[dict], user_info: dict) -> list[dict]:
+    """
+    Save a list of segments to the database, each with a shared timestamp and username.
+    Returns the created segments with their DB-assigned IDs.
+    """
+    now = datetime.utcnow()
+    saved_segments = []
+
+    for segment_data in segments:
+        segment = Segment.create(
+            timestamp=now,
+            username=user_info['preferred_username'],
+            text=segment_data['text'],
+            source_id=segment_data['source_id'],
+            order=segment_data['order'],
+            properties=segment_data.get('properties', {}),
+        )
+        saved_segments.append(model_to_dict(segment))
+
+    return saved_segments

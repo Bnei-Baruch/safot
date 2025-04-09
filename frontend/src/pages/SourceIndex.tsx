@@ -3,7 +3,7 @@ import { useKeycloak } from '@react-keycloak/web';
 import { useSelector } from 'react-redux';
 import { useNavigate } from "react-router-dom";
 import { fetchSources, addSource } from '../SourceSlice';
-import { addSegmentsFromFile, fetchSegments } from '../SegmentSlice';
+import { addSegmentsFromFile, fetchSegments, saveSegments as storeSegments } from '../SegmentSlice';
 import { useAppDispatch, RootState } from '../store';
 import {
     Button,
@@ -114,9 +114,7 @@ const SourceIndex: React.FC = () => {
             });
 
             console.log("📄 Extracted segments:", extractedSegments);
-            // await translateAndSaveSegments(translatedSource.id, data.target_language);
-            // navigate(`/source-edit/${translatedSource.id}`);
-    
+            await saveSegments(extractedSegments);    
             // showToast("✅ Document translated and ready for editing", "success");
         } catch (error) {
             console.error("❌ Translation flow failed:", error);
@@ -159,6 +157,17 @@ const SourceIndex: React.FC = () => {
     ): Promise<Segment[]> => {
         return await segmentService.extractSegments(file, sourceId, properties);
     };
+
+    const saveSegments = async (segments: Segment[]) => {
+        try {
+            await dispatch(storeSegments(segments)).unwrap();
+            showToast("✅ Segments saved successfully", "success");
+        } catch (err) {
+            console.error("❌ Failed to save segments:", error);
+            showToast("Failed to save segments. Please try again.", "error");
+        }
+    };
+    
 
     if (!keycloak.authenticated) {
         return (

@@ -45,6 +45,21 @@ export const addSegment = createAsyncThunk<
     }
 );
 
+export const saveSegments = createAsyncThunk<
+  { source_id: number; segments: Segment[] },  // return type
+  Segment[],                                   // payload sent from frontend
+  { rejectValue: string }
+>(
+  'segments/saveSegments',
+  async (segments, { rejectWithValue }) => {
+    try {
+      return await segmentService.saveSegments(segments);
+    } catch (err: any) {
+      return rejectWithValue(err.message || 'Failed to save segments');
+    }
+  }
+);
+
 export const addSegmentsFromFile = createAsyncThunk<
     { source_id: number; },
     { file: File; source_id: number, properties?: object },
@@ -143,16 +158,23 @@ const segmentSlice = createSlice({
             .addCase(addSegment.rejected, (state, action) => {
                 state.error = action.error.message || "Failed to add segment";
             })
+            .addCase(saveSegments.pending, (state) => {
+                state.loading = true;
+                state.error = null;
+            })
+            .addCase(saveSegments.fulfilled, (state, action: PayloadAction<{ source_id: number; segments: Segment[] }>) => {
+                const { source_id, segments } = action.payload;
+                state.loading = false;
+                state.segments[source_id] = segments;
+            })
+            .addCase(saveSegments.rejected, (state, action: PayloadAction<string | undefined>) => {
+                state.loading = false;
+                state.error = action.payload || 'Failed to save segments';
+            })
             .addCase(translateSegments.pending, (state) => {
                 state.loading = true;
                 state.error = null;
             })
-            // .addCase(translateSegments.fulfilled, (state, action: PayloadAction<{ translated_segments: Segment[], total_segments_translated: number }>) => {
-            //     const { translated_segments, total_segments_translated } = action.payload;
-            //     const source_id = action.meta.arg.source_id;
-            //     state.loading = false;
-            //     state.segments[source_id] = translated_segments;
-            // })
             .addCase(translateSegments.fulfilled, (state, action) => {
                 const { translated_segments, total_segments_translated } = action.payload;
                 const source_id = action.meta.arg.source_id;

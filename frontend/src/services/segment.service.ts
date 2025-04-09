@@ -10,8 +10,17 @@ export const segmentService = {
     extractSegments,
     translateSegments,
     exportTranslationDocx,
+    saveSegments
 };
 
+
+async function saveSegments(segments: Segment[]): Promise<{ source_id: number; segments: Segment[] }> {
+    const savedSegments = await httpService.post<Segment[]>('/segments', { segments });
+    return {
+        source_id: segments[0].source_id,
+        segments: savedSegments,
+    };
+}
 async function addSegmentsFromFile(file: File, source_id: number, properties: object = {}): Promise<{ source_id: number }> {
     const formData = new FormData();
     formData.append('file', file);

@@ -16,7 +16,7 @@ from playhouse.shortcuts import model_to_dict
 from starlette.status import HTTP_401_UNAUTHORIZED
 
 from services.translation_service import TranslationService
-from services.segment_service import create_segments_from_file, save_segments_from_file, create_segment, update_segment, get_latest_segments
+from services.segment_service import create_segments_from_file, save_segments_from_file, create_segment, update_segment, get_latest_segments, store_segments
 from models import Source, Segment, SegmentsTranslateRequest, Language, TranslationServiceOptions
 from db import db
 
@@ -83,6 +83,7 @@ def shutdown():
     if not db.is_closed():
         db.close()
     logger.info('Database connection closed')
+
 @app.post('/docx2text')
 def extract_segments_handler(
     file: UploadFile = File(...),
@@ -131,6 +132,25 @@ def export_translation(source_id: int):
         raise HTTPException(
             status_code=500, detail=f"Error generating DOCX: {str(e)}")
 
+
+@app.post('/segments', response_model=list[dict])
+async def save_segments(
+    request: Request,
+    user_info: dict = Depends(get_user_info)
+):
+    try:
+        data = await request.json()
+        segments = data.get("segments", [])
+
+        if not isinstance(segments, list):
+            raise HTTPException(status_code=400, detail="Invalid segments format")
+
+        saved_segments = store_segments(segments, user_info)
+        return saved_segments
+
+    except Exception as e:
+        print(f"❌ Error in /segments: {e}")
+        raise HTTPException(status_code=500, detail="Failed to store segments")
 
 @app.post('/segments/save')
 async def save_segments_handler(
