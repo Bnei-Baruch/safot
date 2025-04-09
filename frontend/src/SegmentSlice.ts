@@ -1,20 +1,8 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import { segmentService } from './services/segment.service';
+import { Segment } from './types';
 
-export type Segment = {
-    id?: number;
-    timestamp: string;
-    username?: string;
-    text: string;
-    source_id: number;
-    order: number;
-    original_segment_id?: number;
-    original_segment_timestamp?: string;
-    properties: {
-        segment_type?: "user_translation" | "provider_translation" | "edited" | "file";
-        [key: string]: any;
-    };
-};
+
 
 
 export const translateSegments = createAsyncThunk<

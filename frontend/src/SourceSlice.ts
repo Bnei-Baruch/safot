@@ -1,23 +1,6 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import { sourceService } from './services/source.service';
-
-type Source = {
-    id: number;
-    username: string;
-    name: string;
-    labels: string[];
-    language: string;
-    type: string;
-    order: number | null;
-    parent_source_id: number | null;
-    original_source_id: number | null;
-    properties: {
-        category: string;
-        description: string;
-        audience: string;
-    };
-};
-
+import { Source } from './types';
 
 export const fetchSources = createAsyncThunk<
     Source[],
@@ -81,15 +64,6 @@ const sourcesSlice = createSlice({
     name: 'sources',
     initialState,
     reducers: {
-        // resetSources: (state) => {
-        //     state.sources = {};
-        //     state.loading = false;
-        //     state.error = null;
-        // },
-        // updateSourceLocal: (state, action: PayloadAction<Source>) => {
-        //     const source = action.payload;
-        //     state.sources[source.id] = source;
-        // },
     },
     extraReducers: (builder) => {
         builder

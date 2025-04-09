@@ -27,7 +27,6 @@ def get_latest_segments(source_id):
 
     latest_segments = list(latest_segments_query.dicts())
 
-    # print(f"✅ Latest segments fetched: {latest_segments}")  # Debug Output
 
     return latest_segments
 
@@ -102,7 +101,33 @@ def save_segments_from_file(file, source_id, properties_dict, user_info):
 
     except Exception as e:
         raise Exception(f"Failed to process file: {str(e)}")
+    
+def create_segments_from_file(file, source_id, properties_dict, user_info):
+    """
+    Process a file and generate segment objects (without id & saving to DB).
+    """
+    try:
+        content = file.file.read()
+        document = Document(BytesIO(content))
+        paragraphs = [p.text.strip() for p in document.paragraphs if p.text.strip()]
+        now = datetime.utcnow()
 
+        segments = []
+        for order, text in enumerate(paragraphs, start=1):
+            segment = {
+                "text": text,
+                "source_id": source_id,
+                "order": order,
+                "username": user_info["preferred_username"],
+                "timestamp": now.timestamp(),
+                "properties": {**properties_dict, "segment_type": "file"}
+            }
+            segments.append(segment)
+
+        return segments
+
+    except Exception as e:
+        raise Exception(f"❌ Failed to create segment previews: {str(e)}")
 
 def create_segment(segment_data, user_info):
     """

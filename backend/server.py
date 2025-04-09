@@ -8,7 +8,7 @@ import json
 from peewee import DoesNotExist
 from dotenv import load_dotenv
 from docx import Document
-from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile, Form
+from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from keycloak import KeycloakOpenID
@@ -16,7 +16,7 @@ from playhouse.shortcuts import model_to_dict
 from starlette.status import HTTP_401_UNAUTHORIZED
 
 from services.translation_service import TranslationService
-from services.segment_service import save_segments_from_file, create_segment, update_segment, get_latest_segments
+from services.segment_service import create_segments_from_file, save_segments_from_file, create_segment, update_segment, get_latest_segments
 from models import Source, Segment, SegmentsTranslateRequest, Language, TranslationServiceOptions
 from db import db
 
@@ -83,19 +83,23 @@ def shutdown():
     if not db.is_closed():
         db.close()
     logger.info('Database connection closed')
-
-
 @app.post('/docx2text')
-def docx2text(file: UploadFile, _: dict = Depends(get_user_info)):
-    ret = []
-    content = file.file.read()
-    print('content: ')
-    print(content)
-    document = Document(BytesIO(content))
-    for p in document.paragraphs:
-        ret.append(p.text)
-    return ret
-
+def extract_segments_handler(
+    file: UploadFile = File(...),
+    source_id: int = Form(...),
+    properties: str = Form(...),
+    user_info: dict = Depends(get_user_info)
+):
+    try:
+        properties_dict = json.loads(properties) if properties else {}
+        segments = create_segments_from_file(
+            file, source_id, properties_dict, user_info
+        )
+        return  segments
+    except Exception as e:
+        print(f"❌ Error in /docx2text: {e}")
+        raise HTTPException(status_code=500, detail="Failed to extract segments")
+    
 
 @app.get("/export/{source_id}", response_class=FileResponse)
 def export_translation(source_id: int):

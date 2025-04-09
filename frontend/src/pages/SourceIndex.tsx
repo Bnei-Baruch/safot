@@ -7,22 +7,15 @@ import { addSegmentsFromFile, fetchSegments } from '../SegmentSlice';
 import { useAppDispatch, RootState } from '../store';
 import {
     Button,
-    Paper,
-    Table,
-    TableBody,
-    TableCell,
-    TableContainer,
-    TableHead,
-    TableRow,
-    IconButton,
     Box,
     Typography
 } from '@mui/material';
-// import RemoveRedEyeIcon from '@mui/icons-material/RemoveRedEye';
-// import DeleteIcon from "@mui/icons-material/Delete";
-import EditIcon from "@mui/icons-material/Edit";
+import { segmentService } from '../services/segment.service';
 import AddSourceDialog from '../cmp/AddSourceDialog';
+import TranslateDocumentDialog from '../cmp/TranslateDocumentDialog';
+import SourceTable from '../cmp/SourceTable';
 import { useToast } from '../cmp/Toast';
+import { Source, Segment, SourcePair } from '../types';
 
 interface AddSourceData {
     file?: File;
@@ -46,17 +39,27 @@ const SourceIndex: React.FC = () => {
     const { showToast } = useToast();
     const { sources, loading, error } = useSelector((state: RootState) => state.sources);
     const [dialogOpen, setDialogOpen] = useState(false);
+    const [translateDialogOpen, setTranslateDialogOpen] = useState(false);
     const [selectedSource, setSelectedSource] = useState<number | null>(null);
-
-    // useEffect(() => {
-    //     dispatch(fetchSources());
-    // }, [dispatch]);
-
+    const sourcePairs = buildSourcePairs(sources);
+    
     useEffect(() => {
         if (keycloak.authenticated) {
             dispatch(fetchSources());
         }
     }, [dispatch, keycloak.authenticated]);
+
+    function buildSourcePairs(sources: Record<number, Source>):SourcePair[] {
+        return Object.values(sources)
+            .filter(s => !s.original_source_id)
+            .map(original => {
+                const translated = Object.values(sources).find(
+                    s => s.original_source_id === original.id
+                ) || null;
+    
+                return { original, translated };
+            });
+    }
 
     const handleOpenDialog = (sourceId?: number) => {
         setSelectedSource(sourceId ?? null);
@@ -96,6 +99,67 @@ const SourceIndex: React.FC = () => {
         }
     };
 
+    const handleTranslateDocumentSubmit = async (data: {
+        file: File;
+        name: string;
+        source_language: string;
+        target_language: string;
+    }) => {
+        try {
+            console.log("🚀 Starting full translation flow");
+    
+            const { originalSource, translatedSource } = await createSources(data);
+            const extractedSegments = await extractSegmentsFromFile(data.file, originalSource.id, {
+                segment_type: "file"
+            });
+
+            console.log("📄 Extracted segments:", extractedSegments);
+            // await translateAndSaveSegments(translatedSource.id, data.target_language);
+            // navigate(`/source-edit/${translatedSource.id}`);
+    
+            // showToast("✅ Document translated and ready for editing", "success");
+        } catch (error) {
+            console.error("❌ Translation flow failed:", error);
+            showToast("Translation process failed. Please try again.", "error");
+        } finally {
+            setTranslateDialogOpen(false);
+        }
+    };
+    
+    const createSources = async (data: {
+        file: File;
+        name: string;
+        source_language: string;
+        target_language: string;
+    }) => {
+        const normalizeName = (filename: string) =>
+            filename.replace(/\.docx$/i, '').trim().replace(/\s+/g, '-');
+    
+        const baseName = normalizeName(data.name);
+        const targetLang = data.target_language.toLowerCase().replace(/\s+/g, '-');
+    
+        const originalSource = await dispatch(addSource({
+            name: baseName,
+            language: data.source_language
+        } as any)).unwrap();
+    
+        const translatedSource = await dispatch(addSource({
+            name: `${baseName}-${targetLang}`,
+            language: data.target_language,
+            original_source_id: originalSource.id
+        } as any)).unwrap();
+    
+        return { originalSource, translatedSource };
+    };
+    
+    const extractSegmentsFromFile = async (
+        file: File,
+        sourceId: number,
+        properties: Record<string, any>
+    ): Promise<Segment[]> => {
+        return await segmentService.extractSegments(file, sourceId, properties);
+    };
+
     if (!keycloak.authenticated) {
         return (
             <Box
@@ -133,52 +197,17 @@ const SourceIndex: React.FC = () => {
             >
                 Add New Source
             </Button>
+            <Button
+                variant="outlined"
+                color="secondary"
+                onClick={() => setTranslateDialogOpen(true)}
+                style={{ marginBottom: '20px', marginLeft: '10px' }}>
+                Translate Document
+            </Button>
             {loading && <p>Loading...</p>}
             {error && <p>Error: {error}</p>}
             {!loading && !error && (
-                <TableContainer component={Paper} sx={{ margin: "auto", width: "80%", mt: 4 }}>
-                    <Table>
-                        <TableHead>
-                            <TableRow>
-                                <TableCell>Name</TableCell>
-                                <TableCell>Language</TableCell>
-                                <TableCell>Type</TableCell>
-                                <TableCell>Translation Of</TableCell>
-                                <TableCell>Actions</TableCell>
-                            </TableRow>
-                        </TableHead>
-                        <TableBody>
-                            {Object.values(sources).map((source) => (
-                                <TableRow key={source.id} sx={{ backgroundColor: source.original_source_id ? "#fff" : "#f0f0f0" }}>
-                                    <TableCell>{source.name}</TableCell>
-                                    <TableCell>{source.language}</TableCell>
-                                    <TableCell>{source.type}</TableCell>
-                                    <TableCell>
-                                        {source.original_source_id ?
-                                            `${sources[source.original_source_id]?.name || "Unknown"} (${sources[source.original_source_id]?.language || "Unknown"})`
-                                            : "Original Source"}
-                                    </TableCell>
-                                    <TableCell>
-                                        {source.original_source_id ? (
-                                            <IconButton aria-label="edit" onClick={() => navigate(`source-edit/${source.id}`)}>
-                                                <EditIcon />
-                                            </IconButton>
-                                        ) : null}
-
-                                        {/* ) : ( */}
-                                        {/* <Button onClick={() => navigate(`source-view/${source.id}`)} // Navigate to view mode */}
-                                        {/* //     >
-                                        //         <RemoveRedEyeIcon />
-                                        //     </Button>
-                                        // )} */}
-
-                                        <Button onClick={() => handleOpenDialog(source.id)}>➕ Create Translation</Button>
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </TableContainer>
+                <SourceTable pairs={sourcePairs} />
             )}
             {dialogOpen && (
                 <AddSourceDialog
@@ -186,6 +215,13 @@ const SourceIndex: React.FC = () => {
                     onClose={handleCloseDialog}
                     onSubmit={handleAddSource}
                     mode={selectedSource ? "translation" : "new_source"}
+                />
+            )}
+            {translateDialogOpen && (
+                <TranslateDocumentDialog
+                    open={translateDialogOpen}
+                    onClose={() => setTranslateDialogOpen(false)}
+                    onSubmit={handleTranslateDocumentSubmit}
                 />
             )}
         </div>
