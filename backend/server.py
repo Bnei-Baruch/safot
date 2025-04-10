@@ -134,10 +134,7 @@ def export_translation(source_id: int):
 
 
 @app.post('/segments', response_model=list[dict])
-async def save_segments(
-    request: Request,
-    user_info: dict = Depends(get_user_info)
-):
+async def save_segments(request: Request):
     try:
         data = await request.json()
         segments = data.get("segments", [])
@@ -145,12 +142,13 @@ async def save_segments(
         if not isinstance(segments, list):
             raise HTTPException(status_code=400, detail="Invalid segments format")
 
-        saved_segments = store_segments(segments, user_info)
+        saved_segments = store_segments(segments)
         return saved_segments
 
     except Exception as e:
         print(f"❌ Error in /segments: {e}")
         raise HTTPException(status_code=500, detail="Failed to store segments")
+
 
 @app.post('/segments/save')
 async def save_segments_handler(

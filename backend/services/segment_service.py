@@ -107,24 +107,35 @@ def create_segments_from_file(file, source_id, properties_dict, user_info):
         content = file.file.read()
         document = Document(BytesIO(content))
         paragraphs = [p.text.strip() for p in document.paragraphs if p.text.strip()]
-        now = datetime.utcnow()
 
-        segments = []
-        for order, text in enumerate(paragraphs, start=1):
-            segment = {
-                "text": text,
-                "source_id": source_id,
-                "order": order,
-                "username": user_info["preferred_username"],
-                "timestamp": now.timestamp(),
-                "properties": {**properties_dict, "segment_type": "file"}
-            }
-            segments.append(segment)
+        
+        if "segment_type" not in properties_dict:
+            properties_dict["segment_type"] = "file"
 
-        return segments
+        return build_segments(paragraphs, source_id, properties_dict, user_info)
 
     except Exception as e:
         raise Exception(f"❌ Failed to create segment previews: {str(e)}")
+
+def build_segments(texts: list[str], source_id: int, properties_dict: dict, user_info: dict):
+    """
+    Build segment dicts (not saved to DB) from raw texts.
+    """
+    now = datetime.utcnow()
+    segments = []
+
+    for order, text in enumerate(texts, start=1):
+        segment = {
+            "text": text,
+            "source_id": source_id,
+            "order": order,
+            "username": user_info["preferred_username"],
+            "timestamp": now.timestamp(),
+            "properties": {**properties_dict}
+        }
+        segments.append(segment)
+
+    return segments
 
 def create_segment(segment_data, user_info):
     """
@@ -179,23 +190,21 @@ def update_segment(segment_data, user_info):
         raise Exception(f"Failed to update segment: {str(e)}")
 
 
-def store_segments(segments: list[dict], user_info: dict) -> list[dict]:
+def store_segments(segments: list[dict]) -> list[dict]:
     """
-    Save a list of segments to the database, each with a shared timestamp and username.
-    Returns the created segments with their DB-assigned IDs.
+    Save a list of segments to the database.
+    Assumes each segment has all necessary fields (including timestamp, username, etc.).
     """
-    now = datetime.utcnow()
+    required_fields = ["text", "source_id", "order", "timestamp", "username", "properties"]
     saved_segments = []
 
     for segment_data in segments:
-        segment = Segment.create(
-            timestamp=now,
-            username=user_info['preferred_username'],
-            text=segment_data['text'],
-            source_id=segment_data['source_id'],
-            order=segment_data['order'],
-            properties=segment_data.get('properties', {}),
-        )
+        missing = [key for key in required_fields if key not in segment_data]
+        if missing:
+            raise ValueError(f"Segment is missing required fields: {', '.join(missing)}")
+
+        segment = Segment.create(**segment_data)
         saved_segments.append(model_to_dict(segment))
 
     return saved_segments
+
