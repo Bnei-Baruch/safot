@@ -3,35 +3,15 @@ import { useKeycloak } from '@react-keycloak/web';
 import { useSelector } from 'react-redux';
 import { useNavigate } from "react-router-dom";
 import { fetchSources, addSource } from '../SourceSlice';
-import { addSegmentsFromFile, fetchSegments, saveSegments as storeSegments } from '../SegmentSlice';
+import { saveSegments as storeSegments } from '../SegmentSlice';
 import { useAppDispatch, RootState } from '../store';
-import {
-    Button,
-    Box,
-    Typography
-} from '@mui/material';
+import { Button,Box,Typography } from '@mui/material';
 import { segmentService } from '../services/segment.service';
 import { translateSegments  as translateSegmentsAPI } from '../services/translation.service'
-import AddSourceDialog from '../cmp/AddSourceDialog';
 import TranslateDocumentDialog from '../cmp/TranslateDocumentDialog';
 import SourceTable from '../cmp/SourceTable';
 import { useToast } from '../cmp/Toast';
 import { Source, Segment, SourcePair } from '../types';
-
-interface AddSourceData {
-    file?: File;
-    name: string;
-    labels: string[];
-    language: string;
-    type: string;
-    order: number | null;
-    properties: {
-        category: string;
-        description: string;
-        audience: string;
-    };
-    original_source_id?: number;
-}
 
 const SourceIndex: React.FC = () => {
     const { keycloak } = useKeycloak();
@@ -39,9 +19,7 @@ const SourceIndex: React.FC = () => {
     const dispatch = useAppDispatch();
     const { showToast } = useToast();
     const { sources, loading, error } = useSelector((state: RootState) => state.sources);
-    const [dialogOpen, setDialogOpen] = useState(false);
     const [translateDialogOpen, setTranslateDialogOpen] = useState(false);
-    const [selectedSource, setSelectedSource] = useState<number | null>(null);
     const sourcePairs = buildSourcePairs(sources);
     
     useEffect(() => {
@@ -62,44 +40,6 @@ const SourceIndex: React.FC = () => {
             });
     }
 
-    const handleOpenDialog = (sourceId?: number) => {
-        setSelectedSource(sourceId ?? null);
-        setDialogOpen(true);
-    };
-
-    const handleCloseDialog = () => {
-        setDialogOpen(false);
-        setSelectedSource(null);
-    };
-
-    const handleAddSource = async (data: AddSourceData) => {
-        const sourceData = {
-            ...data,
-            original_source_id: selectedSource,
-        };
-        try {
-            const addedSource = await dispatch(addSource(sourceData as any)).unwrap();
-            if (!addedSource.id) {
-                throw new Error('Failed to get source ID from the backend.');
-            }
-            if (data.file) {
-                await dispatch(addSegmentsFromFile({
-                    file: data.file,
-                    source_id: addedSource.id,
-                    properties: { segment_type: "file" }
-                })).unwrap();
-            }
-            dispatch(fetchSegments({ source_id: addedSource.id }));
-
-            showToast('Source and segments created successfully!', 'success');
-        } catch (error) {
-            console.error('Failed to add source:', error);
-            showToast('Failed to add source. Please try again.', 'error');
-        } finally {
-            handleCloseDialog();
-        }
-    };
-
     const handleTranslateDocumentSubmit = async (data: {
         file: File;
         name: string;
@@ -115,7 +55,6 @@ const SourceIndex: React.FC = () => {
             });
 
             console.log("📄 Extracted segments:", extractedSegments);
-            // const segmentsFromFile = await saveSegments(extractedSegments);   
             const segmentsFromFile = await saveSegments(extractedSegments);
             
             const translatedSegments = await translateSegments(
@@ -129,7 +68,6 @@ const SourceIndex: React.FC = () => {
                 await saveSegments(translatedSegments); 
                 navigate(`/source-edit/${translationSource.id}`);
             }
-            // showToast("✅ Document translated and ready for editing", "success");
         } catch (error) {
             console.error("❌ Translation flow failed:", error);
             showToast("Translation process failed. Please try again.", "error");
@@ -175,12 +113,6 @@ const SourceIndex: React.FC = () => {
     const saveSegments = async (segments: Segment[]): Promise<Segment[]> => {
         try {
             const result = await dispatch(storeSegments(segments)).unwrap();
-            console.log("✅ storeSegments response:", result);
-    
-            if (!result || !Array.isArray(result.segments)) {
-                throw new Error("Invalid response from storeSegments");
-            }
-    
             showToast("✅ Segments saved successfully", "success");
             return result.segments;
         } catch (err) {
@@ -189,18 +121,6 @@ const SourceIndex: React.FC = () => {
             return [];
         }
     };
-
-    // const saveSegments = async (segments: Segment[]): Promise<Segment[]> => {
-    //     try {
-    //         const result = await dispatch(storeSegments(segments)).unwrap();
-    //         showToast("✅ Segments saved successfully", "success");
-    //         return result.segments;
-    //     } catch (err) {
-    //         console.error("❌ Failed to save segments:", err);
-    //         showToast("Failed to save segments. Please try again.", "error");
-    //         return [];
-    //     }
-    // };
 
     const translateSegments = async (
         originalSegments: Segment[], 
@@ -256,14 +176,6 @@ const SourceIndex: React.FC = () => {
         <div className="source-index">
             <h1>Source Index CMP</h1>
             <Button
-                variant="contained"
-                color="primary"
-                onClick={() => handleOpenDialog()}
-                style={{ marginBottom: '20px' }}
-            >
-                Add New Source
-            </Button>
-            <Button
                 variant="outlined"
                 color="secondary"
                 onClick={() => setTranslateDialogOpen(true)}
@@ -274,14 +186,6 @@ const SourceIndex: React.FC = () => {
             {error && <p>Error: {error}</p>}
             {!loading && !error && (
                 <SourceTable pairs={sourcePairs} />
-            )}
-            {dialogOpen && (
-                <AddSourceDialog
-                    open={dialogOpen}
-                    onClose={handleCloseDialog}
-                    onSubmit={handleAddSource}
-                    mode={selectedSource ? "translation" : "new_source"}
-                />
             )}
             {translateDialogOpen && (
                 <TranslateDocumentDialog

@@ -196,7 +196,7 @@ const SourceEdit: React.FC = () => {
                                 const hasChanged = sourceSegment.id !== undefined && (translations[sourceSegment.id]?.text ?? existingTranslation) !== existingTranslation;
 
                                 return (
-                                    <TableRow key={sourceSegment.id}>
+                                    <TableRow key={sourceSegment.id ?? `temp-${sourceSegment.order}`}>
                                         <TableCell>{sourceSegment.order}</TableCell>
                                         <TableCell style={{ wordBreak: "break-word", whiteSpace: "pre-wrap", verticalAlign: "top" }}>{sourceSegment.text}</TableCell>
                                         <TableCell style={{ wordBreak: "break-word", whiteSpace: "pre-wrap", verticalAlign: "top" }}>
