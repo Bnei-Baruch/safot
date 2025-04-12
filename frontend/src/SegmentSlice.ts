@@ -2,9 +2,6 @@ import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import { segmentService } from './services/segment.service';
 import { Segment } from './types';
 
-
-
-
 export const translateSegments = createAsyncThunk<
     { translated_segments: Segment[], total_segments_translated: number },
     { source_id: number, segments: Segment[], target_language: string, source_language: string },
@@ -60,22 +57,6 @@ export const saveSegments = createAsyncThunk<
   }
 );
 
-export const addSegmentsFromFile = createAsyncThunk<
-    { source_id: number; },
-    { file: File; source_id: number, properties?: object },
-    { rejectValue: string | undefined }
->(
-    'segments/addSegmentsFromFile',
-    async ({ file, source_id, properties }, thunkAPI) => {
-        try {
-            await segmentService.addSegmentsFromFile(file, source_id, properties);
-            return { source_id };
-        } catch (error: any) {
-            return thunkAPI.rejectWithValue(error.message || 'Failed to create segments');
-        }
-    }
-);
-
 export const fetchSegments = createAsyncThunk<
     { source_id: number, segments: Segment[] },
     { source_id: number },
@@ -122,25 +103,6 @@ const segmentSlice = createSlice({
             .addCase(fetchSegments.rejected, (state, action: PayloadAction<string | undefined>) => {
                 state.loading = false;
                 state.error = action.payload || 'Unknown error';
-            })
-            .addCase(addSegmentsFromFile.pending, (state) => {
-                state.loading = true;
-                state.error = null;
-            })
-            .addCase(addSegmentsFromFile.fulfilled, (state, action: PayloadAction<{ source_id: number }>) => {
-                const { source_id } = action.payload;
-                state.segments[source_id] = [];
-                state.loading = false;
-            })
-            .addCase(addSegmentsFromFile.rejected, (state, action) => {
-                state.loading = false;
-                if (action.payload) {
-                    state.error = action.payload;
-                } else if (action.error.message) {
-                    state.error = action.error.message;
-                } else {
-                    state.error = 'Failed to create segments';
-                }
             })
             .addCase(addSegment.fulfilled, (state, action) => {
                 const segment = action.payload;

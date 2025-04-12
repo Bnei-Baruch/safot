@@ -4,7 +4,6 @@ import { Segment } from '../types';
 const SEGMENTS = 'segments';
 
 export const segmentService = {
-    addSegmentsFromFile,
     fetchSegments,
     addSegment,
     extractSegments,
@@ -21,14 +20,7 @@ async function saveSegments(segments: Segment[]): Promise<{ source_id: number; s
         segments: savedSegments,
     };
 }
-async function addSegmentsFromFile(file: File, source_id: number, properties: object = {}): Promise<{ source_id: number }> {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('source_id', source_id.toString());
-    formData.append('properties', JSON.stringify(properties));
 
-    return await httpService.post(`${SEGMENTS}/save`, formData);
-}
 async function extractSegments(
     file: File,
     source_id: number,
