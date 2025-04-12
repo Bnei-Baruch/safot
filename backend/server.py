@@ -251,6 +251,59 @@ def get_segments_for_translation(
         print(f"Error starting translation: {e}")
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
 
+@app.post("/translate", response_model=dict)
+def translate_and_return_segments(
+    request: SegmentsTranslateRequest, user_info: dict = Depends(get_user_info)
+):
+    source_id = request.source_id
+    original_segments = request.segments
+    target_language = request.target_language
+    source_language = request.source_language
+
+    print(f"Translating segments from {source_language} to {target_language}")
+
+    try:
+        if not original_segments:
+            raise HTTPException(
+                status_code=400, detail="No segments provided for translation."
+            )
+
+        # 📝 In future, exclude already translated orders:
+        # existing_translations_orders = {
+        #     seg.order for seg in Segment.select().where(Segment.source_id == source_id)
+        # }
+        # segments_to_translate = [
+        #     seg for seg in original_segments if seg["order"] not in existing_translations_orders
+        # ]
+
+        segments_to_translate = original_segments
+
+        if segments_to_translate:
+            options = TranslationServiceOptions(
+                source_language=source_language,
+                target_language=target_language
+            )
+
+            translation_service = TranslationService(
+                api_key=OPENAI_API_KEY,
+                options=options
+            )
+
+            translated_segments = translation_service.process_translation(
+                segments_to_translate, source_id, user_info['preferred_username']
+            )
+
+            return {
+                "translated_segments": translated_segments,
+                "total_segments_translated": len(translated_segments)
+            }
+
+        return {"translated_segments": [], "total_segments_translated": 0}
+
+    except Exception as e:
+        print(f"Error starting translation: {e}")
+        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
+    
 
 @app.get('/sources', response_model=list[dict])
 def read_sources(user_info: dict = Depends(get_user_info)):

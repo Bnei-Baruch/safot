@@ -15,7 +15,7 @@ export const segmentService = {
 
 
 async function saveSegments(segments: Segment[]): Promise<{ source_id: number; segments: Segment[] }> {
-    const savedSegments = await httpService.post<Segment[]>('/segments', { segments });
+    const savedSegments = await httpService.post<Segment[]>(`${SEGMENTS}`, { segments });
     return {
         source_id: segments[0].source_id,
         segments: savedSegments,
@@ -53,7 +53,12 @@ async function addSegment(segmentData: Omit<Segment, 'timestamp'>): Promise<Segm
     return await httpService.post<Segment>(`${SEGMENTS}/save`, segmentData);
 }
 
-async function translateSegments(source_id: number, original_segments: Segment[], target_language: string, source_language: string): Promise<{ translated_segments: Segment[], total_segments_translated: number }> {
+async function translateSegments(
+    source_id: number, 
+    original_segments: Segment[], 
+    target_language: string, 
+    source_language: string
+): Promise<{ translated_segments: Segment[], total_segments_translated: number }> {
     return await httpService.post<{ translated_segments: Segment[], total_segments_translated: number }>(`${SEGMENTS}/translate`, {
         source_id,
         segments: original_segments,

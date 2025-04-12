@@ -6,7 +6,8 @@ from datetime import datetime
 from models import Segment, Language, Provider, TranslationServiceOptions
 from peewee import IntegrityError
 from dotenv import load_dotenv
-from services.segment_service import save_segment
+# from services.segment_service import save_segment
+from services.segment_service import build_segments
 from services.translation_prompts import TRANSLATION_PROMPTS
 from pprint import pprint
 import inspect
@@ -112,48 +113,57 @@ class TranslationService:
             debug_print(f"⚠️ Unexpected error during OpenAI call: {e}")
             return f"Translation failed due to unexpected error: {str(e)}"
 
-    # def send_chunk_for_translation(self, chunk):
-    #     model_limits = self.get_model_token_limit()
-    #     max_output_tokens = model_limits["max_output_tokens"]
-    #     prompt = self.prompt.format(
-    #         source_language=self.options.source_language.value,
-    #         target_language=self.options.target_language.value
-    #     )
-    #     # print(f"📌 Final prompt used: {prompt}")
-    #     debug_print(f"📌 Final prompt used:\n{prompt}")
 
-    #     messages = [
-    #         {"role": "system", "content": prompt},
-    #         {"role": "user", "content": f"{chunk}"}
-    #     ]
-    #     # print("📨 🚀 Sending Request to OpenAI:", messages)
-    #     debug_print(f"📨 Sending request to OpenAI:\n{messages}")
-    #     try:
-    #         response = self.client.chat.completions.create(
-    #             model=self.options.model,
-    #             messages=messages,
-    #             max_tokens=max_output_tokens,
-    #             temperature=self.options.temperature
-    #         )
-    #         if not response or not response.choices or not response.choices[0].message.content:
-    #             # print("⚠️ OpenAI returned an empty response!")
-    #             debug_print("⚠️ OpenAI returned an empty response!")
-    #             return "Translation failed due to an empty response."
+    # def process_translation(self, segments, source_id, username):
+    #     max_chunk_tokens = self.calculate_chunk_token_limit()
+    #     prepared_chunks = self.prepare_chunks_for_translation(
+    #         segments, max_chunk_tokens)
+    #     translated_paragraphs = []
 
-    #         return response.choices[0].message.content.strip()
+    #     now = datetime.utcnow()
 
-    #     except Exception as e:
-    #         # print(f"Error during translation: {e}")
-    #         debug_print(f"⚠️ Error during OpenAI call: {e}")
-    #         return f"Translation failed for chunk: {chunk}"
+    #     for i, chunk in enumerate(prepared_chunks, 1):
+    #         debug_print(f"Translating chunk {i}...")
+    #         translated_text = self.send_chunk_for_translation(chunk)
+    #         if translated_text:
+    #             translated_paragraphs.extend(translated_text.split(" ||| "))
+    #         else:
+    #             debug_print(f"Chunk {i} translation failed.")
+
+    #     for seg, translated_text in zip(segments, translated_paragraphs):
+    #         try:
+    #             save_segment(
+    #                 username=username,
+    #                 text=translated_text,
+    #                 source_id=source_id,
+    #                 order=seg["order"],
+    #                 properties={
+    #                     "segment_type": "provider",
+    #                     "translation": {
+    #                         "provider": self.options.provider.value,
+    #                         "model": self.options.model,
+    #                         "source_language": self.options.source_language.value,
+    #                         "target_language": self.options.target_language.value,
+    #                         "prompt_key": self.options.prompt_key,
+    #                         "prompt": self.prompt,
+    #                         "temperature": self.options.temperature
+    #                     }
+    #                 },
+    #                 original_segment_id=seg["id"],
+    #                 original_segment_timestamp=seg["timestamp"],
+    #                 custom_timestamp=now
+    #             )
+    #         except IntegrityError:
+    #             debug_print(f"Skipping duplicate segment for order {seg['order']}")
+
+    #     debug_print("✅ Translation completed.")
+
+    
 
     def process_translation(self, segments, source_id, username):
         max_chunk_tokens = self.calculate_chunk_token_limit()
-        prepared_chunks = self.prepare_chunks_for_translation(
-            segments, max_chunk_tokens)
+        prepared_chunks = self.prepare_chunks_for_translation(segments, max_chunk_tokens)
         translated_paragraphs = []
-
-        now = datetime.utcnow()
 
         for i, chunk in enumerate(prepared_chunks, 1):
             debug_print(f"Translating chunk {i}...")
@@ -163,30 +173,24 @@ class TranslationService:
             else:
                 debug_print(f"Chunk {i} translation failed.")
 
-        for seg, translated_text in zip(segments, translated_paragraphs):
-            try:
-                save_segment(
-                    username=username,
-                    text=translated_text,
-                    source_id=source_id,
-                    order=seg["order"],
-                    properties={
-                        "segment_type": "provider",
-                        "translation": {
-                            "provider": self.options.provider.value,
-                            "model": self.options.model,
-                            "source_language": self.options.source_language.value,
-                            "target_language": self.options.target_language.value,
-                            "prompt_key": self.options.prompt_key,
-                            "prompt": self.prompt,
-                            "temperature": self.options.temperature
-                        }
-                    },
-                    original_segment_id=seg["id"],
-                    original_segment_timestamp=seg["timestamp"],
-                    custom_timestamp=now
-                )
-            except IntegrityError:
-                debug_print(f"Skipping duplicate segment for order {seg['order']}")
+        translated_segments = build_segments(
+            translated_paragraphs,
+            source_id,
+            {
+                "segment_type": "provider",
+                "translation": {
+                    "provider": self.options.provider.value,
+                    "model": self.options.model,
+                    "source_language": self.options.source_language.value,
+                    "target_language": self.options.target_language.value,
+                    "prompt_key": self.options.prompt_key,
+                    "prompt": self.prompt,
+                    "temperature": self.options.temperature
+                }
+            },
+            {"preferred_username": username}
+        )
 
         debug_print("✅ Translation completed.")
+        return translated_segments
+

@@ -130,7 +130,7 @@ def build_segments(texts: list[str], source_id: int, properties_dict: dict, user
             "source_id": source_id,
             "order": order,
             "username": user_info["preferred_username"],
-            "timestamp": now.timestamp(),
+            "timestamp": now,
             "properties": {**properties_dict}
         }
         segments.append(segment)

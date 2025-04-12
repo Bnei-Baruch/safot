@@ -11,6 +11,7 @@ import {
     Typography
 } from '@mui/material';
 import { segmentService } from '../services/segment.service';
+import { translateSegments  as translateSegmentsAPI } from '../services/translation.service'
 import AddSourceDialog from '../cmp/AddSourceDialog';
 import TranslateDocumentDialog from '../cmp/TranslateDocumentDialog';
 import SourceTable from '../cmp/SourceTable';
@@ -108,13 +109,26 @@ const SourceIndex: React.FC = () => {
         try {
             console.log("🚀 Starting full translation flow");
     
-            const { originalSource, translatedSource } = await createSources(data);
+            const { originalSource, translationSource: translationSource } = await createSources(data);
             const extractedSegments = await extractSegmentsFromFile(data.file, originalSource.id, {
                 segment_type: "file"
             });
 
             console.log("📄 Extracted segments:", extractedSegments);
-            await saveSegments(extractedSegments);    
+            // const segmentsFromFile = await saveSegments(extractedSegments);   
+            const segmentsFromFile = await saveSegments(extractedSegments);
+            
+            const translatedSegments = await translateSegments(
+                segmentsFromFile,
+                translationSource.id,
+                data.source_language,
+                data.target_language
+            );
+    
+            if (translatedSegments.length) {
+                await saveSegments(translatedSegments); 
+                navigate(`/source-edit/${translationSource.id}`);
+            }
             // showToast("✅ Document translated and ready for editing", "success");
         } catch (error) {
             console.error("❌ Translation flow failed:", error);
@@ -147,7 +161,7 @@ const SourceIndex: React.FC = () => {
             original_source_id: originalSource.id
         } as any)).unwrap();
     
-        return { originalSource, translatedSource };
+        return { originalSource, translationSource: translatedSource };
     };
     
     const extractSegmentsFromFile = async (
@@ -158,15 +172,58 @@ const SourceIndex: React.FC = () => {
         return await segmentService.extractSegments(file, sourceId, properties);
     };
 
-    const saveSegments = async (segments: Segment[]) => {
+    const saveSegments = async (segments: Segment[]): Promise<Segment[]> => {
         try {
-            await dispatch(storeSegments(segments)).unwrap();
+            const result = await dispatch(storeSegments(segments)).unwrap();
+            console.log("✅ storeSegments response:", result);
+    
+            if (!result || !Array.isArray(result.segments)) {
+                throw new Error("Invalid response from storeSegments");
+            }
+    
             showToast("✅ Segments saved successfully", "success");
+            return result.segments;
         } catch (err) {
-            console.error("❌ Failed to save segments:", error);
+            console.error("❌ Failed to save segments:", err);
             showToast("Failed to save segments. Please try again.", "error");
+            return [];
         }
     };
+
+    // const saveSegments = async (segments: Segment[]): Promise<Segment[]> => {
+    //     try {
+    //         const result = await dispatch(storeSegments(segments)).unwrap();
+    //         showToast("✅ Segments saved successfully", "success");
+    //         return result.segments;
+    //     } catch (err) {
+    //         console.error("❌ Failed to save segments:", err);
+    //         showToast("Failed to save segments. Please try again.", "error");
+    //         return [];
+    //     }
+    // };
+
+    const translateSegments = async (
+        originalSegments: Segment[], 
+        translatedSourceId: number, 
+        sourceLang: string, 
+        targetLang: string
+    ) => {
+        try {
+            const response = await translateSegmentsAPI(
+                translatedSourceId, 
+                originalSegments, 
+                targetLang, 
+                sourceLang
+            );
+            showToast(`${response.total_segments_translated} segments translated successfully!`, "success");
+            return response.translated_segments;
+        } catch (error) {
+            console.error("❌ Error translating segments:", error);
+            showToast("Translation failed. Please try again.", "error");
+            return [];
+        }
+    };
+    
     
 
     if (!keycloak.authenticated) {
