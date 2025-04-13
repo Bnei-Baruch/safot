@@ -16,8 +16,8 @@ from playhouse.shortcuts import model_to_dict
 from starlette.status import HTTP_401_UNAUTHORIZED
 
 from services.translation_service import TranslationService
-from services.segment_service import create_segments_from_file, save_segments_from_file, create_segment, update_segment, get_latest_segments, store_segments
-from models import Source, Segment, SegmentsTranslateRequest, Language, TranslationServiceOptions
+from services.segment_service import get_paragraphs_from_file, save_segments_from_file, create_segment, update_segment, get_latest_segments, store_segments, build_segments
+from models import Source, Segment, ParagraphsTranslateRequest, Language, TranslationServiceOptions
 from db import db
 
 
@@ -87,16 +87,15 @@ def shutdown():
 @app.post('/docx2text')
 def extract_segments_handler(
     file: UploadFile = File(...),
-    source_id: int = Form(...),
-    properties: str = Form(...),
-    user_info: dict = Depends(get_user_info)
 ):
     try:
-        properties_dict = json.loads(properties) if properties else {}
-        segments = create_segments_from_file(
-            file, source_id, properties_dict, user_info
-        )
-        return  segments
+        paragraphs = get_paragraphs_from_file(file)
+        properties = {"segment_type": "file"}
+
+        return  {
+            "paragraphs": paragraphs,
+            "properties": properties
+        }
     except Exception as e:
         print(f"❌ Error in /docx2text: {e}")
         raise HTTPException(status_code=500, detail="Failed to extract segments")
@@ -134,13 +133,24 @@ def export_translation(source_id: int):
 
 
 @app.post('/segments', response_model=list[dict])
-async def save_segments(request: Request):
+async def save_segments(request: Request, user_info: dict = Depends(get_user_info)):
     try:
         data = await request.json()
-        segments = data.get("segments", [])
+        paragraphs = data.get("paragraphs")
+        source_id = data.get("source_id")
+        properties = data.get("properties", {})
+        original_segments_metadata = data.get("original_segments_metadata", [])
 
-        if not isinstance(segments, list):
-            raise HTTPException(status_code=400, detail="Invalid segments format")
+        if not isinstance(paragraphs, list) or not isinstance(source_id, int):
+            raise HTTPException(status_code=400, detail="Invalid request format")
+
+        segments = build_segments(
+            texts=paragraphs,
+            source_id=source_id,
+            properties_dict=properties,
+            user_info=user_info,
+            original_segments_metadata=original_segments_metadata  # אופציונלי
+        )
 
         saved_segments = store_segments(segments)
         return saved_segments
@@ -201,108 +211,40 @@ def read_sources(source_id: int, user_info: dict = Depends(get_user_info)):
         raise HTTPException(
             status_code=500, detail=f"Failed to fetch segments: {str(e)}")
 
-
-@app.post("/segments/translate", response_model=dict)
-def get_segments_for_translation(
-    request: SegmentsTranslateRequest, user_info: dict = Depends(get_user_info)
-):
-    source_id = request.source_id
-    original_segments = request.segments
-    target_language = request.target_language
-    source_language = request.source_language
-
-    print(f"Translating segments from {source_language} to {target_language}")
-
-    try:
-
-        if not original_segments:
-            raise HTTPException(
-                status_code=400, detail="No segments provided for translation.")
-
-        existing_translations_orders = {
-            seg.order for seg in Segment.select().where(Segment.source_id == source_id)}
-        segments_to_translate = [
-            seg for seg in original_segments if seg["order"] not in existing_translations_orders]
-
-        if segments_to_translate:
-            options = TranslationServiceOptions(
-                source_language=source_language,
-                target_language=target_language
-            )
-
-            translation_service = TranslationService(
-                api_key=OPENAI_API_KEY,
-                options=options
-            )
-
-            translation_service.process_translation(
-                segments_to_translate, source_id, user_info['preferred_username'])
-
-        # Fetch the latest segments for each `order`
-        latest_translated_segments = get_latest_segments(source_id)
-
-        return {
-
-            "translated_segments": latest_translated_segments,
-            "total_segments_translated": len(latest_translated_segments)
-        }
-
-    except Exception as e:
         print(f"Error starting translation: {e}")
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
 
 @app.post("/translate", response_model=dict)
-def translate_and_return_segments(
-    request: SegmentsTranslateRequest, user_info: dict = Depends(get_user_info)
+def translate_paragraphs_handler(
+    request: ParagraphsTranslateRequest,
+    user_info: dict = Depends(get_user_info)
 ):
-    source_id = request.source_id
-    original_segments = request.segments
-    target_language = request.target_language
-    source_language = request.source_language
-
-    print(f"Translating segments from {source_language} to {target_language}")
-
     try:
-        if not original_segments:
-            raise HTTPException(
-                status_code=400, detail="No segments provided for translation."
-            )
+        paragraphs = request.paragraphs
+        source_language = request.source_language
+        target_language = request.target_language
 
-        # 📝 In future, exclude already translated orders:
-        # existing_translations_orders = {
-        #     seg.order for seg in Segment.select().where(Segment.source_id == source_id)
-        # }
-        # segments_to_translate = [
-        #     seg for seg in original_segments if seg["order"] not in existing_translations_orders
-        # ]
+        if not paragraphs:
+            raise HTTPException(status_code=400, detail="No paragraphs provided.")
 
-        segments_to_translate = original_segments
+        options = TranslationServiceOptions(
+            source_language=source_language,
+            target_language=target_language
+        )
 
-        if segments_to_translate:
-            options = TranslationServiceOptions(
-                source_language=source_language,
-                target_language=target_language
-            )
+        translation_service = TranslationService(api_key=OPENAI_API_KEY, options=options)
 
-            translation_service = TranslationService(
-                api_key=OPENAI_API_KEY,
-                options=options
-            )
+        translated_paragraphs, properties = translation_service.translate_paragraphs(paragraphs)
 
-            translated_segments = translation_service.process_translation(
-                segments_to_translate, source_id, user_info['preferred_username']
-            )
-
-            return {
-                "translated_segments": translated_segments,
-                "total_segments_translated": len(translated_segments)
-            }
-
-        return {"translated_segments": [], "total_segments_translated": 0}
+        return {
+            "translated_paragraphs": translated_paragraphs,
+            "properties": properties,
+            "total_segments_translated": len(translated_paragraphs)
+        }
 
     except Exception as e:
-        print(f"Error starting translation: {e}")
-        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
+        print(f"❌ Error in translation handler: {e}")
+        raise HTTPException(status_code=500, detail=f"Translation failed: {str(e)}")
     
 
 @app.get('/sources', response_model=list[dict])

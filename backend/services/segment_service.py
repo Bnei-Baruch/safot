@@ -99,33 +99,34 @@ def save_segments_from_file(file, source_id, properties_dict, user_info):
     except Exception as e:
         raise Exception(f"Failed to process file: {str(e)}")
     
-def create_segments_from_file(file, source_id, properties_dict, user_info):
-    """
-    Process a file and generate segment objects (without id & saving to DB).
-    """
+def get_paragraphs_from_file(file) -> list[str]:
+    
     try:
         content = file.file.read()
         document = Document(BytesIO(content))
         paragraphs = [p.text.strip() for p in document.paragraphs if p.text.strip()]
 
-        
-        if "segment_type" not in properties_dict:
-            properties_dict["segment_type"] = "file"
-
-        return build_segments(paragraphs, source_id, properties_dict, user_info)
+        return paragraphs
 
     except Exception as e:
         raise Exception(f"❌ Failed to create segment previews: {str(e)}")
 
-def build_segments(texts: list[str], source_id: int, properties_dict: dict, user_info: dict):
+def build_segments(
+    texts: list[str],
+    source_id: int,
+    properties_dict: dict,
+    user_info: dict,
+    original_segments_metadata: dict[int, dict] | None = None
+):
     """
     Build segment dicts (not saved to DB) from raw texts.
+    If original_segments_metadata is provided, include original_segment_id and original_segment_timestamp.
     """
     now = datetime.utcnow()
     segments = []
 
     for order, text in enumerate(texts, start=1):
-        segment = {
+        segment_data = {
             "text": text,
             "source_id": source_id,
             "order": order,
@@ -133,7 +134,13 @@ def build_segments(texts: list[str], source_id: int, properties_dict: dict, user
             "timestamp": now,
             "properties": {**properties_dict}
         }
-        segments.append(segment)
+
+        if original_segments_metadata and order in original_segments_metadata:
+            meta = original_segments_metadata[order]
+            segment_data["original_segment_id"] = meta.get("id")
+            segment_data["original_segment_timestamp"] = meta.get("timestamp")
+
+        segments.append(segment_data)
 
     return segments
 

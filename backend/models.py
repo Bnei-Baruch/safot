@@ -96,11 +96,10 @@ class Language(str, Enum):
         return language_map.get(code, code)
 
 
-class SegmentsTranslateRequest(BaseModel):
-    source_id: int
-    segments: List[dict]
-    source_language: Language
-    target_language: Language
+class ParagraphsTranslateRequest(BaseModel):
+    paragraphs: list[str]
+    source_language: str
+    target_language: str
 
     @validator("source_language", "target_language", pre=True)
     def convert_language(cls, value):

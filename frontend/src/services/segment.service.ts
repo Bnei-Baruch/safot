@@ -6,32 +6,30 @@ const SEGMENTS = 'segments';
 export const segmentService = {
     fetchSegments,
     addSegment,
-    extractSegments,
+    extractParagraphs,
     translateSegments,
     exportTranslationDocx,
     saveSegments
 };
 
 
-async function saveSegments(segments: Segment[]): Promise<{ source_id: number; segments: Segment[] }> {
-    const savedSegments = await httpService.post<Segment[]>(`${SEGMENTS}`, { segments });
+async function saveSegments(payload: {
+    paragraphs: string[];
+    source_id: number;
+    properties: object;
+  }): Promise<{ source_id: number; segments: Segment[] }> {
+    const savedSegments = await httpService.post<Segment[]>(`${SEGMENTS}`, payload);
     return {
-        source_id: segments[0].source_id,
+        source_id: payload.source_id,
         segments: savedSegments,
     };
 }
 
-async function extractSegments(
-    file: File,
-    source_id: number,
-    properties: Record<string, any>
-): Promise<Segment[]> {
+async function extractParagraphs(file: File,): Promise<{paragraphs: string[], properties: object}> {
     const formData = new FormData();
     formData.append("file", file);
-    formData.append("source_id", source_id.toString());
-    formData.append("properties", JSON.stringify(properties));
 
-    return  await httpService.post<Segment[]>("/docx2text", formData);
+    return  await httpService.post("/docx2text", formData);
 }
 
 

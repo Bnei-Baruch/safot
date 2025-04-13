@@ -45,17 +45,44 @@ class TranslationService:
         chunk_tokens_by_context = context_window - prompt_tokens - max_output_tokens
         return max(min(chunk_tokens_by_output, chunk_tokens_by_context, 4000), 0)
 
-    def prepare_chunks_for_translation(self, segments, max_chunk_tokens):
+    # def prepare_chunks_for_translation(self, segments, max_chunk_tokens):
+    #     chunks = []
+    #     current_chunk = []
+    #     current_tokens = 0
+    #     for segment in segments:
+    #         paragraph = segment["text"]
+    #         if not paragraph.strip() or paragraph.strip() == "|||":
+    #             continue
+    #         paragraph_tokens = len(self.encoding.encode(paragraph))
+    #         separator_tokens = len(self.encoding.encode(
+    #             " ||| ")) if current_chunk else 0
+    #         if current_tokens + paragraph_tokens + separator_tokens > max_chunk_tokens:
+    #             chunks.append(" ||| ".join(current_chunk))
+    #             current_chunk = [paragraph]
+    #             current_tokens = paragraph_tokens
+    #         else:
+    #             current_chunk.append(paragraph)
+    #             current_tokens += paragraph_tokens + separator_tokens
+    #     if current_chunk:
+    #         chunks.append(" ||| ".join(current_chunk))
+    #     return chunks
+
+    def prepare_chunks_for_translation(self, items, max_chunk_tokens):
+        """
+        Supports input as list of segments (dicts with "text") or plain text strings.
+        """
         chunks = []
         current_chunk = []
         current_tokens = 0
-        for segment in segments:
-            paragraph = segment["text"]
+
+        for item in items:
+            paragraph = item["text"] if isinstance(item, dict) else item
             if not paragraph.strip() or paragraph.strip() == "|||":
                 continue
+
             paragraph_tokens = len(self.encoding.encode(paragraph))
-            separator_tokens = len(self.encoding.encode(
-                " ||| ")) if current_chunk else 0
+            separator_tokens = len(self.encoding.encode(" ||| ")) if current_chunk else 0
+
             if current_tokens + paragraph_tokens + separator_tokens > max_chunk_tokens:
                 chunks.append(" ||| ".join(current_chunk))
                 current_chunk = [paragraph]
@@ -63,8 +90,10 @@ class TranslationService:
             else:
                 current_chunk.append(paragraph)
                 current_tokens += paragraph_tokens + separator_tokens
+
         if current_chunk:
             chunks.append(" ||| ".join(current_chunk))
+
         return chunks
 
 
@@ -114,52 +143,6 @@ class TranslationService:
             return f"Translation failed due to unexpected error: {str(e)}"
 
 
-    # def process_translation(self, segments, source_id, username):
-    #     max_chunk_tokens = self.calculate_chunk_token_limit()
-    #     prepared_chunks = self.prepare_chunks_for_translation(
-    #         segments, max_chunk_tokens)
-    #     translated_paragraphs = []
-
-    #     now = datetime.utcnow()
-
-    #     for i, chunk in enumerate(prepared_chunks, 1):
-    #         debug_print(f"Translating chunk {i}...")
-    #         translated_text = self.send_chunk_for_translation(chunk)
-    #         if translated_text:
-    #             translated_paragraphs.extend(translated_text.split(" ||| "))
-    #         else:
-    #             debug_print(f"Chunk {i} translation failed.")
-
-    #     for seg, translated_text in zip(segments, translated_paragraphs):
-    #         try:
-    #             save_segment(
-    #                 username=username,
-    #                 text=translated_text,
-    #                 source_id=source_id,
-    #                 order=seg["order"],
-    #                 properties={
-    #                     "segment_type": "provider",
-    #                     "translation": {
-    #                         "provider": self.options.provider.value,
-    #                         "model": self.options.model,
-    #                         "source_language": self.options.source_language.value,
-    #                         "target_language": self.options.target_language.value,
-    #                         "prompt_key": self.options.prompt_key,
-    #                         "prompt": self.prompt,
-    #                         "temperature": self.options.temperature
-    #                     }
-    #                 },
-    #                 original_segment_id=seg["id"],
-    #                 original_segment_timestamp=seg["timestamp"],
-    #                 custom_timestamp=now
-    #             )
-    #         except IntegrityError:
-    #             debug_print(f"Skipping duplicate segment for order {seg['order']}")
-
-    #     debug_print("✅ Translation completed.")
-
-    
-
     def process_translation(self, segments, source_id, username):
         max_chunk_tokens = self.calculate_chunk_token_limit()
         prepared_chunks = self.prepare_chunks_for_translation(segments, max_chunk_tokens)
@@ -193,4 +176,30 @@ class TranslationService:
 
         debug_print("✅ Translation completed.")
         return translated_segments
+
+    def translate_paragraphs(self, paragraphs: list[str]) -> tuple[list[str], dict]:
+        max_chunk_tokens = self.calculate_chunk_token_limit()
+        prepared_chunks = self.prepare_chunks_for_translation(paragraphs, max_chunk_tokens)
+
+        translated_paragraphs = []
+        for i, chunk in enumerate(prepared_chunks, 1):
+            debug_print(f"Translating chunk {i}...")
+            translated_text = self.send_chunk_for_translation(chunk)
+            if translated_text:
+                translated_paragraphs.extend(translated_text.split(" ||| "))
+
+        properties = {
+            "segment_type": "provider",
+            "translation": {
+                "provider": self.options.provider.value,
+                "model": self.options.model,
+                "source_language": self.options.source_language.value,
+                "target_language": self.options.target_language.value,
+                "prompt_key": self.options.prompt_key,
+                "prompt": self.prompt,
+                "temperature": self.options.temperature
+            }
+        }
+
+        return translated_paragraphs, properties
 

@@ -44,13 +44,13 @@ export const addSegment = createAsyncThunk<
 
 export const saveSegments = createAsyncThunk<
   { source_id: number; segments: Segment[] },  // return type
-  Segment[],                                   // payload sent from frontend
+  { paragraphs: string[]; source_id: number; properties: object },// payload sent from frontend
   { rejectValue: string }
 >(
   'segments/saveSegments',
-  async (segments, { rejectWithValue }) => {
+  async ({ paragraphs, source_id, properties }, { rejectWithValue }) => {
     try {
-      return await segmentService.saveSegments(segments);
+      return await segmentService.saveSegments({ paragraphs, source_id, properties });
     } catch (err: any) {
       return rejectWithValue(err.message || 'Failed to save segments');
     }

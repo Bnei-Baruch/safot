@@ -7,7 +7,7 @@ import { saveSegments as storeSegments } from '../SegmentSlice';
 import { useAppDispatch, RootState } from '../store';
 import { Button,Box,Typography } from '@mui/material';
 import { segmentService } from '../services/segment.service';
-import { translateSegments  as translateSegmentsAPI } from '../services/translation.service'
+import { translateParagraphs  as translateParagraphsAPI } from '../services/translation.service'
 import TranslateDocumentDialog from '../cmp/TranslateDocumentDialog';
 import SourceTable from '../cmp/SourceTable';
 import { useToast } from '../cmp/Toast';
@@ -50,24 +50,48 @@ const SourceIndex: React.FC = () => {
             console.log("🚀 Starting full translation flow");
     
             const { originalSource, translationSource: translationSource } = await createSources(data);
-            const extractedSegments = await extractSegmentsFromFile(data.file, originalSource.id, {
-                segment_type: "file"
-            });
+            // console.log("📦 Created sources:", { originalSource, translationSource });
+            const { paragraphs: fileParagraphs, properties: fileProperties } = await extractParagraphsFromFile(data.file);
+            // console.log("📄 Extracted paragraphs from file:", fileParagraphs);
+            // console.log("⚙️ Paragraph properties:", fileProperties);
 
-            console.log("📄 Extracted segments:", extractedSegments);
-            const segmentsFromFile = await saveSegments(extractedSegments);
+
+            // console.log("📄 Extracted segments:", paragraphsFromFile);
+            const segmentsToTranslate = await saveSegments({
+                paragraphs: fileParagraphs,
+                source_id: originalSource.id,
+                properties: fileProperties,
+              });
+
+            console.log("✅ Saved segments to DB:", segmentsToTranslate);
             
-            const translatedSegments = await translateSegments(
-                segmentsFromFile,
-                translationSource.id,
+            const { translated_paragraphs, properties: providerProperties, total_segments_translated } = await translateParagraphs(
+                fileParagraphs,
                 data.source_language,
                 data.target_language
             );
+            
+            console.log("🌐 Translated paragraphs:", translated_paragraphs);
+            console.log("📦 Provider properties:", providerProperties);
+
+            const originalSegmentsMetadata = buildOriginalMetadata(segmentsToTranslate);
+
+            const savedTranslatedSegments = await saveSegments({
+                paragraphs: translated_paragraphs,
+                source_id: translationSource.id,
+                properties: providerProperties,
+                original_segments_metadata: originalSegmentsMetadata,
+            });
     
-            if (translatedSegments.length) {
-                await saveSegments(translatedSegments); 
-                navigate(`/source-edit/${translationSource.id}`);
-            }
+            console.log("💾 Translated segments saved:", savedTranslatedSegments);
+    
+            showToast(`${total_segments_translated} segments translated & saved!`, "success");
+            navigate(`/source-edit/${translationSource.id}`);
+
+            // if (translatedSegments.length) {
+            //     await saveSegments(translatedSegments); 
+            //     navigate(`/source-edit/${translationSource.id}`);
+            // }
         } catch (error) {
             console.error("❌ Translation flow failed:", error);
             showToast("Translation process failed. Please try again.", "error");
@@ -102,45 +126,67 @@ const SourceIndex: React.FC = () => {
         return { originalSource, translationSource: translatedSource };
     };
     
-    const extractSegmentsFromFile = async (
-        file: File,
-        sourceId: number,
-        properties: Record<string, any>
-    ): Promise<Segment[]> => {
-        return await segmentService.extractSegments(file, sourceId, properties);
+    const extractParagraphsFromFile = async (file: File): Promise<{ paragraphs: string[], properties: object }> => {
+        return await segmentService.extractParagraphs(file);
     };
 
-    const saveSegments = async (segments: Segment[]): Promise<Segment[]> => {
+    const saveSegments = async (data: {
+        paragraphs: string[];
+        source_id: number;
+        properties: Record<string, any>;
+        original_segments_metadata?: {
+          [order: number]: { id: number; timestamp: string };
+        };
+      }): Promise<Segment[]> => {
         try {
-            const result = await dispatch(storeSegments(segments)).unwrap();
-            showToast("✅ Segments saved successfully", "success");
-            return result.segments;
+          const result = await dispatch(storeSegments(data)).unwrap();
+          showToast("✅ Segments saved successfully", "success");
+          return result.segments;
         } catch (err) {
-            console.error("❌ Failed to save segments:", err);
-            showToast("Failed to save segments. Please try again.", "error");
-            return [];
+          console.error("❌ Failed to save segments:", err);
+          showToast("Failed to save segments. Please try again.", "error");
+          return [];
         }
     };
+      
+    
+    const buildOriginalMetadata = (segments: Segment[]) => {
+        return segments.reduce((acc, segment) => {
+            if (segment.id !== undefined && segment.timestamp) {
+                acc[segment.order] = {
+                    id: segment.id,
+                    timestamp: segment.timestamp,
+                };
+            }
+            return acc;
+        }, {} as Record<number, { id: number, timestamp: string }>);
+    };
 
-    const translateSegments = async (
-        originalSegments: Segment[], 
-        translatedSourceId: number, 
-        sourceLang: string, 
+    const translateParagraphs = async (
+        paragraphs: string[],
+        sourceLang: string,
         targetLang: string
-    ) => {
+    ): Promise<{
+        translated_paragraphs: string[],
+        properties: Record<string, any>,
+        total_segments_translated: number
+    }> => {
         try {
-            const response = await translateSegmentsAPI(
-                translatedSourceId, 
-                originalSegments, 
-                targetLang, 
-                sourceLang
+            const response = await translateParagraphsAPI(
+                paragraphs,
+                sourceLang,
+                targetLang,
             );
             showToast(`${response.total_segments_translated} segments translated successfully!`, "success");
-            return response.translated_segments;
+            return response;
         } catch (error) {
             console.error("❌ Error translating segments:", error);
             showToast("Translation failed. Please try again.", "error");
-            return [];
+            return {
+                translated_paragraphs: [],
+                properties: {},
+                total_segments_translated: 0
+            };
         }
     };
     

@@ -4,16 +4,18 @@ import { Segment } from '../types';
 const TRANSLATE = 'translate';
 
 
-export async function translateSegments(
-    source_id: number, 
-    original_segments: Segment[], 
-    target_language: string, 
-    source_language: string
-): Promise<{ translated_segments: Segment[], total_segments_translated: number }> {
-    return await httpService.post<{ translated_segments: Segment[], total_segments_translated: number }>(`${TRANSLATE}`, {
-        source_id,
-        segments: original_segments,
-        target_language,
-        source_language
+export async function translateParagraphs(
+    paragraphs: string[],
+    source_language: string,
+    target_language: string
+  ): Promise<{
+    translated_paragraphs: string[];
+    properties: any;
+    total_segments_translated: number;
+  }> {
+    return await httpService.post(`${TRANSLATE}`, {
+      paragraphs,
+      source_language,
+      target_language
     });
-}
+  }
