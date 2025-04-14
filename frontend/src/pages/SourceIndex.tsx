@@ -57,24 +57,20 @@ const SourceIndex: React.FC = () => {
 
 
             // console.log("📄 Extracted segments:", paragraphsFromFile);
-            const segmentsToTranslate = await saveSegments({
+            const originalSegments = await saveSegments({
                 paragraphs: fileParagraphs,
                 source_id: originalSource.id,
                 properties: fileProperties,
               });
 
-            console.log("✅ Saved segments to DB:", segmentsToTranslate);
+            console.log("✅ Saved segments to DB:", originalSegments);
             
             const { translated_paragraphs, properties: providerProperties, total_segments_translated } = await translateParagraphs(
                 fileParagraphs,
                 data.source_language,
                 data.target_language
             );
-            
-            console.log("🌐 Translated paragraphs:", translated_paragraphs);
-            console.log("📦 Provider properties:", providerProperties);
-
-            const originalSegmentsMetadata = buildOriginalMetadata(segmentsToTranslate);
+            const originalSegmentsMetadata = buildOriginalMetadata(originalSegments);
 
             const savedTranslatedSegments = await saveSegments({
                 paragraphs: translated_paragraphs,
@@ -88,10 +84,6 @@ const SourceIndex: React.FC = () => {
             showToast(`${total_segments_translated} segments translated & saved!`, "success");
             navigate(`/source-edit/${translationSource.id}`);
 
-            // if (translatedSegments.length) {
-            //     await saveSegments(translatedSegments); 
-            //     navigate(`/source-edit/${translationSource.id}`);
-            // }
         } catch (error) {
             console.error("❌ Translation flow failed:", error);
             showToast("Translation process failed. Please try again.", "error");
@@ -161,7 +153,7 @@ const SourceIndex: React.FC = () => {
             return acc;
         }, {} as Record<number, { id: number, timestamp: string }>);
     };
-
+    
     const translateParagraphs = async (
         paragraphs: string[],
         sourceLang: string,

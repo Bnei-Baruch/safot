@@ -134,9 +134,9 @@ def build_segments(
             "timestamp": now,
             "properties": {**properties_dict}
         }
-
-        if original_segments_metadata and order in original_segments_metadata:
-            meta = original_segments_metadata[order]
+    
+        if original_segments_metadata and str(order) in original_segments_metadata:
+            meta = original_segments_metadata[str(order)]
             segment_data["original_segment_id"] = meta.get("id")
             segment_data["original_segment_timestamp"] = meta.get("timestamp")
 
@@ -210,8 +210,11 @@ def store_segments(segments: list[dict]) -> list[dict]:
         if missing:
             raise ValueError(f"Segment is missing required fields: {', '.join(missing)}")
 
-        segment = Segment.create(**segment_data)
-        saved_segments.append(model_to_dict(segment))
-
+        insert_query = Segment.insert(segment_data).returning(Segment)
+        inserted = insert_query.execute()
+        segment = inserted[0]  # או next(iter(inserted)) אם זה generator
+        segment_dict = model_to_dict(segment)
+        saved_segments.append(segment_dict)
+ 
     return saved_segments
 

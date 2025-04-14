@@ -17,6 +17,7 @@ async function saveSegments(payload: {
     paragraphs: string[];
     source_id: number;
     properties: object;
+    original_segments_metadata?: Record<number, { id: number; timestamp: string }>;
   }): Promise<{ source_id: number; segments: Segment[] }> {
     const savedSegments = await httpService.post<Segment[]>(`${SEGMENTS}`, payload);
     return {

@@ -42,15 +42,41 @@ export const addSegment = createAsyncThunk<
     }
 );
 
+// export const saveSegments = createAsyncThunk<
+//   { source_id: number; segments: Segment[] },  // return type
+//   { paragraphs: string[]; source_id: number; properties: object; original_segments_metadata?: Record<number, { id: number; timestamp: string }>; },// payload sent from frontend
+//   { rejectValue: string }
+// >(
+//   'segments/saveSegments',
+//   async ({ paragraphs, source_id, properties, original_segments_metadata }, { rejectWithValue }) => {
+//     try {
+//       return await segmentService.saveSegments({ paragraphs, source_id, properties, original_segments_metadata });
+//     } catch (err: any) {
+//       return rejectWithValue(err.message || 'Failed to save segments');
+//     }
+//   }
+// );
+
 export const saveSegments = createAsyncThunk<
-  { source_id: number; segments: Segment[] },  // return type
-  { paragraphs: string[]; source_id: number; properties: object },// payload sent from frontend
+  { source_id: number; segments: Segment[] },
+  {
+    paragraphs: string[];
+    source_id: number;
+    properties: object;
+    original_segments_metadata?: Record<number, { id: number; timestamp: string }>;
+  },
   { rejectValue: string }
 >(
   'segments/saveSegments',
-  async ({ paragraphs, source_id, properties }, { rejectWithValue }) => {
+  async ({ paragraphs, source_id, properties, original_segments_metadata }, { rejectWithValue }) => {
     try {
-      return await segmentService.saveSegments({ paragraphs, source_id, properties });
+      const payload: any = { paragraphs, source_id, properties };
+
+      if (original_segments_metadata) {
+        payload.original_segments_metadata = original_segments_metadata;
+      }
+
+      return await segmentService.saveSegments(payload);
     } catch (err: any) {
       return rejectWithValue(err.message || 'Failed to save segments');
     }
