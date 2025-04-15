@@ -82,7 +82,7 @@ def shutdown():
         db.close()
     logger.info('Database connection closed')
 
-####### SOURCE AP
+####### SOURCES
 @app.get('/sources', response_model=list[dict])
 def read_sources(user_info: dict = Depends(get_user_info)):
     sources = list(Source.select().dicts())
@@ -132,7 +132,7 @@ def delete_source(source_id: int, _: dict = Depends(get_user_info)):
         raise HTTPException(status_code=404, detail='Source not found')
     return rows_deleted
 
-####### SEGMENTS API
+####### SEGMENTS 
 @app.get('/segments/{source_id}', response_model=list[dict])
 def read_sources(source_id: int, user_info: dict = Depends(get_user_info)):
     try:
@@ -219,7 +219,7 @@ def translate_paragraphs_handler(
         print(f"❌ Error in translation handler: {e}")
         raise HTTPException(status_code=500, detail=f"Translation failed: {str(e)}")
     
-####### IMPORT EXPORT
+####### IMPORT/EXPORT
 @app.post('/docx2text')
 def extract_segments_handler(
     file: UploadFile = File(...),

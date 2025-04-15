@@ -2,46 +2,21 @@ import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import { segmentService } from './services/segment.service';
 import { Segment,SaveSegmentsPayload } from './types';
 
-export const translateSegments = createAsyncThunk<
-    { translated_segments: Segment[], total_segments_translated: number },
-    { source_id: number, segments: Segment[], target_language: string, source_language: string },
+export const fetchSegments = createAsyncThunk<
+    { source_id: number, segments: Segment[] },
+    { source_id: number },
     { rejectValue: string }
 >(
-    'segments/translateSegments',
-    async ({ source_id, segments, target_language, source_language }, { rejectWithValue }) => {
+    'segments/fetchSegments',
+    async ({ source_id }, { rejectWithValue }) => {
         try {
-            const response = await segmentService.translateSegments(
-                source_id,
-                segments,
-                target_language,
-                source_language
-            );
-
-            return {
-                translated_segments: response.translated_segments,
-                total_segments_translated: response.total_segments_translated,
-            };
+            const segments: Segment[] = await segmentService.fetchSegments(source_id);
+            return { source_id, segments };
         } catch (err: any) {
-            return rejectWithValue(err.message || 'Failed to translate segments');
+            return rejectWithValue(err.message || 'Failed to fetch segments');
         }
     }
 );
-
-export const addSegment = createAsyncThunk<
-    Segment,
-    Omit<Segment, 'timestamp'>,
-    { rejectValue: string }
->(
-    'segments/addSegment',
-    async (segmentData, { rejectWithValue }) => {
-        try {
-            return await segmentService.addSegment(segmentData);
-        } catch (error: any) {
-            return rejectWithValue(error.message || 'Failed to add segment');
-        }
-    }
-);
-
 
 export const saveSegments = createAsyncThunk<
   { source_id: number; segments: Segment[] },
@@ -67,21 +42,7 @@ export const saveSegments = createAsyncThunk<
   }
 );
 
-export const fetchSegments = createAsyncThunk<
-    { source_id: number, segments: Segment[] },
-    { source_id: number },
-    { rejectValue: string }
->(
-    'segments/fetchSegments',
-    async ({ source_id }, { rejectWithValue }) => {
-        try {
-            const segments: Segment[] = await segmentService.fetchSegments(source_id);
-            return { source_id, segments };
-        } catch (err: any) {
-            return rejectWithValue(err.message || 'Failed to fetch segments');
-        }
-    }
-);
+
 
 interface SegmentState {
     segments: Record<number, Segment[]>;
@@ -114,22 +75,6 @@ const segmentSlice = createSlice({
                 state.loading = false;
                 state.error = action.payload || 'Unknown error';
             })
-            .addCase(addSegment.fulfilled, (state, action) => {
-                const segment = action.payload;
-                if (!state.segments[segment.source_id]) {
-                    state.segments[segment.source_id] = [];
-                }
-                //Check if an existing segment with the same `order` already exists
-                const existingIndex = state.segments[segment.source_id].findIndex(t => t.order === segment.order);
-
-                if (existingIndex !== -1)   // If a segment exists, replace it (keeping history in backend but only showing the latest in UI)
-                    state.segments[segment.source_id][existingIndex] = segment;
-                else   // If it's a new translation, add it to the store
-                    state.segments[segment.source_id].push(segment);
-            })
-            .addCase(addSegment.rejected, (state, action) => {
-                state.error = action.error.message || "Failed to add segment";
-            })
             .addCase(saveSegments.pending, (state) => {
                 state.loading = true;
                 state.error = null;
@@ -156,23 +101,6 @@ const segmentSlice = createSlice({
                 state.loading = false;
                 state.error = action.payload || 'Failed to save segments';
             })
-            .addCase(translateSegments.pending, (state) => {
-                state.loading = true;
-                state.error = null;
-            })
-            .addCase(translateSegments.fulfilled, (state, action) => {
-                const { translated_segments, total_segments_translated } = action.payload;
-                const source_id = action.meta.arg.source_id;
-                state.loading = false;
-                state.segments[source_id] = translated_segments;
-
-                console.log(`✅ ${total_segments_translated} segments were translated successfully.`);
-            })
-
-            .addCase(translateSegments.rejected, (state, action: PayloadAction<string | undefined>) => {
-                state.loading = false;
-                state.error = action.payload || 'Failed to translate segments';
-            });
     },
 });
 

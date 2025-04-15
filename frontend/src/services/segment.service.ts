@@ -5,7 +5,6 @@ const SEGMENTS = 'segments';
 
 export const segmentService = {
     fetchSegments,
-    addSegment,
     extractParagraphs,
     translateSegments,
     exportTranslationDocx,
@@ -28,15 +27,10 @@ async function extractParagraphs(file: File,): Promise<{paragraphs: string[], pr
     return  await httpService.post("/docx2text", formData);
 }
 
-
 async function fetchSegments(source_id: number): Promise<Segment[]> {
     // console.log("🛠️From segment.service :  Fetching segments for:", source_id);
     const response = await httpService.get<Segment[]>(`${SEGMENTS}/${source_id}`);
     return response; // Directly return the segments array
-}
-
-async function addSegment(segmentData: Omit<Segment, 'timestamp'>): Promise<Segment> {
-    return await httpService.post<Segment>(`${SEGMENTS}/save`, segmentData);
 }
 
 async function translateSegments(
@@ -52,7 +46,6 @@ async function translateSegments(
         source_language
     });
 }
-
 
 async function exportTranslationDocx(source_id: number): Promise<Blob> {
     return await httpService.downloadFile(`/export/${source_id}`);

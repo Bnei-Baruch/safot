@@ -50,13 +50,7 @@ const SourceIndex: React.FC = () => {
             console.log("🚀 Starting full translation flow");
     
             const { originalSource, translationSource: translationSource } = await createSources(data);
-            // console.log("📦 Created sources:", { originalSource, translationSource });
             const { paragraphs: fileParagraphs, properties: fileProperties } = await extractParagraphsFromFile(data.file);
-            // console.log("📄 Extracted paragraphs from file:", fileParagraphs);
-            // console.log("⚙️ Paragraph properties:", fileProperties);
-
-
-            // console.log("📄 Extracted segments:", paragraphsFromFile);
             const originalSegments = await saveSegments({
                 paragraphs: fileParagraphs,
                 source_id: originalSource.id,
@@ -141,7 +135,6 @@ const SourceIndex: React.FC = () => {
         }
     };
       
-    
     const buildOriginalMetadata = (segments: Segment[]) => {
         return segments.reduce((acc, segment) => {
             if (segment.id !== undefined && segment.timestamp) {
@@ -183,7 +176,6 @@ const SourceIndex: React.FC = () => {
     };
     
     
-
     if (!keycloak.authenticated) {
         return (
             <Box

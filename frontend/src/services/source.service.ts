@@ -6,8 +6,8 @@ export const sourceService = {
     querySources,
     getSourceById,
     addSource,
-    updateSource,
-    removeSource,
+    // updateSource,
+    // removeSource,
 };
 
 // Fetch all sources
@@ -25,12 +25,12 @@ async function addSource(source: Omit<any, 'id'>): Promise<any> {
 }
 
 // Update an existing source
-async function updateSource(sourceId: number, source: any): Promise<any> {
-    return await httpService.put(`${ENTITY_TYPE}/${sourceId}`, source);
-}
+// async function updateSource(sourceId: number, source: any): Promise<any> {
+//     return await httpService.put(`${ENTITY_TYPE}/${sourceId}`, source);
+// }
 
 // Remove a source by ID
-async function removeSource(sourceId: number): Promise<void> {
-    return await httpService.delete(`${ENTITY_TYPE}/${sourceId}`);
-}
+// async function removeSource(sourceId: number): Promise<void> {
+//     return await httpService.delete(`${ENTITY_TYPE}/${sourceId}`);
+// }
 
