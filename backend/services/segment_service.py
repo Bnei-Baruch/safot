@@ -116,7 +116,8 @@ def build_segments(
     source_id: int,
     properties_dict: dict,
     user_info: dict,
-    original_segments_metadata: dict[int, dict] | None = None
+    original_segments_metadata: dict[int, dict] | None = None,
+    segment_ids: list[int] | None = None
 ):
     """
     Build segment dicts (not saved to DB) from raw texts.
@@ -124,8 +125,13 @@ def build_segments(
     """
     now = datetime.utcnow()
     segments = []
+    
+    for i, text in enumerate(texts):
+        if original_segments_metadata:
+            order = int(list(original_segments_metadata.keys())[i])
+        else:
+            order = i + 1
 
-    for order, text in enumerate(texts, start=1):
         segment_data = {
             "text": text,
             "source_id": source_id,
@@ -135,6 +141,9 @@ def build_segments(
             "properties": {**properties_dict}
         }
     
+        if segment_ids and len(segment_ids) >= order:
+            segment_data["id"] = segment_ids[order - 1]
+
         if original_segments_metadata and str(order) in original_segments_metadata:
             meta = original_segments_metadata[str(order)]
             segment_data["original_segment_id"] = meta.get("id")
@@ -197,6 +206,27 @@ def update_segment(segment_data, user_info):
         raise Exception(f"Failed to update segment: {str(e)}")
 
 
+# def store_segments(segments: list[dict]) -> list[dict]:
+#     """
+#     Save a list of segments to the database.
+#     Assumes each segment has all necessary fields (including timestamp, username, etc.).
+#     """
+#     required_fields = ["text", "source_id", "order", "timestamp", "username", "properties"]
+#     saved_segments = []
+
+#     for segment_data in segments:
+#         missing = [key for key in required_fields if key not in segment_data]
+#         if missing:
+#             raise ValueError(f"Segment is missing required fields: {', '.join(missing)}")
+
+#         insert_query = Segment.insert(segment_data).returning(Segment)
+#         inserted = insert_query.execute()
+#         segment = inserted[0]  # או next(iter(inserted)) אם זה generator
+#         segment_dict = model_to_dict(segment)
+#         saved_segments.append(segment_dict)
+ 
+#     return saved_segments
+
 def store_segments(segments: list[dict]) -> list[dict]:
     """
     Save a list of segments to the database.
@@ -212,9 +242,8 @@ def store_segments(segments: list[dict]) -> list[dict]:
 
         insert_query = Segment.insert(segment_data).returning(Segment)
         inserted = insert_query.execute()
-        segment = inserted[0]  # או next(iter(inserted)) אם זה generator
+        segment = inserted[0]
         segment_dict = model_to_dict(segment)
         saved_segments.append(segment_dict)
- 
-    return saved_segments
 
+    return saved_segments

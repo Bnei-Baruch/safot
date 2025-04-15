@@ -1,6 +1,6 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import { segmentService } from './services/segment.service';
-import { Segment } from './types';
+import { Segment,SaveSegmentsPayload } from './types';
 
 export const translateSegments = createAsyncThunk<
     { translated_segments: Segment[], total_segments_translated: number },
@@ -42,38 +42,22 @@ export const addSegment = createAsyncThunk<
     }
 );
 
-// export const saveSegments = createAsyncThunk<
-//   { source_id: number; segments: Segment[] },  // return type
-//   { paragraphs: string[]; source_id: number; properties: object; original_segments_metadata?: Record<number, { id: number; timestamp: string }>; },// payload sent from frontend
-//   { rejectValue: string }
-// >(
-//   'segments/saveSegments',
-//   async ({ paragraphs, source_id, properties, original_segments_metadata }, { rejectWithValue }) => {
-//     try {
-//       return await segmentService.saveSegments({ paragraphs, source_id, properties, original_segments_metadata });
-//     } catch (err: any) {
-//       return rejectWithValue(err.message || 'Failed to save segments');
-//     }
-//   }
-// );
 
 export const saveSegments = createAsyncThunk<
   { source_id: number; segments: Segment[] },
-  {
-    paragraphs: string[];
-    source_id: number;
-    properties: object;
-    original_segments_metadata?: Record<number, { id: number; timestamp: string }>;
-  },
+  SaveSegmentsPayload,
   { rejectValue: string }
 >(
   'segments/saveSegments',
-  async ({ paragraphs, source_id, properties, original_segments_metadata }, { rejectWithValue }) => {
+  async ({ segment_ids,paragraphs, source_id, properties, original_segments_metadata }, { rejectWithValue }) => {
     try {
       const payload: any = { paragraphs, source_id, properties };
 
       if (original_segments_metadata) {
         payload.original_segments_metadata = original_segments_metadata;
+      }
+      if(segment_ids){
+        payload.segment_ids = segment_ids;
       }
 
       return await segmentService.saveSegments(payload);
@@ -153,7 +137,20 @@ const segmentSlice = createSlice({
             .addCase(saveSegments.fulfilled, (state, action: PayloadAction<{ source_id: number; segments: Segment[] }>) => {
                 const { source_id, segments } = action.payload;
                 state.loading = false;
-                state.segments[source_id] = segments;
+
+                if (!state.segments[source_id]) {
+                    state.segments[source_id] = [];
+                }
+                segments.forEach(newSegment => {
+                    const existingIndex = state.segments[source_id].findIndex(
+                        s => s.order === newSegment.order
+                    );
+                    if (existingIndex !== -1) {
+                        state.segments[source_id][existingIndex] = newSegment;
+                    } else {
+                        state.segments[source_id].push(newSegment);
+                    }
+                });
             })
             .addCase(saveSegments.rejected, (state, action: PayloadAction<string | undefined>) => {
                 state.loading = false;

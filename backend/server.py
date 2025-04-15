@@ -136,6 +136,7 @@ def export_translation(source_id: int):
 async def save_segments(request: Request, user_info: dict = Depends(get_user_info)):
     try:
         data = await request.json()
+        segment_ids = data.get("segment_ids")
         paragraphs = data.get("paragraphs")
         source_id = data.get("source_id")
         properties = data.get("properties", {})
@@ -143,6 +144,9 @@ async def save_segments(request: Request, user_info: dict = Depends(get_user_inf
 
         if not isinstance(original_segments_metadata, dict):
             original_segments_metadata = {}
+        
+        if not isinstance(segment_ids, list):
+            segment_ids = None
 
         if not isinstance(paragraphs, list) or not isinstance(source_id, int):
             raise HTTPException(status_code=400, detail="Invalid request format")
@@ -152,7 +156,8 @@ async def save_segments(request: Request, user_info: dict = Depends(get_user_inf
             source_id=source_id,
             properties_dict=properties,
             user_info=user_info,
-            original_segments_metadata=original_segments_metadata  
+            original_segments_metadata=original_segments_metadata,
+            segment_ids=segment_ids
         )
 
         saved_segments = store_segments(segments)

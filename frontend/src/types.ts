@@ -37,3 +37,11 @@ export enum Language {
     FRENCH = "French",
     ARABIC = "Arabic"
 }
+
+export interface SaveSegmentsPayload {
+    segment_ids?: number[];
+    paragraphs: string[];
+    source_id: number;
+    properties: object;
+    original_segments_metadata?: Record<number | string, { id: number; timestamp: string }>;
+}

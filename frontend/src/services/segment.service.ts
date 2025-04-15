@@ -1,5 +1,5 @@
 import { httpService } from './http.service';
-import { Segment } from '../types';
+import { Segment, SaveSegmentsPayload } from '../types';
 
 const SEGMENTS = 'segments';
 
@@ -13,12 +13,7 @@ export const segmentService = {
 };
 
 
-async function saveSegments(payload: {
-    paragraphs: string[];
-    source_id: number;
-    properties: object;
-    original_segments_metadata?: Record<number, { id: number; timestamp: string }>;
-  }): Promise<{ source_id: number; segments: Segment[] }> {
+async function saveSegments(payload: SaveSegmentsPayload): Promise<{ source_id: number; segments: Segment[] }> {
     const savedSegments = await httpService.post<Segment[]>(`${SEGMENTS}`, payload);
     return {
         source_id: payload.source_id,

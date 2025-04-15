@@ -6,7 +6,7 @@ import { segmentService } from '../services/segment.service';
 import SaveIcon from '@mui/icons-material/Save';
 import TranslateIcon from '@mui/icons-material/Translate';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import { fetchSegments, addSegment, translateSegments } from '../SegmentSlice';
+import { fetchSegments, saveSegments, translateSegments } from '../SegmentSlice';
 import {  Segment} from '../types';
 import { fetchSource } from '../SourceSlice';
 import { useAppDispatch, RootState } from '../store';
@@ -72,38 +72,75 @@ const SourceEdit: React.FC = () => {
         }));
     };
 
+    // const handleSaveTranslation = async (sourceSegmentId: number) => {
+    //     if (!parsedId || !translations[sourceSegmentId]) return;
+
+    //     // Find an existing translation for the same `order`
+    //     const existingTranslation = segments[parsedId]?.find(translateSegment => translateSegment.order === translations[sourceSegmentId].order);
+    //     console.log(" Found existing translation:", existingTranslation);
+    //     const segmentToSave = {
+    //         id: existingTranslation ? existingTranslation.id : null,
+    //         source_id: parsedId,
+    //         order: translations[sourceSegmentId].order,
+    //         text: translations[sourceSegmentId].text,
+    //         original_segment_id: translations[sourceSegmentId].original_segment_id,
+    //         original_segment_timestamp: translations[sourceSegmentId].original_segment_timestamp || undefined,
+    //         properties: {
+    //             segment_type: existingTranslation ? "edited" : "user_translation"
+    //         }
+    //     };
+    //     console.log("Sending segment data to backend:", segmentToSave);
+    //     try {
+    //         await dispatch(addSegment(segmentToSave as Omit<Segment, "timestamp">)).unwrap();
+    //         showToast("Translation saved successfully!", "success");
+    //         setTranslations(prev => {
+    //             const updated = { ...prev };
+    //             delete updated[sourceSegmentId];
+    //             return updated;
+    //         });
+    //     } catch (error) {
+    //         console.error("Error saving translation:", error);
+    //         showToast("Failed to save translation. Please try again.", "error");
+    //     }
+    // };
+
     const handleSaveTranslation = async (sourceSegmentId: number) => {
-        if (!parsedId || !translations[sourceSegmentId]) return;
-
-        // Find an existing translation for the same `order`
-        const existingTranslation = segments[parsedId]?.find(translateSegment => translateSegment.order === translations[sourceSegmentId].order);
-        console.log(" Found existing translation:", existingTranslation);
-        const segmentToSave = {
-            id: existingTranslation ? existingTranslation.id : null,
-            source_id: parsedId,
-            order: translations[sourceSegmentId].order,
-            text: translations[sourceSegmentId].text,
-            original_segment_id: translations[sourceSegmentId].original_segment_id,
-            original_segment_timestamp: translations[sourceSegmentId].original_segment_timestamp || undefined,
-            properties: {
-                segment_type: existingTranslation ? "edited" : "user_translation"
-            }
-        };
-        console.log("Sending segment data to backend:", segmentToSave);
+        if (!parsedId || !translations[sourceSegmentId] || originalSourceId == null) return;
+      
+        const translation = translations[sourceSegmentId];
+        const originalSegment = segments[originalSourceId]?.find(s => s.id === sourceSegmentId);
+        const order = originalSegment?.order ?? translation.order;
+        const existingTranslation = segments[parsedId]?.find(t => t.order === order);
+      
+       
         try {
-            await dispatch(addSegment(segmentToSave as Omit<Segment, "timestamp">)).unwrap();
-            showToast("Translation saved successfully!", "success");
-            setTranslations(prev => {
-                const updated = { ...prev };
-                delete updated[sourceSegmentId];
-                return updated;
-            });
+          await dispatch(saveSegments({
+            paragraphs: [translation.text],
+            source_id: parsedId,
+            properties: {
+              segment_type: existingTranslation ? "edited" : "user_translation"
+            },
+            original_segments_metadata: {
+              [translation.order]: {
+                id: translation.original_segment_id,
+                timestamp: translation.original_segment_timestamp
+              }
+            },
+            segment_ids: existingTranslation?.id ? [existingTranslation.id] : undefined
+          })).unwrap();
+      
+          showToast("Translation saved successfully!", "success");
+          setTranslations(prev => {
+            const updated = { ...prev };
+            delete updated[sourceSegmentId];
+            return updated;
+          });
         } catch (error) {
-            console.error("Error saving translation:", error);
-            showToast("Failed to save translation. Please try again.", "error");
+          console.error("Error saving translation:", error);
+          showToast("Failed to save translation. Please try again.", "error");
         }
-    };
-
+      };
+      
     const handleTranslateAll = async () => {
         if (!parsedId || !originalSourceId || !segments[originalSourceId]) return;
         console.log('user clicked translate all');
@@ -207,9 +244,9 @@ const SourceEdit: React.FC = () => {
                                                 maxRows={8}
                                                 value={sourceSegment.id !== undefined ? translations[sourceSegment.id]?.text ?? existingTranslation : existingTranslation}
                                                 onChange={(e) => handleTranslationChange(
-                                                    sourceSegment.id!,
+                                                    sourceSegment.id!, //non-null assertion operator
                                                     sourceSegment.order,
-                                                    sourceSegment.timestamp,
+                                                    sourceSegment.timestamp || "", 
                                                     e.target.value
                                                 )}
                                                 placeholder="Enter translation"
