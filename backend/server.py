@@ -51,7 +51,6 @@ keycloak_openid = KeycloakOpenID(
 
 # User info middlware
 
-
 async def get_user_info(request: Request):
     # Extract token from Authorization header
     auth_header = request.headers.get('Authorization')
@@ -77,61 +76,81 @@ def startup():
         db.create_tables([Source, Segment], safe=True)
     logger.info('Database connected and tables ensured')
 
-
 @app.on_event('shutdown')
 def shutdown():
     if not db.is_closed():
         db.close()
     logger.info('Database connection closed')
 
-@app.post('/docx2text')
-def extract_segments_handler(
-    file: UploadFile = File(...),
-):
+####### SOURCE AP
+@app.get('/sources', response_model=list[dict])
+def read_sources(user_info: dict = Depends(get_user_info)):
+    sources = list(Source.select().dicts())
+    print("Fetched sources:", sources)
+    return sources
+
+@app.get('/sources/{source_id}', response_model=dict)
+def read_source(source_id: int, user_info: dict = Depends(get_user_info)):
     try:
-        paragraphs = get_paragraphs_from_file(file)
-        properties = {"segment_type": "file"}
+        source = Source.get(Source.id == source_id)
+        return model_to_dict(source)
+    except DoesNotExist:
+        raise HTTPException(status_code=404, detail='Source not found')
 
-        return  {
-            "paragraphs": paragraphs,
-            "properties": properties
-        }
-    except Exception as e:
-        print(f"❌ Error in /docx2text: {e}")
-        raise HTTPException(status_code=500, detail="Failed to extract segments")
-    
+@app.post('/sources', response_model=dict)
+def create_source(source: dict, user_info: dict = Depends(get_user_info)):
+    # Generate a new ID using the database sequence
+    cursor = db.execute_sql("SELECT nextval('source_id_seq')")
+    id_value = cursor.fetchone()[0]
 
-@app.get("/export/{source_id}", response_class=FileResponse)
-def export_translation(source_id: int):
+    created_source = Source.create(
+        id=id_value,
+        username=user_info['preferred_username'],
+        **source  # Unpack additional source fields from the request
+    )
+    return model_to_dict(created_source)
 
+@app.put('/sources/{source_id}', response_model=dict)
+def update_source(source_id: int, source: dict, user_info: dict = Depends(get_user_info)):
     try:
-        segments = get_latest_segments(source_id)
+        # Update fields dynamically
+        query = Source.update(
+            **source, timestamp=datetime.utcnow()).where(Source.id == source_id)
+        updated_rows = query.execute()
 
-        if not segments:
-            raise HTTPException(
-                status_code=404, detail="No translated segments found.")
+        if updated_rows == 0:
+            raise HTTPException(status_code=404, detail='Source not found')
+        db_source = Source.get(Source.id == source_id)
+        return model_to_dict(db_source)
+    except DoesNotExist:
+        raise HTTPException(status_code=404, detail='Source not found')
 
-        # create a new document
-        doc = Document()
-        doc.add_heading("Translated Document", level=1)
+@app.delete('/sources/{source_id}', response_model=int)
+def delete_source(source_id: int, _: dict = Depends(get_user_info)):
+    rows_deleted = Source.delete().where(Source.id == source_id).execute()
+    if rows_deleted == 0:
+        raise HTTPException(status_code=404, detail='Source not found')
+    return rows_deleted
 
-        for segment in sorted(segments, key=lambda s: s['order']):
-            doc.add_paragraph(segment["text"])
+####### SEGMENTS API
+@app.get('/segments/{source_id}', response_model=list[dict])
+def read_sources(source_id: int, user_info: dict = Depends(get_user_info)):
+    try:
+        # print(
+        #     f"📡 from server.py :Received request for segments - source_id: {source_id}")
+        latest_segments = get_latest_segments(source_id)
+        # print(
+        #     f"✅ from server.py : Segments fetched successfully: {latest_segments}")
+        return latest_segments
 
-        # save the document to a temporary file
-        file_path = f"/tmp/translated_{source_id}.docx"
-        doc.save(file_path)
-
-        return FileResponse(file_path, filename=f"translated_{source_id}.docx",
-                            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-
-    except HTTPException as e:
-        raise e
     except Exception as e:
+        print(f"❌ Error fetching segments: {e}")
         raise HTTPException(
-            status_code=500, detail=f"Error generating DOCX: {str(e)}")
+            status_code=500, detail=f"Failed to fetch segments: {str(e)}")
 
-
+        print(f"Error starting translation: {e}")
+        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
+    
 @app.post('/segments', response_model=list[dict])
 async def save_segments(request: Request, user_info: dict = Depends(get_user_info)):
     try:
@@ -167,61 +186,7 @@ async def save_segments(request: Request, user_info: dict = Depends(get_user_inf
         print(f"❌ Error in /segments: {e}")
         raise HTTPException(status_code=500, detail="Failed to store segments")
 
-
-@app.post('/segments/save')
-async def save_segments_handler(
-    request: Request,
-    file: UploadFile = None,
-    source_id: str = Form(None),
-    properties: str = Form(None),
-    user_info: dict = Depends(get_user_info)
-):
-    try:
-        if file:  # uploadfile
-            if not source_id:
-                raise HTTPException(
-                    status_code=400, detail="Missing source_id for file upload")
-
-            properties_dict = json.loads(properties) if properties else {}
-            return save_segments_from_file(file, int(source_id), properties_dict, user_info)
-
-        json_data = await request.json()
-        properties_dict = json_data.get("properties", {})
-        segment_type = properties_dict.get("segment_type", "")
-
-        if segment_type == "provider_translation":
-            return process_translation(json_data, user_info)
-
-        # update or create segment
-        if "id" in json_data and json_data["id"]:
-            return update_segment(json_data, user_info)
-        else:
-            return create_segment(json_data, user_info)
-
-    except Exception as e:
-        print(f"❌ Error in /segments/save: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"Error processing request: {str(e)}")
-
-
-@app.get('/segments/{source_id}', response_model=list[dict])
-def read_sources(source_id: int, user_info: dict = Depends(get_user_info)):
-    try:
-        # print(
-        #     f"📡 from server.py :Received request for segments - source_id: {source_id}")
-        latest_segments = get_latest_segments(source_id)
-        # print(
-        #     f"✅ from server.py : Segments fetched successfully: {latest_segments}")
-        return latest_segments
-
-    except Exception as e:
-        print(f"❌ Error fetching segments: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"Failed to fetch segments: {str(e)}")
-
-        print(f"Error starting translation: {e}")
-        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
-
+####### TRANSLATION
 @app.post("/translate", response_model=dict)
 def translate_paragraphs_handler(
     request: ParagraphsTranslateRequest,
@@ -254,107 +219,51 @@ def translate_paragraphs_handler(
         print(f"❌ Error in translation handler: {e}")
         raise HTTPException(status_code=500, detail=f"Translation failed: {str(e)}")
     
-
-@app.get('/sources', response_model=list[dict])
-def read_sources(user_info: dict = Depends(get_user_info)):
-    sources = list(Source.select().dicts())
-    print("Fetched sources:", sources)
-    return sources
-
-
-@app.post('/sources', response_model=dict)
-def create_source(source: dict, user_info: dict = Depends(get_user_info)):
-    # Generate a new ID using the database sequence
-    cursor = db.execute_sql("SELECT nextval('source_id_seq')")
-    id_value = cursor.fetchone()[0]
-
-    created_source = Source.create(
-        id=id_value,
-        username=user_info['preferred_username'],
-        **source  # Unpack additional source fields from the request
-    )
-    return model_to_dict(created_source)
-
-
-@app.get('/sources/{source_id}', response_model=dict)
-def read_source(source_id: int, user_info: dict = Depends(get_user_info)):
+####### IMPORT EXPORT
+@app.post('/docx2text')
+def extract_segments_handler(
+    file: UploadFile = File(...),
+):
     try:
-        source = Source.get(Source.id == source_id)
-        return model_to_dict(source)
-    except DoesNotExist:
-        raise HTTPException(status_code=404, detail='Source not found')
+        paragraphs = get_paragraphs_from_file(file)
+        properties = {"segment_type": "file"}
 
+        return  {
+            "paragraphs": paragraphs,
+            "properties": properties
+        }
+    except Exception as e:
+        print(f"❌ Error in /docx2text: {e}")
+        raise HTTPException(status_code=500, detail="Failed to extract segments")
+    
+@app.get("/export/{source_id}", response_class=FileResponse)
+def export_translation(source_id: int):
 
-@app.put('/sources/{source_id}', response_model=dict)
-def update_source(source_id: int, source: dict, user_info: dict = Depends(get_user_info)):
     try:
-        # Update fields dynamically
-        query = Source.update(
-            **source, timestamp=datetime.utcnow()).where(Source.id == source_id)
-        updated_rows = query.execute()
+        segments = get_latest_segments(source_id)
 
-        if updated_rows == 0:
-            raise HTTPException(status_code=404, detail='Source not found')
-        db_source = Source.get(Source.id == source_id)
-        return model_to_dict(db_source)
-    except DoesNotExist:
-        raise HTTPException(status_code=404, detail='Source not found')
+        if not segments:
+            raise HTTPException(
+                status_code=404, detail="No translated segments found.")
 
+        # create a new document
+        doc = Document()
+        doc.add_heading("Translated Document", level=1)
 
-@app.delete('/sources/{source_id}', response_model=int)
-def delete_source(source_id: int, _: dict = Depends(get_user_info)):
-    rows_deleted = Source.delete().where(Source.id == source_id).execute()
-    if rows_deleted == 0:
-        raise HTTPException(status_code=404, detail='Source not found')
-    return rows_deleted
+        for segment in sorted(segments, key=lambda s: s['order']):
+            doc.add_paragraph(segment["text"])
 
-############################################################################################################################
+        # save the document to a temporary file
+        file_path = f"/tmp/translated_{source_id}.docx"
+        doc.save(file_path)
 
+        return FileResponse(file_path, filename=f"translated_{source_id}.docx",
+                            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
-@app.post('/dictionaries', response_model=dict)
-def create_dictionary(dictionary: dict, user_info: dict = Depends(get_user_info)):
-    print('User info:', user_info)
-    new_dictionary = Dictionary(**dictionary)
-
-    cursor = db.execute_sql("SELECT nextval('dictionary_id_seq')")
-    id_value = cursor.fetchone()[0]
-
-    return model_to_dict(Dictionary.create(
-        id=id_value,
-        name=new_dictionary.name,
-        username=user_info['preferred_username'],
-        labels=new_dictionary.labels,
-    ))
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Error generating DOCX: {str(e)}")
 
 
-@app.get('/dictionaries', response_model=list[dict])
-def read_dictionaries(skip: int = 0, limit: int = 10, user_info: dict = Depends(get_user_info)):
-    return list(Dictionary.select().offset(skip).limit(limit).dicts())
-
-
-@app.get('/dictionaries/{dictionary_id}', response_model=dict)
-def read_dictionary(dictionary_id: int, user_info: dict = Depends(get_user_info)):
-    try:
-        return model_to_dict(Dictionary.get(Dictionary.id == dictionary_id))
-    except DoesNotExist:
-        raise HTTPException(status_code=404, detail='Dictionary not found')
-
-
-@app.put('/dictionaries/{dictionary_id}', response_model=dict)
-def update_dictionary(dictionary_id: int, dictionary: dict, user_info: dict = Depends(get_user_info)):
-    try:
-        updated_dictionary = Dictionary(**dictionary)
-        db_dictionary = Dictionary.get(Dictionary.id == dictionary_id)
-        db_dictionary.name = updated_dictionary.name
-        db_dictionary.username = user_info['preferred_username']
-        db_dictionary.labels = updated_dictionary.labels
-        db_dictionary.timestamp = datetime.utcnow()
-        # We don't update we create a new row with new timestamp.
-        return model_to_dict(Dictionary.create(**model_to_dict(db_dictionary)))
-    except DoesNotExist:
-        raise HTTPException(status_code=404, detail='Dictionary not found')
-
-
-@app.delete('/dictionaries/{dictionary_id}', response_model=int)
-def delete_dictionary(dictionary_id: int, _: dict = Depends(get_user_info)):
-    return Dictionary.delete().where(Dictionary.id == dictionary_id).execute()
