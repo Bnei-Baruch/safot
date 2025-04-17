@@ -1,9 +1,6 @@
 from datetime import datetime
-from io import BytesIO
-from typing import Union, List
 import os
 import logging
-import json
 
 from peewee import DoesNotExist
 from dotenv import load_dotenv
@@ -16,8 +13,8 @@ from playhouse.shortcuts import model_to_dict
 from starlette.status import HTTP_401_UNAUTHORIZED
 
 from services.translation_service import TranslationService
-from services.segment_service import get_paragraphs_from_file, save_segments_from_file, create_segment, update_segment, get_latest_segments, store_segments, build_segments
-from models import Source, Segment, ParagraphsTranslateRequest, Language, TranslationServiceOptions
+from services.segment_service import get_paragraphs_from_file, get_latest_segments, store_segments
+from models import Source, Segment, ParagraphsTranslateRequest, TranslationServiceOptions
 from db import db
 
 
@@ -155,29 +152,16 @@ def read_sources(source_id: int, user_info: dict = Depends(get_user_info)):
 async def save_segments(request: Request, user_info: dict = Depends(get_user_info)):
     try:
         data = await request.json()
-        segment_ids = data.get("segment_ids")
-        paragraphs = data.get("paragraphs")
-        source_id = data.get("source_id")
-        properties = data.get("properties", {})
-        original_segments_metadata = data.get("original_segments_metadata")
+        segments = data.get("segments", [])
 
-        if not isinstance(original_segments_metadata, dict):
-            original_segments_metadata = {}
-        
-        if not isinstance(segment_ids, list):
-            segment_ids = None
+        if not isinstance(segments, list):
+            raise HTTPException(status_code=400, detail="Invalid request format - segments must be a list")
 
-        if not isinstance(paragraphs, list) or not isinstance(source_id, int):
-            raise HTTPException(status_code=400, detail="Invalid request format")
-
-        segments = build_segments(
-            texts=paragraphs,
-            source_id=source_id,
-            properties_dict=properties,
-            user_info=user_info,
-            original_segments_metadata=original_segments_metadata,
-            segment_ids=segment_ids
-        )
+        # Add username and timestamp to each segment
+        now = datetime.utcnow()
+        for segment in segments:
+            segment["username"] = user_info["preferred_username"]
+            segment["timestamp"] = now
 
         saved_segments = store_segments(segments)
         return saved_segments

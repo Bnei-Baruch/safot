@@ -5,10 +5,25 @@ export interface Segment {
     order: number;
     username?: string;
     timestamp?: string;
+    original_segment_id?: number;
+    original_segment_timestamp?: string;
     properties?: {
         segment_type?: "user_translation" | "provider_translation" | "edited" | "file";
         [key: string]: any;
     };
+}
+
+export interface BuildSegmentParams {
+    text: string;
+    source_id: number;
+    order: number;
+    properties: {
+        segment_type?: "user_translation" | "provider_translation" | "edited" | "file";
+        [key: string]: any;
+    };
+    id?: number;
+    original_segment_id?: number;
+    original_segment_timestamp?: string;
 }
 
 export interface Source {
@@ -36,12 +51,4 @@ export enum Language {
     RUSSIAN = "Russian",
     FRENCH = "French",
     ARABIC = "Arabic"
-}
-
-export interface SaveSegmentsPayload {
-    segment_ids?: number[];
-    paragraphs: string[];
-    source_id: number;
-    properties: object;
-    original_segments_metadata?: Record<number | string, { id: number; timestamp: string }>;
 }

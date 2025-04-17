@@ -3,13 +3,11 @@ import tiktoken
 from openai import OpenAI
 from openai import OpenAIError, Timeout
 from datetime import datetime
-from models import Segment, Language, Provider, TranslationServiceOptions
-from peewee import IntegrityError
+from models import TranslationServiceOptions
+# from peewee import IntegrityError
 from dotenv import load_dotenv
-# from services.segment_service import save_segment
-from services.segment_service import build_segments
 from services.translation_prompts import TRANSLATION_PROMPTS
-from pprint import pprint
+# from pprint import pprint
 import inspect
 
 # Load environment variables
@@ -45,27 +43,6 @@ class TranslationService:
         chunk_tokens_by_context = context_window - prompt_tokens - max_output_tokens
         return max(min(chunk_tokens_by_output, chunk_tokens_by_context, 4000), 0)
 
-    # def prepare_chunks_for_translation(self, segments, max_chunk_tokens):
-    #     chunks = []
-    #     current_chunk = []
-    #     current_tokens = 0
-    #     for segment in segments:
-    #         paragraph = segment["text"]
-    #         if not paragraph.strip() or paragraph.strip() == "|||":
-    #             continue
-    #         paragraph_tokens = len(self.encoding.encode(paragraph))
-    #         separator_tokens = len(self.encoding.encode(
-    #             " ||| ")) if current_chunk else 0
-    #         if current_tokens + paragraph_tokens + separator_tokens > max_chunk_tokens:
-    #             chunks.append(" ||| ".join(current_chunk))
-    #             current_chunk = [paragraph]
-    #             current_tokens = paragraph_tokens
-    #         else:
-    #             current_chunk.append(paragraph)
-    #             current_tokens += paragraph_tokens + separator_tokens
-    #     if current_chunk:
-    #         chunks.append(" ||| ".join(current_chunk))
-    #     return chunks
 
     def prepare_chunks_for_translation(self, items, max_chunk_tokens):
         """
@@ -143,39 +120,39 @@ class TranslationService:
             return f"Translation failed due to unexpected error: {str(e)}"
 
 
-    def process_translation(self, segments, source_id, username):
-        max_chunk_tokens = self.calculate_chunk_token_limit()
-        prepared_chunks = self.prepare_chunks_for_translation(segments, max_chunk_tokens)
-        translated_paragraphs = []
+    # def process_translation(self, segments, source_id, username):
+    #     max_chunk_tokens = self.calculate_chunk_token_limit()
+    #     prepared_chunks = self.prepare_chunks_for_translation(segments, max_chunk_tokens)
+    #     translated_paragraphs = []
 
-        for i, chunk in enumerate(prepared_chunks, 1):
-            debug_print(f"Translating chunk {i}...")
-            translated_text = self.send_chunk_for_translation(chunk)
-            if translated_text:
-                translated_paragraphs.extend(translated_text.split(" ||| "))
-            else:
-                debug_print(f"Chunk {i} translation failed.")
+    #     for i, chunk in enumerate(prepared_chunks, 1):
+    #         debug_print(f"Translating chunk {i}...")
+    #         translated_text = self.send_chunk_for_translation(chunk)
+    #         if translated_text:
+    #             translated_paragraphs.extend(translated_text.split(" ||| "))
+    #         else:
+    #             debug_print(f"Chunk {i} translation failed.")
 
-        translated_segments = build_segments(
-            translated_paragraphs,
-            source_id,
-            {
-                "segment_type": "provider",
-                "translation": {
-                    "provider": self.options.provider.value,
-                    "model": self.options.model,
-                    "source_language": self.options.source_language.value,
-                    "target_language": self.options.target_language.value,
-                    "prompt_key": self.options.prompt_key,
-                    "prompt": self.prompt,
-                    "temperature": self.options.temperature
-                }
-            },
-            {"preferred_username": username}
-        )
+    #     translated_segments = build_segments(
+    #         translated_paragraphs,
+    #         source_id,
+    #         {
+    #             "segment_type": "provider",
+    #             "translation": {
+    #                 "provider": self.options.provider.value,
+    #                 "model": self.options.model,
+    #                 "source_language": self.options.source_language.value,
+    #                 "target_language": self.options.target_language.value,
+    #                 "prompt_key": self.options.prompt_key,
+    #                 "prompt": self.prompt,
+    #                 "temperature": self.options.temperature
+    #             }
+    #         },
+    #         {"preferred_username": username}
+    #     )
 
-        debug_print("✅ Translation completed.")
-        return translated_segments
+    #     debug_print("✅ Translation completed.")
+    #     return translated_segments
 
     def translate_paragraphs(self, paragraphs: list[str]) -> tuple[list[str], dict]:
         max_chunk_tokens = self.calculate_chunk_token_limit()

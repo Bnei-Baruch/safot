@@ -40,6 +40,27 @@ const SourceIndex: React.FC = () => {
             });
     }
 
+    const buildAndSaveSegments = async (
+        paragraphs: string[],
+        source_id: number,
+        properties: Record<string, any>,
+        originalSegments?: Segment[]
+    ): Promise<Segment[]> => {
+        const segments = paragraphs.map((text, index) => {
+            const originalSegment = originalSegments?.[index];
+            return segmentService.buildSegment({
+                text,
+                source_id,
+                order: index + 1,
+                properties,
+                original_segment_id: originalSegment?.id,
+                original_segment_timestamp: originalSegment?.timestamp
+            });
+        });
+        const { segments: savedSegments } = await dispatch(storeSegments(segments)).unwrap();
+        return savedSegments;
+    };
+
     const handleTranslateDocumentSubmit = async (data: {
         file: File;
         name: string;
@@ -48,33 +69,31 @@ const SourceIndex: React.FC = () => {
     }) => {
         try {
             console.log("🚀 Starting full translation flow");
-    
+
             const { originalSource, translationSource: translationSource } = await createSources(data);
             const { paragraphs: fileParagraphs, properties: fileProperties } = await extractParagraphsFromFile(data.file);
-            const originalSegments = await saveSegments({
-                paragraphs: fileParagraphs,
-                source_id: originalSource.id,
-                properties: fileProperties,
-              });
-
-            console.log("✅ Saved segments to DB:", originalSegments);
+            
+            // Build and save original segments
+            const savedOriginalSegments = await buildAndSaveSegments(
+                fileParagraphs,
+                originalSource.id,
+                fileProperties
+            );
             
             const { translated_paragraphs, properties: providerProperties, total_segments_translated } = await translateParagraphs(
                 fileParagraphs,
                 data.source_language,
                 data.target_language
             );
-            const originalSegmentsMetadata = buildOriginalMetadata(originalSegments);
 
-            const savedTranslatedSegments = await saveSegments({
-                paragraphs: translated_paragraphs,
-                source_id: translationSource.id,
-                properties: providerProperties,
-                original_segments_metadata: originalSegmentsMetadata,
-            });
-    
-            console.log("💾 Translated segments saved:", savedTranslatedSegments);
-    
+            // Build and save translated segments
+            const savedTranslatedSegments = await buildAndSaveSegments(
+                translated_paragraphs,
+                translationSource.id,
+                providerProperties,
+                savedOriginalSegments
+            );
+
             showToast(`${total_segments_translated} segments translated & saved!`, "success");
             navigate(`/source-edit/${translationSource.id}`);
 
@@ -116,37 +135,6 @@ const SourceIndex: React.FC = () => {
         return await segmentService.extractParagraphs(file);
     };
 
-    const saveSegments = async (data: {
-        paragraphs: string[];
-        source_id: number;
-        properties: Record<string, any>;
-        original_segments_metadata?: {
-          [order: number]: { id: number; timestamp: string };
-        };
-      }): Promise<Segment[]> => {
-        try {
-          const result = await dispatch(storeSegments(data)).unwrap();
-          showToast("✅ Segments saved successfully", "success");
-          return result.segments;
-        } catch (err) {
-          console.error("❌ Failed to save segments:", err);
-          showToast("Failed to save segments. Please try again.", "error");
-          return [];
-        }
-    };
-      
-    const buildOriginalMetadata = (segments: Segment[]) => {
-        return segments.reduce((acc, segment) => {
-            if (segment.id !== undefined && segment.timestamp) {
-                acc[segment.order] = {
-                    id: segment.id,
-                    timestamp: segment.timestamp,
-                };
-            }
-            return acc;
-        }, {} as Record<number, { id: number, timestamp: string }>);
-    };
-    
     const translateParagraphs = async (
         paragraphs: string[],
         sourceLang: string,

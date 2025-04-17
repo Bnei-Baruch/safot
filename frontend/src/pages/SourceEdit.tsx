@@ -79,34 +79,34 @@ const SourceEdit: React.FC = () => {
         const order = originalSegment?.order ?? translation.order;
         const existingTranslation = segments[parsedId]?.find(t => t.order === order);
       
-       
-        try {
-          await dispatch(saveSegments({
-            paragraphs: [translation.text],
+        const segment = segmentService.buildSegment({
+            text: translation.text,
             source_id: parsedId,
+            order: order,
             properties: {
-              segment_type: existingTranslation ? "edited" : "user_translation"
+                segment_type: existingTranslation ? "edited" : "user_translation"
             },
-            original_segments_metadata: {
-              [translation.order]: {
-                id: translation.original_segment_id,
-                timestamp: translation.original_segment_timestamp
-              }
-            },
-            segment_ids: existingTranslation?.id ? [existingTranslation.id] : undefined
-          })).unwrap();
+            id: existingTranslation?.id,
+            original_segment_id: translation.original_segment_id,
+            original_segment_timestamp: translation.original_segment_timestamp
+        });
+
+        console.log("Saving segment:", segment);
       
-          showToast("Translation saved successfully!", "success");
-          setTranslations(prev => {
-            const updated = { ...prev };
-            delete updated[sourceSegmentId];
-            return updated;
-          });
+        try {
+            await dispatch(saveSegments([segment])).unwrap();
+      
+            showToast("Translation saved successfully!", "success");
+            setTranslations(prev => {
+                const updated = { ...prev };
+                delete updated[sourceSegmentId];
+                return updated;
+            });
         } catch (error) {
-          console.error("Error saving translation:", error);
-          showToast("Failed to save translation. Please try again.", "error");
+            console.error("Error saving translation:", error);
+            showToast("Failed to save translation. Please try again.", "error");
         }
-      };
+    };
       
     const getLanguageName = (code: string): string => {
         const languageMap: { [key: string]: string } = {

@@ -1,6 +1,6 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import { segmentService } from './services/segment.service';
-import { Segment,SaveSegmentsPayload } from './types';
+import { Segment } from './types';
 
 export const fetchSegments = createAsyncThunk<
     { source_id: number, segments: Segment[] },
@@ -19,30 +19,19 @@ export const fetchSegments = createAsyncThunk<
 );
 
 export const saveSegments = createAsyncThunk<
-  { source_id: number; segments: Segment[] },
-  SaveSegmentsPayload,
-  { rejectValue: string }
+    { source_id: number; segments: Segment[] },
+    Segment[],
+    { rejectValue: string }
 >(
-  'segments/saveSegments',
-  async ({ segment_ids,paragraphs, source_id, properties, original_segments_metadata }, { rejectWithValue }) => {
-    try {
-      const payload: any = { paragraphs, source_id, properties };
-
-      if (original_segments_metadata) {
-        payload.original_segments_metadata = original_segments_metadata;
-      }
-      if(segment_ids){
-        payload.segment_ids = segment_ids;
-      }
-
-      return await segmentService.saveSegments(payload);
-    } catch (err: any) {
-      return rejectWithValue(err.message || 'Failed to save segments');
+    'segments/saveSegments',
+    async (segments, { rejectWithValue }) => {
+        try {
+            return await segmentService.saveSegments(segments);
+        } catch (err: any) {
+            return rejectWithValue(err.message || 'Failed to save segments');
+        }
     }
-  }
 );
-
-
 
 interface SegmentState {
     segments: Record<number, Segment[]>;
@@ -79,7 +68,7 @@ const segmentSlice = createSlice({
                 state.loading = true;
                 state.error = null;
             })
-            .addCase(saveSegments.fulfilled, (state, action: PayloadAction<{ source_id: number; segments: Segment[] }>) => {
+            .addCase(saveSegments.fulfilled, (state, action) => {
                 const { source_id, segments } = action.payload;
                 state.loading = false;
 
