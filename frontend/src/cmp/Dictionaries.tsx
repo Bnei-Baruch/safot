@@ -1,3 +1,5 @@
+// Currently not used, for future usage.
+
 import React, { useEffect, useState } from 'react';
 import { toast } from "react-toastify";
 

@@ -1,5 +1,5 @@
 import { httpService } from './http.service';
-import { Segment } from '../types';
+import { Segment } from '../types/frontend-types';
 
 const TRANSLATE = 'translate';
 

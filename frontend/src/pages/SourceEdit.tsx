@@ -6,7 +6,7 @@ import { segmentService } from '../services/segment.service';
 import SaveIcon from '@mui/icons-material/Save';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { fetchSegments, saveSegments } from '../SegmentSlice';
-import {  Segment} from '../types';
+import { Segment } from '../types/frontend-types';
 import { fetchSource } from '../SourceSlice';
 import { useAppDispatch, RootState } from '../store';
 import { useToast } from '../cmp/Toast';
@@ -56,7 +56,6 @@ const SourceEdit: React.FC = () => {
         if (parsedId && !(parsedId in segments)) {
             dispatch(fetchSegments({ source_id: parsedId }));
         }
-        // console.log("📝 Segments in Redux store:", segments);
     }, [dispatch, parsedId, originalSourceId, segments]);
 
     const handleTranslationChange = (sourceSegmentId: number, order: number, timestamp: string, value: string) => {

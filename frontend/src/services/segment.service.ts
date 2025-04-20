@@ -1,5 +1,5 @@
 import { httpService } from './http.service';
-import { Segment, BuildSegmentParams } from '../types';
+import { Segment, BuildSegmentParams } from '../types/frontend-types';
 
 const SEGMENTS = 'segments';
 
@@ -39,7 +39,6 @@ async function extractParagraphs(file: File,): Promise<{paragraphs: string[], pr
 }
 
 async function fetchSegments(source_id: number): Promise<Segment[]> {
-    // console.log("🛠️From segment.service :  Fetching segments for:", source_id);
     const response = await httpService.get<Segment[]>(`${SEGMENTS}/${source_id}`);
     return response; // Directly return the segments array
 }

@@ -1,3 +1,9 @@
+"""
+This file is not part of the main application.
+It's a command-line tool for translating documents directly from the terminal.
+Usage: python provider_tools.py -i input.docx -o output.docx -t Hebrew
+"""
+
 import os
 from dotenv import load_dotenv
 from provider_libs import TranslationProvider
@@ -5,7 +11,7 @@ from docx import Document
 from io import BytesIO
 import argparse
 
-# Load environment variables from .env file
+
 load_dotenv()
 parser = argparse.ArgumentParser(description="Providers tool")
 DEFAULT_PROMPT = (

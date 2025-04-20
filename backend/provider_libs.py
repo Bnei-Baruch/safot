@@ -1,3 +1,9 @@
+"""
+This file is not part of the main application.
+It contains the translation provider implementation used by provider_tools.py
+for translating documents from the terminal.
+"""
+
 import tiktoken
 from openai import OpenAI
 

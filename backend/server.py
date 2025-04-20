@@ -31,7 +31,6 @@ def configure_logging():
 # Configure logging at startup
 configure_logging()
 
-# Create logger for this module
 logger = logging.getLogger(__name__)
 
 load_dotenv()

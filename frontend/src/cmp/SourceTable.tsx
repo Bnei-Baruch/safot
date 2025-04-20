@@ -10,7 +10,7 @@ import {
     TableContainer
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
-import { Source, SourcePair } from '../types';
+import { Source, SourcePair } from '../types/frontend-types';
 
 
 interface SourceTableProps {

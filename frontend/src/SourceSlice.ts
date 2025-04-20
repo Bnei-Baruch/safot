@@ -1,6 +1,6 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import { sourceService } from './services/source.service';
-import { Source } from './types';
+import { Source } from './types/frontend-types';
 
 export const fetchSources = createAsyncThunk<
     Source[],

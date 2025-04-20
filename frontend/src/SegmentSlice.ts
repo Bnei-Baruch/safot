@@ -1,6 +1,6 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import { segmentService } from './services/segment.service';
-import { Segment } from './types';
+import { Segment } from './types/frontend-types';
 
 export const fetchSegments = createAsyncThunk<
     { source_id: number, segments: Segment[] },

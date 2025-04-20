@@ -11,7 +11,7 @@ import { translateParagraphs  as translateParagraphsAPI } from '../services/tran
 import TranslateDocumentDialog from '../cmp/TranslateDocumentDialog';
 import SourceTable from '../cmp/SourceTable';
 import { useToast } from '../cmp/Toast';
-import { Source, Segment, SourcePair } from '../types';
+import { Source, Segment, SourcePair } from '../types/frontend-types';
 
 const SourceIndex: React.FC = () => {
     const { keycloak } = useKeycloak();
@@ -73,7 +73,6 @@ const SourceIndex: React.FC = () => {
             const { originalSource, translationSource: translationSource } = await createSources(data);
             const { paragraphs: fileParagraphs, properties: fileProperties } = await extractParagraphsFromFile(data.file);
             
-            // Build and save original segments
             const savedOriginalSegments = await buildAndSaveSegments(
                 fileParagraphs,
                 originalSource.id,
@@ -86,7 +85,6 @@ const SourceIndex: React.FC = () => {
                 data.target_language
             );
 
-            // Build and save translated segments
             const savedTranslatedSegments = await buildAndSaveSegments(
                 translated_paragraphs,
                 translationSource.id,
