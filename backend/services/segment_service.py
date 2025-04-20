@@ -2,9 +2,12 @@ from datetime import datetime
 from io import BytesIO
 from docx import Document
 from peewee import fn
+import logging
 from models import Segment
 from playhouse.shortcuts import model_to_dict
 
+# Get logger for this module
+logger = logging.getLogger(__name__)
 
 def get_latest_segments(source_id):
 
@@ -40,7 +43,8 @@ def get_paragraphs_from_file(file) -> list[str]:
         return paragraphs
 
     except Exception as e:
-        raise Exception(f"❌ Failed to create segment previews: {str(e)}")
+        logger.error("Failed to create segment previews: %s", str(e))
+        raise Exception(f"Failed to create segment previews: {str(e)}")
 
 def store_segments(segments: list[dict]) -> list[dict]:
     """

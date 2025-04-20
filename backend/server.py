@@ -18,10 +18,21 @@ from models import Source, Segment, ParagraphsTranslateRequest, TranslationServi
 from db import db
 
 
-# Configure logging
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger('peewee')
-logger.setLevel(logging.DEBUG)
+def configure_logging():
+    """Configure logging for the entire application"""
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s'
+    )
+    # Configure peewee logger
+    peewee_logger = logging.getLogger('peewee')
+    peewee_logger.setLevel(logging.INFO)
+
+# Configure logging at startup
+configure_logging()
+
+# Create logger for this module
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -38,8 +49,10 @@ app.add_middleware(
 )
 
 # Initialize Keycloak
-print('Initializing keycloak', os.getenv('KEYCLOAK_SERVER_URL'),
-      os.getenv('KEYCLOAK_CLIENT_ID'), os.getenv('KEYCLOAK_REALM_NAME'))
+logger.info('Initializing keycloak with URL: %s, Client ID: %s, Realm: %s', 
+            os.getenv('KEYCLOAK_SERVER_URL'),
+            os.getenv('KEYCLOAK_CLIENT_ID'), 
+            os.getenv('KEYCLOAK_REALM_NAME'))
 keycloak_openid = KeycloakOpenID(
     server_url=os.getenv('KEYCLOAK_SERVER_URL'),
     client_id=os.getenv('KEYCLOAK_CLIENT_ID'),
@@ -61,7 +74,7 @@ async def get_user_info(request: Request):
         user_info = keycloak_openid.userinfo(token)
         return user_info
     except Exception as e:
-        print('Invalid or expired token:', e)
+        logger.error('Invalid or expired token: %s', e)
         raise HTTPException(status_code=HTTP_401_UNAUTHORIZED,
                             detail='Invalid or expired token')
 
@@ -83,7 +96,6 @@ def shutdown():
 @app.get('/sources', response_model=list[dict])
 def read_sources(user_info: dict = Depends(get_user_info)):
     sources = list(Source.select().dicts())
-    print("Fetched sources:", sources)
     return sources
 
 @app.get('/sources/{source_id}', response_model=dict)
@@ -133,19 +145,15 @@ def delete_source(source_id: int, _: dict = Depends(get_user_info)):
 @app.get('/segments/{source_id}', response_model=list[dict])
 def read_sources(source_id: int, user_info: dict = Depends(get_user_info)):
     try:
-        # print(
-        #     f"📡 from server.py :Received request for segments - source_id: {source_id}")
         latest_segments = get_latest_segments(source_id)
-        # print(
-        #     f"✅ from server.py : Segments fetched successfully: {latest_segments}")
         return latest_segments
 
     except Exception as e:
-        print(f"❌ Error fetching segments: {e}")
+        logger.error("Error fetching segments: %s", e)
         raise HTTPException(
             status_code=500, detail=f"Failed to fetch segments: {str(e)}")
 
-        print(f"Error starting translation: {e}")
+        logger.error("Error starting translation: %s", e)
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
     
 @app.post('/segments', response_model=list[dict])
@@ -167,7 +175,7 @@ async def save_segments(request: Request, user_info: dict = Depends(get_user_inf
         return saved_segments
 
     except Exception as e:
-        print(f"❌ Error in /segments: {e}")
+        logger.error("Error in /segments: %s", e)
         raise HTTPException(status_code=500, detail="Failed to store segments")
 
 ####### TRANSLATION
@@ -200,7 +208,7 @@ def translate_paragraphs_handler(
         }
 
     except Exception as e:
-        print(f"❌ Error in translation handler: {e}")
+        logger.error("Error in translation handler: %s", e)
         raise HTTPException(status_code=500, detail=f"Translation failed: {str(e)}")
     
 ####### IMPORT/EXPORT
@@ -217,7 +225,7 @@ def extract_segments_handler(
             "properties": properties
         }
     except Exception as e:
-        print(f"❌ Error in /docx2text: {e}")
+        logger.error("Error in /docx2text: %s", e)
         raise HTTPException(status_code=500, detail="Failed to extract segments")
     
 @app.get("/export/{source_id}", response_class=FileResponse)
