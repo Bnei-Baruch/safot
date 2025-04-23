@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useParams, useNavigate } from "react-router-dom";
-import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, TextField, Button, Box } from "@mui/material";
+import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, TextField, Button, Box, Typography } from "@mui/material";
 import { segmentService } from '../services/segment.service';
 import SaveIcon from '@mui/icons-material/Save';
-import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
 import { fetchSegments, saveSegments } from '../SegmentSlice';
 import { Segment } from '../types/frontend-types';
 import { fetchSource } from '../SourceSlice';
@@ -143,77 +143,99 @@ const SourceEdit: React.FC = () => {
     };
 
     return (
-        <div>
-            <h1>Edit Translation - {sourceData?.name} ({getLanguageName(sourceData?.language || '')})</h1>
-            <Box sx={{ display: "flex", justifyContent: "center", gap: "16px", mb: "20px" }}>
-                <Button variant="contained" color="primary" disabled={!isAllTranslated} onClick={handleExportDocx} style={{ marginBottom: "16px" }}>
+        <Box sx={{ backgroundColor: '#f5f5f5', py: 4, width: '100%' }}>
+            <Box maxWidth="lg" mx="auto" px={3}>
+                <Box sx={{ mt: 4, display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                    <Button
+                        onClick={() => navigate('/')}
+                        startIcon={<ArrowBackIosNewIcon />}
+                        sx={{ color: '#1976d2', textTransform: 'none', fontWeight: 'bold', mb: 2, pl: 0 }}
+                    >
+                        Back to sources
+                    </Button>
+                </Box>
+                
+                <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                    <Box>
+                        <Typography variant="h5" sx={{ fontWeight: 'bold', fontFamily: 'inherit' }}>
+                            Document: {sourceData?.name}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                            {segments[parsedId!]?.length || 0} paragraphs
+                        </Typography>
+                    </Box>
+
+                    <Button
+                    variant="contained"
+                    color="primary"
+                    disabled={!isAllTranslated}
+                    onClick={handleExportDocx}
+                    >
                     Export to DOCX
-                </Button>
-                <Button variant="outlined" color="primary" onClick={() => navigate("/")} style={{ marginBottom: "16px" }}>
-                    <ArrowBackIcon /> Back to Sources
-                </Button>
-
-            </Box>
-            <TableContainer component={Paper} >
-                <Table>
-                    <TableHead>
-                        <TableRow>
-                            <TableCell>Order</TableCell>
-                            <TableCell style={{ width: "40%" }}>Source ({originalSourceId && getLanguageName(sources[originalSourceId]?.language) || 'Unknown'})</TableCell>
-                            <TableCell style={{ width: "40%" }}>Translation ({getLanguageName(sourceData?.language || '')})</TableCell>
-                            <TableCell style={{ width: "20%" }}>Actions</TableCell>
-                        </TableRow>
-                    </TableHead>
-                    <TableBody>
-                        {originalSourceId && segments[originalSourceId] && parsedId ? (
-                            [...segments[originalSourceId]]
-                            .sort((a, b) => a.order - b.order)
-                            .map((sourceSegment: Segment) => {
-                                const existingTranslation = segments[parsedId]?.find(t => t.order === sourceSegment.order)?.text || '';
-                                const hasChanged = sourceSegment.id !== undefined && (translations[sourceSegment.id]?.text ?? existingTranslation) !== existingTranslation;
-
-                                return (
-                                    <TableRow key={sourceSegment.id ?? `temp-${sourceSegment.order}`}>
-                                        <TableCell>{sourceSegment.order}</TableCell>
-                                        <TableCell style={{ wordBreak: "break-word", whiteSpace: "pre-wrap", verticalAlign: "top" }}>{sourceSegment.text}</TableCell>
-                                        <TableCell style={{ wordBreak: "break-word", whiteSpace: "pre-wrap", verticalAlign: "top" }}>
-                                            <TextField
-                                                fullWidth
-                                                multiline
-                                                minRows={2}
-                                                maxRows={8}
-                                                value={sourceSegment.id !== undefined ? translations[sourceSegment.id]?.text ?? existingTranslation : existingTranslation}
-                                                onChange={(e) => handleTranslationChange(
-                                                    sourceSegment.id!, //non-null assertion operator
-                                                    sourceSegment.order,
-                                                    sourceSegment.timestamp || "", 
-                                                    e.target.value
-                                                )}
-                                                placeholder="Enter translation"
-                                            />
-                                        </TableCell>
-                                        <TableCell>
-                                            <Button
-                                                variant="contained"
-                                                color="primary"
-                                                onClick={() => handleSaveTranslation(sourceSegment.id!)}
-                                                disabled={!hasChanged}
-                                            >
-                                                <SaveIcon />
-                                            </Button>
-                                        </TableCell>
-                                    </TableRow>
-                                );
-                            })
-                        ) : (
+                    </Button>
+                </Box>
+                
+                <TableContainer component={Paper} >
+                    <Table>
+                        <TableHead>
                             <TableRow>
-                                <TableCell colSpan={4} align="center">Loading segments...</TableCell>
+                                <TableCell>Order</TableCell>
+                                <TableCell style={{ width: "40%" }}>Source ({originalSourceId && getLanguageName(sources[originalSourceId]?.language) || 'Unknown'})</TableCell>
+                                <TableCell style={{ width: "40%" }}>Translation ({getLanguageName(sourceData?.language || '')})</TableCell>
+                                <TableCell style={{ width: "20%" }}>Actions</TableCell>
                             </TableRow>
-                        )}
-                    </TableBody>
-                </Table>
-            </TableContainer>
-        </div>
+                        </TableHead>
+                        <TableBody>
+                            {originalSourceId && segments[originalSourceId] && parsedId ? (
+                                [...segments[originalSourceId]]
+                                .sort((a, b) => a.order - b.order)
+                                .map((sourceSegment: Segment) => {
+                                    const existingTranslation = segments[parsedId]?.find(t => t.order === sourceSegment.order)?.text || '';
+                                    const hasChanged = sourceSegment.id !== undefined && (translations[sourceSegment.id]?.text ?? existingTranslation) !== existingTranslation;
+
+                                    return (
+                                        <TableRow key={sourceSegment.id ?? `temp-${sourceSegment.order}`}>
+                                            <TableCell>{sourceSegment.order}</TableCell>
+                                            <TableCell style={{ wordBreak: "break-word", whiteSpace: "pre-wrap", verticalAlign: "top" }}>{sourceSegment.text}</TableCell>
+                                            <TableCell style={{ wordBreak: "break-word", whiteSpace: "pre-wrap", verticalAlign: "top" }}>
+                                                <TextField
+                                                    fullWidth
+                                                    multiline
+                                                    minRows={2}
+                                                    maxRows={8}
+                                                    value={sourceSegment.id !== undefined ? translations[sourceSegment.id]?.text ?? existingTranslation : existingTranslation}
+                                                    onChange={(e) => handleTranslationChange(
+                                                        sourceSegment.id!, //non-null assertion operator
+                                                        sourceSegment.order,
+                                                        sourceSegment.timestamp || "", 
+                                                        e.target.value
+                                                    )}
+                                                    placeholder="Enter translation"
+                                                />
+                                            </TableCell>
+                                            <TableCell>
+                                                <Button
+                                                    variant="contained"
+                                                    color="primary"
+                                                    onClick={() => handleSaveTranslation(sourceSegment.id!)}
+                                                    disabled={!hasChanged}
+                                                >
+                                                    <SaveIcon />
+                                                </Button>
+                                            </TableCell>
+                                        </TableRow>
+                                    );
+                                })
+                            ) : (
+                                <TableRow>
+                                    <TableCell colSpan={4} align="center">Loading segments...</TableCell>
+                                </TableRow>
+                            )}
+                        </TableBody>
+                    </Table>
+                </TableContainer>
+            </Box>
+        </Box>
     );
 };
 

@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { fetchSources, addSource } from '../SourceSlice';
 import { saveSegments as storeSegments } from '../SegmentSlice';
 import { useAppDispatch, RootState } from '../store';
-import { Box, Typography } from '@mui/material';
+import { Box, Typography, Container } from '@mui/material';
 import { segmentService } from '../services/segment.service';
 import { translateParagraphs as translateParagraphsAPI } from '../services/translation.service';
 import SourceTable from '../cmp/SourceTable';
@@ -180,18 +180,19 @@ const SourceIndex: React.FC = () => {
     return (
         <>
           
-          <Box sx={{ backgroundColor: '#f5f5f5', py: 5 }}>
-            <Box maxWidth="md" mx="auto">
-              <TranslateForm onSubmit={handleTranslateDocumentSubmit} />
+            <Box sx={{ backgroundColor: '#f5f5f5', py: 5, width: '100%' }}>
+                <Container maxWidth="lg">
+                    <TranslateForm onSubmit={handleTranslateDocumentSubmit} />
+                </Container>
             </Box>
-          </Box>
       
          
-          <Box className="source-index" sx={{ px: 4, pt: 4 }}>
-            {loading && <Typography>Loading...</Typography>}
-            {error && <Typography color="error">Error: {error}</Typography>}
-            {!loading && !error && <SourceTable pairs={sourcePairs} />}
-          </Box>
+            <Container className="source-table-container" maxWidth="lg" sx={{ py: 4 }}>
+                {loading && <Typography>Loading...</Typography>}
+                {error && <Typography color="error">Error: {error}</Typography>}
+                {!loading && !error && <SourceTable pairs={sourcePairs} />}
+            </Container>
+
         </>
       );
 };
