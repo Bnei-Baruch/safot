@@ -24,8 +24,8 @@ const Header: React.FC = () => {
         <Container maxWidth="lg" disableGutters>
             <Toolbar sx={{ px: 0, justifyContent: 'space-between' }}>
                
-                <Box display="flex" alignItems="center" gap={0} sx={{ ml: '-72px' }}>
-                {/* <Box display="flex" alignItems="center" gap={1}> */}
+                {/* <Box display="flex" alignItems="center" gap={0} sx={{ ml: '-72px' }}> */}
+                <Box display="flex" alignItems="center" gap={0}>
                 <img src={logo} alt="Safot Logo" style={{ height: 70 }} />
                 <Typography variant="h6" sx={{ fontFamily: 'JetBrains Mono, monospace', color: '#284952'}}>
                     Safot

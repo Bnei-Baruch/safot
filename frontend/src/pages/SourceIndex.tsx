@@ -182,15 +182,19 @@ const SourceIndex: React.FC = () => {
           
             <Box sx={{ backgroundColor: '#f5f5f5', py: 5, width: '100%' }}>
                 <Container maxWidth="lg">
-                    <TranslateForm onSubmit={handleTranslateDocumentSubmit} />
+                    <Box sx={{ pl: 9 }}>
+                        <TranslateForm onSubmit={handleTranslateDocumentSubmit} />
+                    </Box>
                 </Container>
             </Box>
       
          
             <Container className="source-table-container" maxWidth="lg" sx={{ py: 4 }}>
-                {loading && <Typography>Loading...</Typography>}
-                {error && <Typography color="error">Error: {error}</Typography>}
-                {!loading && !error && <SourceTable pairs={sourcePairs} />}
+                <Box sx={{ pl: 9 }}>
+                    {loading && <Typography>Loading...</Typography>}
+                    {error && <Typography color="error">Error: {error}</Typography>}
+                    {!loading && !error && <SourceTable pairs={sourcePairs} />}
+                </Box>
             </Container>
 
         </>

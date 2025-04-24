@@ -108,8 +108,8 @@ const TranslateForm: React.FC<TranslateFormProps> = ({ onSubmit }) => {
               ))}
             </TextField>
 
-            <ArrowForwardIcon sx={{ color: '#ccc' }} />
-
+            <ArrowForwardIcon sx={{ color: '#ccc', pb:3 }} />
+            
             <TextField
               select
               label="To Language"
@@ -153,7 +153,7 @@ const TranslateForm: React.FC<TranslateFormProps> = ({ onSubmit }) => {
             }}
           >
             <InsertDriveFileOutlinedIcon sx={{ mb: 1, fontSize: 36, color: '#777' }} />
-            <Typography sx={{ fontFamily: 'inherit' }}>Click to Upload or Drag Folder</Typography>
+            <Typography sx={{ fontFamily: 'inherit' }}>Click to Upload or Drag File</Typography>
           </Box>
 
           <input
