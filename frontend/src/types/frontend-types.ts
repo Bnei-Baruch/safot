@@ -52,3 +52,22 @@ export enum Language {
     FRENCH = "French",
     ARABIC = "Arabic"
 } 
+
+export type FilterType = 'mine' | 'none' | 'file' | 'language' | 'from_language';
+
+export interface SourceFilterProps {
+  filterType: FilterType;
+  setFilterType: (value: FilterType) => void;
+  languageFilter: string | null;
+  setLanguageFilter: (value: string | null) => void;
+  fileNameFilter: string;
+  setFileNameFilter: (value: string) => void;
+  fromLanguageFilter: string | null;
+  setFromLanguageFilter: (value: string | null) => void;
+}
+
+export interface LanguageOption {
+    code: string;
+    label: string;
+    flag: string;
+  }

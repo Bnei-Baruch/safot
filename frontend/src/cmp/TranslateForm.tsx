@@ -12,16 +12,17 @@ import {
 } from '@mui/material';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import InsertDriveFileOutlinedIcon from '@mui/icons-material/InsertDriveFileOutlined';
-import { LanguageOption } from './LanguageSelect';
+// import { LanguageOption } from './LanguageSelect';
+import { LANGUAGES } from '../constants/languages'
 
-const LANGUAGES: LanguageOption[] = [
-  { code: 'en', label: 'English', flag: '/flags/en.png' },
-  { code: 'fr', label: 'French', flag: '/flags/fr.png' },
-  { code: 'he', label: 'Hebrew', flag: '/flags/he.png' },
-  { code: 'ar', label: 'Arabic', flag: '/flags/ar.png' },
-  { code: 'es', label: 'Spanish', flag: '/flags/es.png' },
-  { code: 'ru', label: 'Russian', flag: '/flags/ru.png' },
-];
+// const LANGUAGES: LanguageOption[] = [
+//   { code: 'en', label: 'English', flag: '/flags/en.png' },
+//   { code: 'fr', label: 'French', flag: '/flags/fr.png' },
+//   { code: 'he', label: 'Hebrew', flag: '/flags/he.png' },
+//   { code: 'ar', label: 'Arabic', flag: '/flags/ar.png' },
+//   { code: 'es', label: 'Spanish', flag: '/flags/es.png' },
+//   { code: 'ru', label: 'Russian', flag: '/flags/ru.png' },
+// ];
 
 interface TranslateFormProps {
   onSubmit: (data: {

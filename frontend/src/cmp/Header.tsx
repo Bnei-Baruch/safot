@@ -25,11 +25,16 @@ const Header: React.FC = () => {
             <Toolbar sx={{ px: 0, justifyContent: 'space-between' }}>
                
                 {/* <Box display="flex" alignItems="center" gap={0} sx={{ ml: '-72px' }}> */}
-                <Box display="flex" alignItems="center" gap={0}>
-                <img src={logo} alt="Safot Logo" style={{ height: 70 }} />
-                <Typography variant="h6" sx={{ fontFamily: 'JetBrains Mono, monospace', color: '#284952'}}>
-                    Safot
-                </Typography>
+                <Box display="flex" alignItems="center" gap={0} sx={{ pt: 1 }}>
+                  <img src={logo} alt="Safot Logo" style={{ height: 80 }} />
+                  <Box display="flex" flexDirection="column" justifyContent="center" alignItems="flex-start">
+                    <Typography sx={{ fontFamily: 'Roboto, Helvetica, Arial, sans-serif', fontWeight: 'bold', color: '#284952', fontSize: 18, letterSpacing: 1, textTransform: 'uppercase', lineHeight: 1 }}>
+                      BNEI BARUCH
+                    </Typography>
+                    <Typography variant="h6" sx={{ fontFamily: 'JetBrains Mono, monospace', color: '#284952', fontSize: 22, mt: 0.5 }}>
+                      Safot
+                    </Typography>
+                  </Box>
                 </Box>
 
               

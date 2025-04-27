@@ -109,5 +109,4 @@ const sourcesSlice = createSlice({
     },
 });
 
-// export const { resetSources, updateSourceLocal } = sourcesSlice.actions;
 export default sourcesSlice.reducer;

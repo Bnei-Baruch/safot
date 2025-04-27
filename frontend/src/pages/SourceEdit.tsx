@@ -144,7 +144,6 @@ const SourceEdit: React.FC = () => {
 
     return (
         <Box sx={{ backgroundColor: '#f5f5f5', py: 4, width: '100%' }}>
-            {/* <Box maxWidth="lg" mx="auto" px={3}> */}
             <Container maxWidth="lg"  >
                 <Box sx={{ pl: 9 }}>
                     <Box sx={{  display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
@@ -183,8 +182,8 @@ const SourceEdit: React.FC = () => {
                                 <TableRow>
                                     <TableCell>Order</TableCell>
                                     <TableCell style={{ width: "40%" }}>Source ({originalSourceId && getLanguageName(sources[originalSourceId]?.language) || 'Unknown'})</TableCell>
-                                    <TableCell style={{ width: "40%" }}>Translation ({getLanguageName(sourceData?.language || '')})</TableCell>
-                                    <TableCell style={{ width: "20%" }}>Actions</TableCell>
+                                    <TableCell style={{ width: "50%" }}>Translation ({getLanguageName(sourceData?.language || '')})</TableCell>
+                                    <TableCell style={{ width: "10%" }}>Actions</TableCell>
                                 </TableRow>
                             </TableHead>
                             <TableBody>
@@ -204,7 +203,7 @@ const SourceEdit: React.FC = () => {
                                                         fullWidth
                                                         multiline
                                                         minRows={2}
-                                                        maxRows={8}
+                                                        maxRows={20}
                                                         value={sourceSegment.id !== undefined ? translations[sourceSegment.id]?.text ?? existingTranslation : existingTranslation}
                                                         onChange={(e) => handleTranslationChange(
                                                             sourceSegment.id!, //non-null assertion operator

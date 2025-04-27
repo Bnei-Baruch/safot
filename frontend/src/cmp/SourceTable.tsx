@@ -56,7 +56,7 @@ const SourceTable: React.FC<SourceTableProps> = ({ pairs }) => {
             <TableCell>Upload By</TableCell>
             <TableCell>From</TableCell>
             <TableCell>To</TableCell>
-            <TableCell>Update</TableCell>
+            
             <TableCell>Actions</TableCell>
           </TableRow>
         </TableHead>
@@ -67,8 +67,9 @@ const SourceTable: React.FC<SourceTableProps> = ({ pairs }) => {
               <TableCell>{extractUsername(original.username)}</TableCell>
               <TableCell>{renderLang(original.language)}</TableCell>
               <TableCell>{translated ? renderLang(translated.language) : '-'}</TableCell>
+             
               <TableCell>
-                {translated && (
+              {translated && (
                     <Button
                     variant="outlined"
                     onClick={() => navigate(`/source-edit/${translated.id}`)}
@@ -77,10 +78,8 @@ const SourceTable: React.FC<SourceTableProps> = ({ pairs }) => {
                     Edit
                   </Button>
                 )}
-              </TableCell>
-              <TableCell>
-                <Button disabled>Delete</Button>
-                <Button disabled>Download</Button>
+                {/* <Button disabled>Delete</Button>
+                <Button disabled>Download</Button> */}
               </TableCell>
             </TableRow>
           ))}

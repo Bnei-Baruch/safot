@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useKeycloak } from '@react-keycloak/web';
 import { useSelector } from 'react-redux';
 import { useNavigate } from "react-router-dom";
@@ -9,9 +9,10 @@ import { Box, Typography, Container } from '@mui/material';
 import { segmentService } from '../services/segment.service';
 import { translateParagraphs as translateParagraphsAPI } from '../services/translation.service';
 import SourceTable from '../cmp/SourceTable';
+import SourceFilter from '../cmp/SourceFilter';
 import { useToast } from '../cmp/Toast';
 import TranslateForm from '../cmp/TranslateForm';
-import { Source, Segment, SourcePair } from '../types/frontend-types';
+import { Source, Segment, SourcePair, FilterType } from '../types/frontend-types';
 
 const SourceIndex: React.FC = () => {
     const { keycloak } = useKeycloak();
@@ -20,46 +21,47 @@ const SourceIndex: React.FC = () => {
     const { showToast } = useToast();
     const { sources, loading, error } = useSelector((state: RootState) => state.sources);
 
-    const sourcePairs = buildSourcePairs(sources);
-
+    const [filterType, setFilterType] = useState<FilterType>('mine');
+    const [languageFilter, setLanguageFilter] = useState<string | null>(null);
+    const [fileNameFilter, setFileNameFilter] = useState<string>('');
+    const [fromLanguageFilter, setFromLanguageFilter] = useState<string | null>(null);
     useEffect(() => {
         if (keycloak.authenticated) {
             dispatch(fetchSources());
         }
     }, [dispatch, keycloak.authenticated]);
 
-    function buildSourcePairs(sources: Record<number, Source>): SourcePair[] {
+    const sourcePairs = useMemo(() => {
         return Object.values(sources)
             .filter(s => !s.original_source_id)
             .map(original => {
                 const translated = Object.values(sources).find(
                     s => s.original_source_id === original.id
                 ) || null;
-
                 return { original, translated };
             });
-    }
+    }, [sources]);
 
-    const buildAndSaveSegments = async (
-        paragraphs: string[],
-        source_id: number,
-        properties: Record<string, any>,
-        originalSegments?: Segment[]
-    ): Promise<Segment[]> => {
-        const segments = paragraphs.map((text, index) => {
-            const originalSegment = originalSegments?.[index];
-            return segmentService.buildSegment({
-                text,
-                source_id,
-                order: index + 1,
-                properties,
-                original_segment_id: originalSegment?.id,
-                original_segment_timestamp: originalSegment?.timestamp
-            });
+    const filteredSourcePairs = useMemo(() => {
+        return sourcePairs.filter(pair => {
+          if (filterType === 'mine') {
+            return pair.original.username === keycloak.tokenParsed?.preferred_username;
+          }
+    
+          if (filterType === 'file') {
+            return pair.original.name.toLowerCase().includes(fileNameFilter.toLowerCase());
+          }
+    
+          if (filterType === 'language') {
+            return !languageFilter || pair.translated?.language === languageFilter;
+          }
+          if (filterType === 'from_language') {
+            return !fromLanguageFilter || pair.original.language === fromLanguageFilter;
+          }
+    
+          return true; // 'none'
         });
-        const { segments: savedSegments } = await dispatch(storeSegments(segments)).unwrap();
-        return savedSegments;
-    };
+      }, [sourcePairs, filterType, fileNameFilter, languageFilter, fromLanguageFilter, keycloak.tokenParsed]);
 
     const handleTranslateDocumentSubmit = async (data: {
         file: File;
@@ -68,8 +70,6 @@ const SourceIndex: React.FC = () => {
         target_language: string;
     }) => {
         try {
-            console.log("🚀 Starting full translation flow");
-
             const { originalSource, translationSource } = await createSources(data);
             const { paragraphs, properties } = await extractParagraphsFromFile(data.file);
 
@@ -95,6 +95,27 @@ const SourceIndex: React.FC = () => {
             console.error("❌ Translation flow failed:", error);
             showToast("Translation process failed. Please try again.", "error");
         }
+    };
+
+    const buildAndSaveSegments = async (
+        paragraphs: string[],
+        source_id: number,
+        properties: Record<string, any>,
+        originalSegments?: Segment[]
+    ): Promise<Segment[]> => {
+        const segments = paragraphs.map((text, index) => {
+            const originalSegment = originalSegments?.[index];
+            return segmentService.buildSegment({
+                text,
+                source_id,
+                order: index + 1,
+                properties,
+                original_segment_id: originalSegment?.id,
+                original_segment_timestamp: originalSegment?.timestamp
+            });
+        });
+        const { segments: savedSegments } = await dispatch(storeSegments(segments)).unwrap();
+        return savedSegments;
     };
 
     const createSources = async (data: {
@@ -153,33 +174,14 @@ const SourceIndex: React.FC = () => {
 
     if (!keycloak.authenticated) {
         return (
-            <Box
-                display="flex"
-                flexDirection="column"
-                justifyContent="center"
-                alignItems="center"
-                height="100vh"
-                textAlign="center"
-                sx={{
-                    backgroundColor: "#f5f5f5",
-                    padding: "2rem",
-                    borderRadius: "12px",
-                    boxShadow: "0px 4px 10px rgba(0, 0, 0, 0.1)"
-                }}
-            >
-                <Typography variant="h4" sx={{ mb: 2, fontWeight: "bold", color: "#333" }}>
-                    Welcome to Safot
-                </Typography>
-                <Typography variant="body1" sx={{ mb: 3, color: "#666" }}>
-                    Please log in using the button in the top right corner.
-                </Typography>
+            <Box display="flex" justifyContent="center" alignItems="center" height="100vh" textAlign="center">
+                <Typography variant="h4">Please log in to continue.</Typography>
             </Box>
         );
     }
 
     return (
         <>
-          
             <Box sx={{ backgroundColor: '#f5f5f5', py: 5, width: '100%' }}>
                 <Container maxWidth="lg">
                     <Box sx={{ pl: 9 }}>
@@ -187,18 +189,27 @@ const SourceIndex: React.FC = () => {
                     </Box>
                 </Container>
             </Box>
-      
-         
-            <Container className="source-table-container" maxWidth="lg" sx={{ py: 4 }}>
+
+            <Container maxWidth="lg" sx={{ py: 4 }}>
                 <Box sx={{ pl: 9 }}>
+                    <SourceFilter
+                    filterType={filterType}
+                    setFilterType={setFilterType}
+                    languageFilter={languageFilter}
+                    setLanguageFilter={setLanguageFilter}
+                    fileNameFilter={fileNameFilter}
+                    setFileNameFilter={setFileNameFilter}
+                    fromLanguageFilter={fromLanguageFilter}
+                    setFromLanguageFilter={setFromLanguageFilter}
+                    />
+
                     {loading && <Typography>Loading...</Typography>}
                     {error && <Typography color="error">Error: {error}</Typography>}
-                    {!loading && !error && <SourceTable pairs={sourcePairs} />}
+                    {!loading && !error && <SourceTable pairs={filteredSourcePairs} />}
                 </Box>
             </Container>
-
         </>
-      );
+    );
 };
 
 export default SourceIndex;
