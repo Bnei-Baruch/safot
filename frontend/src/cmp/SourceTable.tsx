@@ -47,6 +47,14 @@ const SourceTable: React.FC<SourceTableProps> = ({ pairs }) => {
     return email.split('@')[0];
   };
 
+  if (!pairs.length) {
+    return (
+      <Box sx={{ p: 4, textAlign: 'center', color: '#888' }}>
+        <Typography variant="h6">No results match your filter.</Typography>
+      </Box>
+    );
+  }
+
   return (
     <TableContainer component={Paper} sx={{ margin: "auto", width: "100%", mt: 4 }}>
       <Table>
