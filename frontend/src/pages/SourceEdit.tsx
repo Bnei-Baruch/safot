@@ -10,6 +10,7 @@ import { Segment } from '../types/frontend-types';
 import { fetchSource } from '../SourceSlice';
 import { useAppDispatch, RootState } from '../store';
 import { useToast } from '../cmp/Toast';
+import { LANGUAGES } from '../constants/languages';
 
 const SourceEdit: React.FC = () => {
     const navigate = useNavigate();
@@ -142,6 +143,7 @@ const SourceEdit: React.FC = () => {
         }
     };
 
+
     return (
         <Box sx={{ backgroundColor: '#f5f5f5', py: 4, width: '100%' }}>
             <Container maxWidth="lg"  >
@@ -194,15 +196,21 @@ const SourceEdit: React.FC = () => {
                                         const existingTranslation = segments[parsedId]?.find(t => t.order === sourceSegment.order)?.text || '';
                                         const hasChanged = sourceSegment.id !== undefined && (translations[sourceSegment.id]?.text ?? existingTranslation) !== existingTranslation;
 
+                                        // Get directions
+                                        const sourceLangOption = LANGUAGES.find(lang => lang.code === sources[originalSourceId]?.language);
+                                        const sourceLangDirection = sourceLangOption?.direction || 'ltr';
+                                        const translationLangOption = LANGUAGES.find(lang => lang.code === sourceData?.language);
+                                        const translationLangDirection = translationLangOption?.direction || 'ltr';
+
                                         return (
                                             <TableRow key={sourceSegment.id ?? `temp-${sourceSegment.order}`}>
                                                 <TableCell>{sourceSegment.order}</TableCell>
-                                                <TableCell style={{ wordBreak: "break-word", whiteSpace: "pre-wrap", verticalAlign: "top" }}>{sourceSegment.text}</TableCell>
-                                                <TableCell style={{ wordBreak: "break-word", whiteSpace: "pre-wrap", verticalAlign: "top" }}>
+                                                <TableCell style={{ wordBreak: "break-word", whiteSpace: "pre-wrap", verticalAlign: "top", direction: sourceLangDirection, textAlign: sourceLangDirection === 'rtl' ? 'right' : 'left' }}>{sourceSegment.text}</TableCell>
+                                                <TableCell style={{ wordBreak: "break-word", whiteSpace: "pre-wrap", verticalAlign: "top", direction: translationLangDirection, textAlign: translationLangDirection === 'rtl' ? 'right' : 'left' }}>
                                                     <TextField
                                                         fullWidth
                                                         multiline
-                                                        minRows={2}
+                                                        minRows={1}
                                                         maxRows={20}
                                                         value={sourceSegment.id !== undefined ? translations[sourceSegment.id]?.text ?? existingTranslation : existingTranslation}
                                                         onChange={(e) => handleTranslationChange(
@@ -212,6 +220,7 @@ const SourceEdit: React.FC = () => {
                                                             e.target.value
                                                         )}
                                                         placeholder="Enter translation"
+                                                        inputProps={{ style: { direction: translationLangDirection, textAlign: translationLangDirection === 'rtl' ? 'right' : 'left' } }}
                                                     />
                                                 </TableCell>
                                                 <TableCell>
