@@ -215,6 +215,8 @@ def translate_paragraphs_handler(
 def extract_segments_handler(
     file: UploadFile = File(...),
 ):
+    if not file.filename.lower().endswith('.docx'):
+        raise HTTPException(status_code=400, detail="Only .docx files are supported.")
     try:
         paragraphs = get_paragraphs_from_file(file)
         properties = {"segment_type": "file"}

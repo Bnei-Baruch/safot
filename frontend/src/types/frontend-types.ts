@@ -72,3 +72,14 @@ export interface LanguageOption {
     flag: string;
     direction: 'ltr' | 'rtl';
 }
+
+export interface TranslateFormData {
+    file: File;
+    name: string;
+    source_language: string;
+    target_language: string;
+  }
+  
+  export interface TranslateFormProps {
+    onSubmit: (data: TranslateFormData) => Promise<void>;
+  }

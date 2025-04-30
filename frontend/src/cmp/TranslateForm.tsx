@@ -12,50 +12,49 @@ import {
 } from '@mui/material';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import InsertDriveFileOutlinedIcon from '@mui/icons-material/InsertDriveFileOutlined';
-// import { LanguageOption } from './LanguageSelect';
 import { LANGUAGES } from '../constants/languages'
+import { useToast } from './Toast';
+import { TranslateFormProps } from '../types/frontend-types';
 
-// const LANGUAGES: LanguageOption[] = [
-//   { code: 'en', label: 'English', flag: '/flags/en.png' },
-//   { code: 'fr', label: 'French', flag: '/flags/fr.png' },
-//   { code: 'he', label: 'Hebrew', flag: '/flags/he.png' },
-//   { code: 'ar', label: 'Arabic', flag: '/flags/ar.png' },
-//   { code: 'es', label: 'Spanish', flag: '/flags/es.png' },
-//   { code: 'ru', label: 'Russian', flag: '/flags/ru.png' },
-// ];
 
-interface TranslateFormProps {
-  onSubmit: (data: {
-    file: File;
-    name: string;
-    source_language: string;
-    target_language: string;
-  }) => Promise<void>;
-}
+// interface TranslateFormProps {
+//   onSubmit: (data: {
+//     file: File;
+//     name: string;
+//     source_language: string;
+//     target_language: string;
+//   }) => Promise<void>;
+// }
 
 const TranslateForm: React.FC<TranslateFormProps> = ({ onSubmit }) => {
   const [file, setFile] = useState<File | null>(null);
   const [sourceLang, setSourceLang] = useState('');
   const [targetLang, setTargetLang] = useState('');
   const [submitAttempted, setSubmitAttempted] = useState(false);
-  const [statusMessage, setStatusMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const { showToast } = useToast();
 
   const handleFileClick = () => {
     document.getElementById('fileInput')?.click();
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files?.length) {
-      setFile(e.target.files[0]);
+  const processUploadedFile = (file: File | null) => {
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.docx')) {
+      showToast('❌ Only .docx files are supported.', 'error');
+      setFile(null);
+      return;
     }
+    setFile(file);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    processUploadedFile(e.target.files?.[0] || null);
   };
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    if (e.dataTransfer.files?.length) {
-      setFile(e.dataTransfer.files[0]);
-    }
+    processUploadedFile(e.dataTransfer.files?.[0] || null);
   };
 
   const handleSubmit = async () => {
@@ -63,12 +62,12 @@ const TranslateForm: React.FC<TranslateFormProps> = ({ onSubmit }) => {
     if (!file || !sourceLang || !targetLang) return;
     const name = file.name.replace(/\.docx$/, '');
     setLoading(true);
-    setStatusMessage('📄 Processing file...');
+    showToast('📄 Processing file...', 'info');
     try {
       await onSubmit({ file, name, source_language: sourceLang, target_language: targetLang });
-      setStatusMessage('✅ Translation completed');
+      showToast('✅ Translation completed', 'success');
     } catch {
-      setStatusMessage('❌ Something went wrong');
+      showToast('❌ Something went wrong', 'error');
     } finally {
       setLoading(false);
     }
@@ -201,12 +200,6 @@ const TranslateForm: React.FC<TranslateFormProps> = ({ onSubmit }) => {
                 Translating your file, please wait...
               </Typography>
             </>
-          )}
-
-          {!loading && statusMessage && (
-            <Typography sx={{ fontFamily: 'inherit', color: '#444', textAlign: 'center' }}>
-              {statusMessage}
-            </Typography>
           )}
         </Box>
       </Box>
