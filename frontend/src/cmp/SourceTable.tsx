@@ -15,14 +15,17 @@ import {
 import EditIcon from '@mui/icons-material/Edit';
 import { useNavigate } from 'react-router-dom';
 import { SourcePair } from '../types/frontend-types';
+import { LANGUAGES } from '../constants/languages';
 
-const languageMap: Record<string, { name: string; flag: string }> = {
-  en: { name: 'English', flag: '/flags/en.png' },
-  fr: { name: 'French', flag: '/flags/fr.png' },
-  he: { name: 'Hebrew', flag: '/flags/he.png' },
-  ar: { name: 'Arabic', flag: '/flags/ar.png' },
-  es: { name: 'Spanish', flag: '/flags/es.png' },
-  ru: { name: 'Russian', flag: '/flags/ru.png' },
+const renderLang = (code: string) => {
+  const lang = LANGUAGES.find(l => l.code === code);
+  if (!lang) return code;
+  return (
+    <Box display="flex" alignItems="center" gap={1}>
+      <Avatar src={lang.flag} sx={{ width: 20, height: 20 }} />
+      <Typography variant="body2">{lang.label}</Typography>
+    </Box>
+  );
 };
 
 interface SourceTableProps {
@@ -31,17 +34,6 @@ interface SourceTableProps {
 
 const SourceTable: React.FC<SourceTableProps> = ({ pairs }) => {
   const navigate = useNavigate();
-
-  const renderLang = (code: string) => {
-    const lang = languageMap[code];
-    if (!lang) return code;
-    return (
-      <Box display="flex" alignItems="center" gap={1}>
-        <Avatar src={lang.flag} sx={{ width: 20, height: 20 }} />
-        <Typography variant="body2">{lang.name}</Typography>
-      </Box>
-    );
-  };
 
   const extractUsername = (email: string) => {
     return email.split('@')[0];
