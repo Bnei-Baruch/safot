@@ -1,5 +1,5 @@
 import React from 'react';
-import './App.css';
+import '../src/assets/style/style.css';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Header from './cmp/Header';
 import SourceIndex from './pages/SourceIndex';

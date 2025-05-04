@@ -1,7 +1,7 @@
 import React from 'react';
 import { AppBar, Toolbar, Typography, Button, Box, Container } from '@mui/material';
 import { useKeycloak } from '@react-keycloak/web';
-import logo from '../style/logo.png';
+import logo from '../assets/img/logo.png';
 
 const Header: React.FC = () => {
   const { keycloak, initialized } = useKeycloak();

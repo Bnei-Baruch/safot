@@ -4,7 +4,7 @@ import { ReactKeycloakProvider } from '@react-keycloak/web';
 import { Provider } from "react-redux";
 import { ToastContainer } from "react-toastify";
 
-import './index.css';
+import './assets/style/style.css';
 import "react-toastify/dist/ReactToastify.css";
 
 import App from './App';
