@@ -75,35 +75,10 @@ class Segment(Model):
         )
 
 
-class Language(str, Enum):
-    ENGLISH = "English"
-    HEBREW = "Hebrew"
-    SPANISH = "Spanish"
-    RUSSIAN = "Russian"
-    FRENCH = "French"
-    ARABIC = "Arabic"
-
-    @classmethod
-    def from_code(cls, code: str):
-        language_map = {
-            "en": cls.ENGLISH,
-            "he": cls.HEBREW,
-            "es": cls.SPANISH,
-            "ru": cls.RUSSIAN,
-            "fr": cls.FRENCH,
-            "ar": cls.ARABIC
-        }
-        return language_map.get(code, code)
-
-
 class ParagraphsTranslateRequest(BaseModel):
     paragraphs: list[str]
     source_language: str
     target_language: str
-
-    @validator("source_language", "target_language", pre=True)
-    def convert_language(cls, value):
-        return Language.from_code(value)
 
 
 class Provider(str, Enum):
@@ -113,8 +88,8 @@ class Provider(str, Enum):
 
 
 class TranslationServiceOptions(BaseModel):
-    source_language: Language
-    target_language: Language
+    source_language: str
+    target_language: str
     model: str = "gpt-4o"
     provider: Provider = Provider.OPENAI
     temperature: float = 0.2

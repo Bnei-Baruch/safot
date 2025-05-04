@@ -4,7 +4,6 @@ import {
   Button,
   Typography,
   Paper,
-  Avatar,
   TextField,
   MenuItem,
   Divider,
@@ -16,15 +15,6 @@ import { LANGUAGES } from '../constants/languages'
 import { useToast } from './Toast';
 import { TranslateFormProps } from '../types/frontend-types';
 
-
-// interface TranslateFormProps {
-//   onSubmit: (data: {
-//     file: File;
-//     name: string;
-//     source_language: string;
-//     target_language: string;
-//   }) => Promise<void>;
-// }
 
 const TranslateForm: React.FC<TranslateFormProps> = ({ onSubmit }) => {
   const [file, setFile] = useState<File | null>(null);
@@ -100,10 +90,7 @@ const TranslateForm: React.FC<TranslateFormProps> = ({ onSubmit }) => {
             >
               {LANGUAGES.map((lang) => (
                 <MenuItem key={lang.code} value={lang.code}>
-                  <Box display="flex" alignItems="center" gap={1}>
-                    <Avatar src={lang.flag} sx={{ width: 20, height: 20 }} />
-                    <Typography sx={{ fontFamily: 'inherit' }}>{lang.label}</Typography>
-                  </Box>
+                  <Typography sx={{ fontFamily: 'inherit' }}>{lang.label}</Typography>
                 </MenuItem>
               ))}
             </TextField>
@@ -124,10 +111,7 @@ const TranslateForm: React.FC<TranslateFormProps> = ({ onSubmit }) => {
             >
               {LANGUAGES.map((lang) => (
                 <MenuItem key={lang.code} value={lang.code}>
-                  <Box display="flex" alignItems="center" gap={1}>
-                    <Avatar src={lang.flag} sx={{ width: 20, height: 20 }} />
-                    <Typography sx={{ fontFamily: 'inherit' }}>{lang.label}</Typography>
-                  </Box>
+                  <Typography sx={{ fontFamily: 'inherit' }}>{lang.label}</Typography>
                 </MenuItem>
               ))}
             </TextField>

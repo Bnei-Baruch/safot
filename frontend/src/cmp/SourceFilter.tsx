@@ -23,21 +23,19 @@ const SourceFilter: React.FC<SourceFilterProps> = ({
   fromLanguageFilter,
   setFromLanguageFilter,
 }) => {
-  const handleFilterTypeChange = (event: SelectChangeEvent) => {
-    setFilterType(event.target.value as any);
+  const handleFilterTypeChange = (event: any) => {
+    setFilterType(event.target.value);
     setLanguageFilter(null);
     setFromLanguageFilter(null);
     setFileNameFilter('');
   };
 
-  const handleLanguageChange = (event: SelectChangeEvent) => {
-    const value = event.target.value;
-    setLanguageFilter(value === '' ? null : value);
+  const handleLanguageChange = (event: any) => {
+    setLanguageFilter(event.target.value || null);
   };
 
-  const handleFromLanguageChange = (event: SelectChangeEvent) => {
-    const value = event.target.value;
-    setFromLanguageFilter(value === '' ? null : value);
+  const handleFromLanguageChange = (event: any) => {
+    setFromLanguageFilter(event.target.value || null);
   };
 
   return (
@@ -73,7 +71,7 @@ const SourceFilter: React.FC<SourceFilterProps> = ({
       {/* From language filter */}
       {filterType === 'from_language' && (
         <FormControl size="small">
-          <InputLabel id="from-language-select-label" >From language</InputLabel>
+          <InputLabel id="from-language-select-label">From language</InputLabel>
           <Select
             labelId="from-language-select-label"
             value={fromLanguageFilter || ''}
@@ -84,10 +82,7 @@ const SourceFilter: React.FC<SourceFilterProps> = ({
             <MenuItem value="">All</MenuItem>
             {LANGUAGES.map((lang) => (
               <MenuItem key={lang.code} value={lang.code}>
-                <Box display="flex" alignItems="center" gap={1}>
-                  <Avatar src={lang.flag} sx={{ width: 20, height: 20 }} />
-                  <Typography>{lang.label}</Typography>
-                </Box>
+                <Typography>{lang.label}</Typography>
               </MenuItem>
             ))}
           </Select>
@@ -97,7 +92,7 @@ const SourceFilter: React.FC<SourceFilterProps> = ({
       {/* To language filter */}
       {filterType === 'language' && (
         <FormControl size="small">
-          <InputLabel id="language-select-label" >To language</InputLabel>
+          <InputLabel id="language-select-label">To language</InputLabel>
           <Select
             labelId="language-select-label"
             value={languageFilter || ''}
@@ -108,10 +103,7 @@ const SourceFilter: React.FC<SourceFilterProps> = ({
             <MenuItem value="">All</MenuItem>
             {LANGUAGES.map((lang) => (
               <MenuItem key={lang.code} value={lang.code}>
-                <Box display="flex" alignItems="center" gap={1}>
-                  <Avatar src={lang.flag} sx={{ width: 20, height: 20 }} />
-                  <Typography>{lang.label}</Typography>
-                </Box>
+                <Typography>{lang.label}</Typography>
               </MenuItem>
             ))}
           </Select>

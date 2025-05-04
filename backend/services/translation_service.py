@@ -74,8 +74,8 @@ class TranslationService:
         model_limits = self.get_model_token_limit()
         max_output_tokens = min(model_limits["max_output_tokens"], 8000)  # cap at 8000 for safety
         prompt = self.prompt.format(
-            source_language=self.options.source_language.value,
-            target_language=self.options.target_language.value
+            source_language=self.options.source_language,
+            target_language=self.options.target_language
         )
         logger.debug("Final prompt used: %s", prompt)
 
@@ -132,8 +132,8 @@ class TranslationService:
             "translation": {
                 "provider": self.options.provider.value,
                 "model": self.options.model,
-                "source_language": self.options.source_language.value,
-                "target_language": self.options.target_language.value,
+                "source_language": self.options.source_language,
+                "target_language": self.options.target_language,
                 "prompt_key": self.options.prompt_key,
                 "prompt": self.prompt,
                 "temperature": self.options.temperature

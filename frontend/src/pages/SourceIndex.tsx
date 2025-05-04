@@ -12,7 +12,7 @@ import SourceTable from '../cmp/SourceTable';
 import SourceFilter from '../cmp/SourceFilter';
 import { useToast } from '../cmp/Toast';
 import TranslateForm from '../cmp/TranslateForm';
-import { Source, Segment, SourcePair, FilterType } from '../types/frontend-types';
+import { Segment, SourcePair, FilterType, TranslateFormData } from '../types/frontend-types';
 
 const SourceIndex: React.FC = () => {
     const { keycloak } = useKeycloak();
@@ -31,7 +31,7 @@ const SourceIndex: React.FC = () => {
         }
     }, [dispatch, keycloak.authenticated]);
 
-    const sourcePairs = useMemo(() => {
+    const sourcePairs = useMemo<SourcePair[]>(() => {
         return Object.values(sources)
             .filter(s => !s.original_source_id)
             .map(original => {
@@ -42,7 +42,7 @@ const SourceIndex: React.FC = () => {
             });
     }, [sources]);
 
-    const filteredSourcePairs = useMemo(() => {
+    const filteredSourcePairs = useMemo<SourcePair[]>(() => {
         return sourcePairs.filter(pair => {
           if (filterType === 'mine') {
             return pair.original.username === keycloak.tokenParsed?.preferred_username;
@@ -63,12 +63,7 @@ const SourceIndex: React.FC = () => {
         });
       }, [sourcePairs, filterType, fileNameFilter, languageFilter, fromLanguageFilter, keycloak.tokenParsed]);
 
-    const handleTranslateDocumentSubmit = async (data: {
-        file: File;
-        name: string;
-        source_language: string;
-        target_language: string;
-    }) => {
+    const handleTranslateDocumentSubmit = async (data: TranslateFormData) => {
         try {
             const { originalSource, translationSource } = await createSources(data);
             const { paragraphs, properties } = await extractParagraphsFromFile(data.file);
@@ -118,17 +113,11 @@ const SourceIndex: React.FC = () => {
         return savedSegments;
     };
 
-    const createSources = async (data: {
-        file: File;
-        name: string;
-        source_language: string;
-        target_language: string;
-    }) => {
+    const createSources = async (data: TranslateFormData) => {
         const normalizeName = (filename: string) =>
             filename.replace(/\.docx$/i, '').trim().replace(/\s+/g, '-');
 
         const baseName = normalizeName(data.name);
-        const targetLang = data.target_language.toLowerCase().replace(/\s+/g, '-');
 
         const originalSource = await dispatch(addSource({
             name: baseName,
@@ -136,7 +125,7 @@ const SourceIndex: React.FC = () => {
         } as any)).unwrap();
 
         const translatedSource = await dispatch(addSource({
-            name: `${baseName}-${targetLang}`,
+            name: `${baseName}-${data.target_language}`,
             language: data.target_language,
             original_source_id: originalSource.id
         } as any)).unwrap();

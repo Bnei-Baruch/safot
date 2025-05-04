@@ -9,7 +9,6 @@ import {
   Button,
   TableContainer,
   Box,
-  Avatar,
   Typography
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
@@ -21,10 +20,7 @@ const renderLang = (code: string) => {
   const lang = LANGUAGES.find(l => l.code === code);
   if (!lang) return code;
   return (
-    <Box display="flex" alignItems="center" gap={1}>
-      <Avatar src={lang.flag} sx={{ width: 20, height: 20 }} />
-      <Typography variant="body2">{lang.label}</Typography>
-    </Box>
+    <Typography variant="body2">{lang.label}</Typography>
   );
 };
 
