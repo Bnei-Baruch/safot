@@ -23,8 +23,6 @@ const Header: React.FC = () => {
     
         <Container maxWidth="lg" disableGutters>
             <Toolbar sx={{ px: 0, justifyContent: 'space-between' }}>
-               
-                {/* <Box display="flex" alignItems="center" gap={0} sx={{ ml: '-72px' }}> */}
                 <Box display="flex" alignItems="center" gap={0} sx={{ pt: 1 }}>
                   <img src={logo} alt="Safot Logo" style={{ height: 80 }} />
                   <Box display="flex" flexDirection="column" justifyContent="center" alignItems="flex-start">

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Table,
   TableHead,
@@ -9,7 +9,9 @@ import {
   Button,
   TableContainer,
   Box,
-  Typography
+  Typography,
+  TableSortLabel,
+  Tooltip
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import { useNavigate } from 'react-router-dom';
@@ -28,12 +30,46 @@ interface SourceTableProps {
   pairs: SourcePair[];
 }
 
+type SortDirection = 'asc' | 'desc';
+type SortField = 'name' | 'username' | 'language' | 'translatedLanguage';
+
 const SourceTable: React.FC<SourceTableProps> = ({ pairs }) => {
   const navigate = useNavigate();
+  const [sortField, setSortField] = useState<SortField>('name');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
 
   const extractUsername = (email: string) => {
     return email.split('@')[0];
   };
+
+  const handleSort = (field: SortField) => {
+    if (field === sortField) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  const sortedPairs = [...pairs].sort((a, b) => {
+    const direction = sortDirection === 'asc' ? 1 : -1;
+    
+    switch (sortField) {
+      case 'name':
+        return direction * a.original.name.localeCompare(b.original.name);
+      case 'username':
+        return direction * extractUsername(a.original.username).localeCompare(extractUsername(b.original.username));
+      case 'language':
+        return direction * a.original.language.localeCompare(b.original.language);
+      case 'translatedLanguage':
+        if (!a.translated && !b.translated) return 0;
+        if (!a.translated) return 1;
+        if (!b.translated) return -1;
+        return direction * a.translated.language.localeCompare(b.translated.language);
+      default:
+        return 0;
+    }
+  });
 
   if (!pairs.length) {
     return (
@@ -43,21 +79,51 @@ const SourceTable: React.FC<SourceTableProps> = ({ pairs }) => {
     );
   }
 
+  const SortableHeader = ({ field, label }: { field: SortField; label: string }) => {
+    const isActive = sortField === field;
+    const direction = isActive ? sortDirection : 'asc';
+  
+    return (
+      <Tooltip title="Click to sort" placement="top">
+        <TableSortLabel
+          active={isActive}
+          direction={direction}
+          onClick={() => handleSort(field)}
+          sx={{
+            '&:hover': {
+              color: 'primary.main',
+              cursor: 'pointer'
+            }
+          }}
+        >
+          {label}
+        </TableSortLabel>
+      </Tooltip>
+    );
+  };
+
   return (
     <TableContainer component={Paper} sx={{ margin: "auto", width: "100%", mt: 4 }}>
       <Table>
         <TableHead>
           <TableRow>
-            <TableCell>Name</TableCell>
-            <TableCell>Upload By</TableCell>
-            <TableCell>From</TableCell>
-            <TableCell>To</TableCell>
-            
+            <TableCell>
+              <SortableHeader field="name" label="Name" />
+            </TableCell>
+            <TableCell>
+              <SortableHeader field="username" label="Upload By" />
+            </TableCell>
+            <TableCell>
+              <SortableHeader field="language" label="From" />
+            </TableCell>
+            <TableCell>
+              <SortableHeader field="translatedLanguage" label="To" />
+            </TableCell>
             <TableCell>Actions</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
-          {pairs.map(({ original, translated }) => (
+          {sortedPairs.map(({ original, translated }) => (
             <TableRow key={original.id}>
               <TableCell>{original.name}</TableCell>
               <TableCell>{extractUsername(original.username)}</TableCell>
