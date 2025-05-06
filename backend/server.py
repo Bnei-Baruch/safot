@@ -21,7 +21,7 @@ from db import db
 def configure_logging():
     """Configure logging for the entire application"""
     logging.basicConfig(
-        level=logging.INFO,
+        level=logging.DEBUG,
         format='%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s'
     )
     # Configure peewee logger

@@ -102,6 +102,7 @@ class TranslationService:
                 logger.warning("OpenAI returned an empty response")
                 return "Translation failed due to an empty response."
 
+            logger.debug("OpenAI response: %s", response.choices[0].message.content)
             return response.choices[0].message.content.strip()
 
         except Timeout:
@@ -140,6 +141,7 @@ class TranslationService:
             }
         }
 
+        logger.debug("Translated text after split: %s", translated_paragraphs)
         logger.info("Translation completed successfully. Translated %d paragraphs", len(translated_paragraphs))
         return translated_paragraphs, properties
 
