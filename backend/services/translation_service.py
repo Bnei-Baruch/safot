@@ -92,7 +92,7 @@ class TranslationService:
                 messages=messages,
                 max_tokens=max_output_tokens,
                 temperature=self.options.temperature,
-                timeout=120
+                timeout=600
             )
             end_time = datetime.utcnow()
             duration = (end_time - start_time).total_seconds()
