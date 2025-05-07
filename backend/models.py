@@ -90,7 +90,8 @@ class Provider(str, Enum):
 class TranslationServiceOptions(BaseModel):
     source_language: str
     target_language: str
-    model: str = "gpt-4o"
+    # model: str = "gpt-4o"
+    model: str = "gpt-3.5-turbo"
     provider: Provider = Provider.OPENAI
     temperature: float = 0.2
     prompt_key: str = "prompt_1"
