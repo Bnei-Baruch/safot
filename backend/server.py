@@ -184,6 +184,7 @@ def translate_paragraphs_handler(
     user_info: dict = Depends(get_user_info)
 ):
     try:
+        start_time = datetime.utcnow()
         paragraphs = request.paragraphs
         source_language = request.source_language
         target_language = request.target_language
@@ -199,11 +200,16 @@ def translate_paragraphs_handler(
         translation_service = TranslationService(api_key=OPENAI_API_KEY, options=options)
 
         translated_paragraphs, properties = translation_service.translate_paragraphs(paragraphs)
+        
+        end_time = datetime.utcnow()
+        total_duration = (end_time - start_time).total_seconds()
+        logger.info("Total translation time: %.2f seconds for %d paragraphs", total_duration, len(paragraphs))
 
         return {
             "translated_paragraphs": translated_paragraphs,
             "properties": properties,
-            "total_segments_translated": len(translated_paragraphs)
+            "total_segments_translated": len(translated_paragraphs),
+            "translation_time_seconds": total_duration
         }
 
     except Exception as e:
