@@ -47,14 +47,20 @@ const TranslateForm: React.FC<TranslateFormProps> = ({ onSubmit }) => {
     processUploadedFile(e.dataTransfer.files?.[0] || null);
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (stepByStep = false) => {
     setSubmitAttempted(true);
     if (!file || !sourceLang || !targetLang) return;
     const name = file.name.replace(/\.docx$/, '');
     setLoading(true);
     showToast('📄 Processing file...', 'info');
     try {
-      await onSubmit({ file, name, source_language: sourceLang, target_language: targetLang });
+      await onSubmit({ 
+        file, 
+        name, 
+        source_language: sourceLang, 
+        target_language: targetLang,
+        step_by_step: stepByStep
+      });
       showToast('✅ Translation completed', 'success');
     } catch {
       showToast('❌ Something went wrong', 'error');
@@ -170,20 +176,30 @@ const TranslateForm: React.FC<TranslateFormProps> = ({ onSubmit }) => {
           minHeight={200}
         >
           {!loading ? (
-            <Button
-              variant="contained"
-              onClick={handleSubmit}
-              sx={{ width: 180, height: 40, fontFamily: 'inherit' }}
-            >
-              Translate
-            </Button>
-          ) : (
-            <>
-              <CircularProgress size={20} />
-              <Typography sx={{ fontFamily: 'inherit', color: '#444', mt: 1 }}>
-                Translating your file, please wait...
-              </Typography>
-            </>
+              <Box display="flex" gap={2}>
+                <Button
+                  variant="contained"
+                  onClick={() => handleSubmit()}
+                  sx={{ width: 180, height: 40, fontFamily: 'inherit' }}
+                >
+                  Translate
+                </Button>
+
+                <Button
+                  variant="outlined"
+                  onClick={() => handleSubmit(true)}
+                  sx={{ width: 220, height: 40, fontFamily: 'inherit' }}
+                >
+                  Translate Step by Step
+                </Button>
+              </Box>
+            ) : (
+              <>
+                <CircularProgress size={20} />
+                <Typography sx={{ fontFamily: 'inherit', color: '#444', mt: 1 }}>
+                  Translating your file, please wait...
+                </Typography>
+              </>
           )}
         </Box>
       </Box>

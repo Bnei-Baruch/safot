@@ -75,16 +75,7 @@ const segmentSlice = createSlice({
                 if (!state.segments[source_id]) {
                     state.segments[source_id] = [];
                 }
-                segments.forEach(newSegment => {
-                    const existingIndex = state.segments[source_id].findIndex(
-                        s => s.order === newSegment.order
-                    );
-                    if (existingIndex !== -1) {
-                        state.segments[source_id][existingIndex] = newSegment;
-                    } else {
-                        state.segments[source_id].push(newSegment);
-                    }
-                });
+                state.segments[source_id].push(...segments);
             })
             .addCase(saveSegments.rejected, (state, action: PayloadAction<string | undefined>) => {
                 state.loading = false;

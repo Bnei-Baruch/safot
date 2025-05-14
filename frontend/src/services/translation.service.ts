@@ -7,7 +7,8 @@ const TRANSLATE = 'translate';
 export async function translateParagraphs(
     paragraphs: string[],
     source_language: string,
-    target_language: string
+    target_language: string,
+    examples?: { firstTranslation: string; lastTranslation: string }[]
   ): Promise<{
     translated_paragraphs: string[];
     properties: any;
@@ -16,6 +17,7 @@ export async function translateParagraphs(
     return await httpService.post(`${TRANSLATE}`, {
       paragraphs,
       source_language,
-      target_language
+      target_language,
+      examples
     });
   }

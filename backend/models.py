@@ -4,7 +4,7 @@ from playhouse.postgres_ext import ArrayField, JSONField
 from pydantic import BaseModel, validator
 from enum import Enum
 from db import db
-from typing import List
+from typing import List, TypedDict
 
 
 class Dictionary(Model):
@@ -75,10 +75,16 @@ class Segment(Model):
         )
 
 
+class TranslationExample(TypedDict):
+    firstTranslation: str
+    lastTranslation: str
+
+
 class ParagraphsTranslateRequest(BaseModel):
-    paragraphs: list[str]
+    paragraphs: List[str]
     source_language: str
     target_language: str
+    examples: List[TranslationExample] | None = None
 
 
 class Provider(str, Enum):
@@ -90,8 +96,8 @@ class Provider(str, Enum):
 class TranslationServiceOptions(BaseModel):
     source_language: str
     target_language: str
-    # model: str = "gpt-4o"
-    model: str = "gpt-3.5-turbo"
+    model: str = "gpt-4o"
+    # model: str = "gpt-3.5-turbo"
     provider: Provider = Provider.OPENAI
     temperature: float = 0.2
     prompt_key: str = "prompt_1"

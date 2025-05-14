@@ -144,17 +144,15 @@ def delete_source(source_id: int, _: dict = Depends(get_user_info)):
 @app.get('/segments/{source_id}', response_model=list[dict])
 def read_sources(source_id: int, user_info: dict = Depends(get_user_info)):
     try:
-        latest_segments = get_latest_segments(source_id)
-        return latest_segments
+        # Get all segments instead of just the latest ones
+        segments = list(Segment.select().where(Segment.source_id == source_id).dicts())
+        return segments
 
     except Exception as e:
         logger.error("Error fetching segments: %s", e)
         raise HTTPException(
             status_code=500, detail=f"Failed to fetch segments: {str(e)}")
 
-        logger.error("Error starting translation: %s", e)
-        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
-    
 @app.post('/segments', response_model=list[dict])
 async def save_segments(request: Request, user_info: dict = Depends(get_user_info)):
     try:
@@ -191,15 +189,19 @@ def translate_paragraphs_handler(
 
         if not paragraphs:
             raise HTTPException(status_code=400, detail="No paragraphs provided.")
+        if request.examples : prompt_key= "prompt_2"
+        else : prompt_key= "prompt_1"
 
         options = TranslationServiceOptions(
             source_language=source_language,
-            target_language=target_language
+            target_language=target_language,
+            prompt_key=prompt_key 
         )
 
         translation_service = TranslationService(api_key=OPENAI_API_KEY, options=options)
 
-        translated_paragraphs, properties = translation_service.translate_paragraphs(paragraphs)
+        translated_paragraphs, properties = translation_service.translate_paragraphs(paragraphs=paragraphs,
+            examples=request.examples)
         
         end_time = datetime.utcnow()
         total_duration = (end_time - start_time).total_seconds()

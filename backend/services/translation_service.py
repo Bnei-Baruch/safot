@@ -4,10 +4,12 @@ import logging
 from openai import OpenAI
 from openai import OpenAIError, Timeout
 from datetime import datetime
-from models import TranslationServiceOptions
+from models import TranslationServiceOptions, TranslationExample
 from dotenv import load_dotenv
 from services.translation_prompts import TRANSLATION_PROMPTS
-import inspect
+from typing import List
+import re
+
 
 # Get logger for this module
 logger = logging.getLogger(__name__)
@@ -21,6 +23,8 @@ class TranslationService:
         self.options = options
         self.encoding = tiktoken.encoding_for_model(self.options.model)
         self.prompt = TRANSLATION_PROMPTS[self.options.prompt_key]
+
+        logger.debug(f"Using prompt: {self.options.prompt_key}")
 
     def get_model_token_limit(self):
         model_token_limits = {
@@ -68,22 +72,44 @@ class TranslationService:
             chunks.append(" ||| ".join(current_chunk))
 
         return chunks
+    
+    def build_prompt(self, chunk: str, examples: List[TranslationExample] | None = None) -> str:
+        has_examples = bool(examples and any("firstTranslation" in ex and "lastTranslation" in ex for ex in examples))
+        
+        if has_examples:
+            formatted_examples = "\n\n".join(
+                f"Source: {ex['firstTranslation']}\nTarget: {ex['lastTranslation']}" for ex in examples
+                if ex.get("firstTranslation") and ex.get("lastTranslation")
+            )
+
+            base_prompt = self.prompt.format(
+                source_language=self.options.source_language,
+                target_language=self.options.target_language,
+                examples=formatted_examples  # רק אם קיים
+            )
+
+            logger.debug("Examples added to prompt")
+        else:
+            base_prompt = self.prompt.format(
+                source_language=self.options.source_language,
+                target_language=self.options.target_language,
+                examples=""  
+            )
+
+        return base_prompt
 
 
-    def send_chunk_for_translation(self, chunk):
+    
+    def send_chunk_for_translation(self, chunk: str, prompt: str) -> str:
         model_limits = self.get_model_token_limit()
         max_output_tokens = min(model_limits["max_output_tokens"], 8000)  # cap at 8000 for safety
-        prompt = self.prompt.format(
-            source_language=self.options.source_language,
-            target_language=self.options.target_language
-        )
-        logger.debug("Final prompt used: %s", prompt)
 
         messages = [
             {"role": "system", "content": prompt},
-            {"role": "user", "content": f"{chunk}"}
+            {"role": "user", "content": chunk}
         ]
-        logger.debug("Sending request to OpenAI: %s", messages)
+
+        logger.debug("Sending request to OpenAI: chunk %d chars", len(chunk))
 
         try:
             start_time = datetime.utcnow()
@@ -102,8 +128,7 @@ class TranslationService:
                 logger.warning("OpenAI returned an empty response")
                 return "Translation failed due to an empty response."
 
-            logger.debug("OpenAI response: %s", response.choices[0].message.content)
-            return response.choices[0].message.content.strip()
+            return response.choices[0].message.content
 
         except Timeout:
             logger.error("Request to OpenAI timed out")
@@ -116,17 +141,20 @@ class TranslationService:
         except Exception as e:
             logger.error("Unexpected error during OpenAI call: %s", str(e))
             return f"Translation failed due to unexpected error: {str(e)}"
-
-    def translate_paragraphs(self, paragraphs: list[str]) -> tuple[list[str], dict]:
+    
+    def translate_paragraphs(self, paragraphs: List[str], examples: List[TranslationExample] | None = None) -> tuple[List[str], dict]:
         max_chunk_tokens = self.calculate_chunk_token_limit()
         prepared_chunks = self.prepare_chunks_for_translation(paragraphs, max_chunk_tokens)
 
         translated_paragraphs = []
         for i, chunk in enumerate(prepared_chunks, 1):
             logger.debug("Translating chunk %d", i)
-            translated_text = self.send_chunk_for_translation(chunk)
+
+            prompt = self.build_prompt(chunk=chunk, examples=examples)
+
+            translated_text = self.send_chunk_for_translation(chunk=chunk, prompt=prompt)
             if translated_text:
-                translated_paragraphs.extend(translated_text.split(" ||| "))
+                translated_paragraphs.extend(re.split(r'\s*\|\|\|\s*', translated_text.strip()))
 
         properties = {
             "segment_type": "provider",
@@ -141,7 +169,6 @@ class TranslationService:
             }
         }
 
-        logger.debug("Translated text after split: %s", translated_paragraphs)
         logger.info("Translation completed successfully. Translated %d paragraphs", len(translated_paragraphs))
         return translated_paragraphs, properties
 

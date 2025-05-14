@@ -74,18 +74,34 @@ const SourceIndex: React.FC = () => {
                 properties
             );
 
-            const { translated_paragraphs, properties: providerProperties, total_segments_translated } =
-                await translateParagraphs(paragraphs, data.source_language, data.target_language);
+            if (data.step_by_step) {
+                const firstChunk = paragraphs.slice(0, 10);
+                console.log("Step-by-step translation started");
+                const { translated_paragraphs, properties: providerProperties } =
+                  await translateParagraphs(firstChunk, data.source_language, data.target_language);
+          
+                await buildAndSaveSegments(
+                  translated_paragraphs,
+                  translationSource.id,
+                  providerProperties,
+                  savedOriginalSegments
+                );
+          
+                navigate(`/source-edit/${translationSource.id}`);
+            } else {
+                    const { translated_paragraphs, properties: providerProperties, total_segments_translated } =
+                        await translateParagraphs(paragraphs, data.source_language, data.target_language);
 
-            await buildAndSaveSegments(
-                translated_paragraphs,
-                translationSource.id,
-                providerProperties,
-                savedOriginalSegments
-            );
+                    await buildAndSaveSegments(
+                        translated_paragraphs,
+                        translationSource.id,
+                        providerProperties,
+                        savedOriginalSegments
+                    );
 
-            showToast(`${total_segments_translated} segments translated & saved!`, "success");
-            navigate(`/source-edit/${translationSource.id}`);
+                    showToast(`${total_segments_translated} segments translated & saved!`, "success");
+                    navigate(`/source-edit/${translationSource.id}`);
+            }
         } catch (error) {
             console.error("❌ Translation flow failed:", error);
             showToast("Translation process failed. Please try again.", "error");
