@@ -16,6 +16,7 @@ from services.translation_service import TranslationService
 from services.segment_service import get_paragraphs_from_file, get_latest_segments, store_segments
 from models import Source, Segment, ParagraphsTranslateRequest, TranslationServiceOptions
 from db import db
+from peewee_migrate import Router
 
 
 def configure_logging():
@@ -78,12 +79,22 @@ async def get_user_info(request: Request):
                             detail='Invalid or expired token')
 
 
+# @app.on_event('startup')
+# def startup():
+#     if db.is_closed():
+#         db.connect()
+#         db.create_tables([Source, Segment], safe=True)
+#     logger.info('Database connected and tables ensured')
+
 @app.on_event('startup')
 def startup():
     if db.is_closed():
         db.connect()
-        db.create_tables([Source, Segment], safe=True)
-    logger.info('Database connected and tables ensured')
+    
+    router = Router(db, migrate_dir='migrations')
+    router.run()
+
+    logger.info('Database connected and migrations applied')
 
 @app.on_event('shutdown')
 def shutdown():
