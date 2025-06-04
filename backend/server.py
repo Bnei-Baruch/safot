@@ -91,7 +91,7 @@ def startup():
     if db.is_closed():
         db.connect()
     
-    router = Router(db, migrate_dir='migrations')
+    router = Router(db, migrate_dir='migrations/versions')
     router.run()
 
     logger.info('Database connected and migrations applied')

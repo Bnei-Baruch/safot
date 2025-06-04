@@ -55,21 +55,23 @@ class Source(Model):
 
 
 class SourceDictionaryLink(Model):
-    source_id = IntegerField()
+    # Foreign key to Source with cascade delete
+    source = ForeignKeyField(Source, backref='dictionary_links', to_field='id', on_delete='CASCADE')
+    # Can't be ForeignKeyField due to composite PK in Dictionary
     dictionary_id = IntegerField()
     dictionary_timestamp = DateTimeField()
-    origin = CharField()  # 'self', 'reused', 'copied', 'imported'
+
+    origin = CharField()  # Options: 'self', 'reused', 'copied', 'imported'
 
     class Meta:
         database = db
-        primary_key = CompositeKey('source_id', 'dictionary_id', 'dictionary_timestamp')
+        primary_key = CompositeKey('source', 'dictionary_id', 'dictionary_timestamp')
         indexes = (
             # Index to efficiently query which sources used a specific dictionary snapshot
             (('dictionary_id', 'dictionary_timestamp'), False),
             # Index to efficiently query which dictionaries are linked to a specific source
             (('source_id',), False),
         )
-
 
 class Segment(Model):
     id = IntegerField(sequence='segment_id_seq')
