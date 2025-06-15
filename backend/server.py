@@ -14,7 +14,7 @@ from starlette.status import HTTP_401_UNAUTHORIZED
 
 from services.translation_service import TranslationService
 from services.segment_service import get_paragraphs_from_file, get_latest_segments, store_segments
-from models import Source, Segment, ParagraphsTranslateRequest, TranslationServiceOptions
+from models import Source, Segment, ParagraphsTranslateRequest, TranslationServiceOptions, Dictionary, Rule, SourceDictionaryLink
 from db import db
 from peewee_migrate import Router
 
@@ -78,13 +78,6 @@ async def get_user_info(request: Request):
         raise HTTPException(status_code=HTTP_401_UNAUTHORIZED,
                             detail='Invalid or expired token')
 
-
-# @app.on_event('startup')
-# def startup():
-#     if db.is_closed():
-#         db.connect()
-#         db.create_tables([Source, Segment], safe=True)
-#     logger.info('Database connected and tables ensured')
 
 @app.on_event('startup')
 def startup():
@@ -277,5 +270,64 @@ def export_translation(source_id: int):
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Error generating DOCX: {str(e)}")
+
+
+####### DICTIONARY
+@app.post("/dictionary/{source_id}", response_model=dict)
+def setup_dictionary_for_source(source_id: int, user_info: dict = Depends(get_user_info)):
+    try:
+        existing_link = (
+            SourceDictionaryLink
+            .select()
+            .where(SourceDictionaryLink.source_id == source_id)
+            .order_by(SourceDictionaryLink.dictionary_timestamp.desc())
+            .first()
+        )
+
+        if existing_link:
+            dictionary = Dictionary.get(Dictionary.id == existing_link.dictionary_id,
+                                        Dictionary.timestamp == existing_link.dictionary_timestamp)
+        else:
+            now = datetime.utcnow()
+            dictionary = Dictionary.create(
+                name=f"source_{source_id}_dictionary",
+                username=user_info["preferred_username"],
+                timestamp=now
+            )
+            logger.info(f"✅ Dictionary created: id={dictionary.id}, timestamp={dictionary.timestamp}")
+            
+            dictionary = Dictionary.get(
+                Dictionary.name == f"source_{source_id}_dictionary",
+                Dictionary.username == user_info["preferred_username"],
+                Dictionary.timestamp == now
+            )
+            logger.info(f"🔁 Reloaded dictionary from DB: id={dictionary.id}, timestamp={dictionary.timestamp}")
+
+            rule =Rule.create(
+                name="initial_prompt_rule",
+                username=user_info["preferred_username"],
+                type="prompt_key",
+                dictionary_id=dictionary.id,
+                dictionary_timestamp=dictionary.timestamp,
+                properties={"prompt_key": "prompt_1"}
+            )
+            logger.info(f"✅ Rule created: id={rule.id}, type={rule.type}, dictionary_id={rule.dictionary_id}")
+
+            SourceDictionaryLink.create(
+                source_id=source_id,
+                dictionary_id=dictionary.id,
+                dictionary_timestamp=dictionary.timestamp,
+                origin="self"
+            )
+
+        return {
+            "dictionary_id": dictionary.id,
+            "dictionary_timestamp": dictionary.timestamp.isoformat()
+        }
+
+    except Exception as e:
+        logger.error("Error creating dictionary for source %s: %s", source_id, e)
+        raise HTTPException(status_code=500, detail=f"Failed to create dictionary: {str(e)}")
+
 
 

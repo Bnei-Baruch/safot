@@ -6,6 +6,8 @@ import { fetchSources, addSource } from '../SourceSlice';
 import { saveSegments as storeSegments } from '../SegmentSlice';
 import { useAppDispatch, RootState } from '../store';
 import { Box, Typography, Container } from '@mui/material';
+
+import { dictionaryService } from '../services/dictionary.service';
 import { segmentService } from '../services/segment.service';
 import { translateParagraphs as translateParagraphsAPI } from '../services/translation.service';
 import SourceTable from '../cmp/SourceTable';
@@ -66,47 +68,106 @@ const SourceIndex: React.FC = () => {
     const handleTranslateDocumentSubmit = async (data: TranslateFormData) => {
         try {
             const { originalSource, translationSource } = await createSources(data);
+    
+            await dictionaryService.setupDictionaryForSource(translationSource.id);
             const { paragraphs, properties } = await extractParagraphsFromFile(data.file);
-
+    
             const savedOriginalSegments = await buildAndSaveSegments(
                 paragraphs,
                 originalSource.id,
                 properties
             );
-
+    
             if (data.step_by_step) {
                 const firstChunk = paragraphs.slice(0, 10);
                 console.log("Step-by-step translation started");
+    
                 const { translated_paragraphs, properties: providerProperties } =
-                  await translateParagraphs(firstChunk, data.source_language, data.target_language);
-          
-                await buildAndSaveSegments(
-                  translated_paragraphs,
-                  translationSource.id,
-                  providerProperties,
-                  savedOriginalSegments
+                    await translateParagraphs(firstChunk, data.source_language, data.target_language);
+    
+                const savedTranslatedSegments = await buildAndSaveSegments(
+                    translated_paragraphs,
+                    translationSource.id,
+                    providerProperties,
+                    savedOriginalSegments
                 );
-          
-                navigate(`/source-edit/${translationSource.id}`);
+    
+                if (savedTranslatedSegments.length > 0) {
+                    navigate(`/source-edit/${translationSource.id}`);
+                } else {
+                    showToast("No segments were translated. Please try again.", "error");
+                }
+    
             } else {
-                    const { translated_paragraphs, properties: providerProperties, total_segments_translated } =
-                        await translateParagraphs(paragraphs, data.source_language, data.target_language);
-
-                    await buildAndSaveSegments(
-                        translated_paragraphs,
-                        translationSource.id,
-                        providerProperties,
-                        savedOriginalSegments
-                    );
-
+                const { translated_paragraphs, properties: providerProperties, total_segments_translated } =
+                    await translateParagraphs(paragraphs, data.source_language, data.target_language);
+    
+                const savedTranslatedSegments = await buildAndSaveSegments(
+                    translated_paragraphs,
+                    translationSource.id,
+                    providerProperties,
+                    savedOriginalSegments
+                );
+    
+                if (savedTranslatedSegments.length > 0) {
                     showToast(`${total_segments_translated} segments translated & saved!`, "success");
                     navigate(`/source-edit/${translationSource.id}`);
+                } else {
+                    showToast("No segments were translated. Please try again.", "error");
+                }
             }
         } catch (error) {
             console.error("❌ Translation flow failed:", error);
             showToast("Translation process failed. Please try again.", "error");
         }
     };
+    
+    // const handleTranslateDocumentSubmit = async (data: TranslateFormData) => {
+    //     try {
+    //         const { originalSource, translationSource } = await createSources(data);
+    //         // Setup dictionary for target source
+    //         await dictionaryService.setupDictionaryForSource(translationSource.id);
+    //         const { paragraphs, properties } = await extractParagraphsFromFile(data.file);
+
+    //         const savedOriginalSegments = await buildAndSaveSegments(
+    //             paragraphs,
+    //             originalSource.id,
+    //             properties
+    //         );
+
+    //         if (data.step_by_step) {
+    //             const firstChunk = paragraphs.slice(0, 10);
+    //             console.log("Step-by-step translation started");
+    //             const { translated_paragraphs, properties: providerProperties } =
+    //               await translateParagraphs(firstChunk, data.source_language, data.target_language);
+          
+    //             await buildAndSaveSegments(
+    //               translated_paragraphs,
+    //               translationSource.id,
+    //               providerProperties,
+    //               savedOriginalSegments
+    //             );
+          
+    //             navigate(`/source-edit/${translationSource.id}`);
+    //         } else {
+    //                 const { translated_paragraphs, properties: providerProperties, total_segments_translated } =
+    //                     await translateParagraphs(paragraphs, data.source_language, data.target_language);
+
+    //                 await buildAndSaveSegments(
+    //                     translated_paragraphs,
+    //                     translationSource.id,
+    //                     providerProperties,
+    //                     savedOriginalSegments
+    //                 );
+
+    //                 showToast(`${total_segments_translated} segments translated & saved!`, "success");
+    //                 navigate(`/source-edit/${translationSource.id}`);
+    //         }
+    //     } catch (error) {
+    //         console.error("❌ Translation flow failed:", error);
+    //         showToast("Translation process failed. Please try again.", "error");
+    //     }
+    // };
 
     const buildAndSaveSegments = async (
         paragraphs: string[],

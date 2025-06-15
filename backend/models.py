@@ -9,10 +9,10 @@ from typing import List, TypedDict
 
 class Dictionary(Model):
     id = IntegerField(sequence='dictionary_id_seq')
-    timestamp = DateTimeField(default=datetime.utcnow())
+    timestamp = DateTimeField(default=datetime.utcnow)
     name = CharField()
     username = CharField()
-    labels = ArrayField(CharField)
+    labels = ArrayField(CharField, null=True)
 
     class Meta:
         database = db
