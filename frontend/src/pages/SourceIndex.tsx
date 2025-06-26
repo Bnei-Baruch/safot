@@ -27,6 +27,8 @@ const SourceIndex: React.FC = () => {
     const [languageFilter, setLanguageFilter] = useState<string | null>(null);
     const [fileNameFilter, setFileNameFilter] = useState<string>('');
     const [fromLanguageFilter, setFromLanguageFilter] = useState<string | null>(null);
+    const [translationLoading, setTranslationLoading] = useState(false);
+
     useEffect(() => {
         if (keycloak.authenticated) {
             dispatch(fetchSources());
@@ -66,6 +68,7 @@ const SourceIndex: React.FC = () => {
       }, [sourcePairs, filterType, fileNameFilter, languageFilter, fromLanguageFilter, keycloak.tokenParsed]);
 
     const handleTranslateDocumentSubmit = async (data: TranslateFormData) => {
+        setTranslationLoading(true);
         try {
             const { originalSource, translationSource } = await createSources(data);
     
@@ -119,55 +122,10 @@ const SourceIndex: React.FC = () => {
         } catch (error) {
             console.error("❌ Translation flow failed:", error);
             showToast("Translation process failed. Please try again.", "error");
+        } finally {
+            setTranslationLoading(false);
         }
     };
-    
-    // const handleTranslateDocumentSubmit = async (data: TranslateFormData) => {
-    //     try {
-    //         const { originalSource, translationSource } = await createSources(data);
-    //         // Setup dictionary for target source
-    //         await dictionaryService.setupDictionaryForSource(translationSource.id);
-    //         const { paragraphs, properties } = await extractParagraphsFromFile(data.file);
-
-    //         const savedOriginalSegments = await buildAndSaveSegments(
-    //             paragraphs,
-    //             originalSource.id,
-    //             properties
-    //         );
-
-    //         if (data.step_by_step) {
-    //             const firstChunk = paragraphs.slice(0, 10);
-    //             console.log("Step-by-step translation started");
-    //             const { translated_paragraphs, properties: providerProperties } =
-    //               await translateParagraphs(firstChunk, data.source_language, data.target_language);
-          
-    //             await buildAndSaveSegments(
-    //               translated_paragraphs,
-    //               translationSource.id,
-    //               providerProperties,
-    //               savedOriginalSegments
-    //             );
-          
-    //             navigate(`/source-edit/${translationSource.id}`);
-    //         } else {
-    //                 const { translated_paragraphs, properties: providerProperties, total_segments_translated } =
-    //                     await translateParagraphs(paragraphs, data.source_language, data.target_language);
-
-    //                 await buildAndSaveSegments(
-    //                     translated_paragraphs,
-    //                     translationSource.id,
-    //                     providerProperties,
-    //                     savedOriginalSegments
-    //                 );
-
-    //                 showToast(`${total_segments_translated} segments translated & saved!`, "success");
-    //                 navigate(`/source-edit/${translationSource.id}`);
-    //         }
-    //     } catch (error) {
-    //         console.error("❌ Translation flow failed:", error);
-    //         showToast("Translation process failed. Please try again.", "error");
-    //     }
-    // };
 
     const buildAndSaveSegments = async (
         paragraphs: string[],
@@ -251,7 +209,7 @@ const SourceIndex: React.FC = () => {
             <Box sx={{ backgroundColor: '#f5f5f5', py: 5, width: '100%' }}>
                 <Container maxWidth="lg">
                     <Box sx={{ pl: 9 }}>
-                        <TranslateForm onSubmit={handleTranslateDocumentSubmit} />
+                        <TranslateForm onSubmit={handleTranslateDocumentSubmit} loading={translationLoading} />
                     </Box>
                 </Container>
             </Box>

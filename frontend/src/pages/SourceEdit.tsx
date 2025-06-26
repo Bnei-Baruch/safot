@@ -40,6 +40,8 @@ const SourceEdit: React.FC = () => {
         }
     }>({});
 
+    const [translateMoreLoading, setTranslateMoreLoading] = useState(false);
+
     const isAllTranslated = parsedId && originalSourceId &&
         segments[originalSourceId] &&
         segments[parsedId] &&
@@ -237,6 +239,7 @@ const SourceEdit: React.FC = () => {
         return;
       }
 
+      setTranslateMoreLoading(true);
       try {
         // 1 Create new dictionary version and get id + timestamp
         const { dictionary_id: dictionaryId, dictionary_timestamp: dictionaryTimestamp } = 
@@ -266,6 +269,8 @@ const SourceEdit: React.FC = () => {
       } catch (err) {
         console.error("❌ Translate More failed:", err);
         showToast("Failed to translate more paragraphs.", "error");
+      } finally {
+        setTranslateMoreLoading(false);
       }
     };
 
@@ -353,10 +358,12 @@ const SourceEdit: React.FC = () => {
                                 color="primary"
                                 variant="contained"
                                 onClick={handleTranslateMore}
+                                disabled={translateMoreLoading}
                                 size="medium"
                                 sx={{ boxShadow: 'none', height: 40 }}
                             >
-                                <AddIcon sx={{ mr: 1 }} /> Translate More
+                                <AddIcon sx={{ mr: 1 }} /> 
+                                {translateMoreLoading ? 'Translating...' : 'Translate More'}
                             </Button>
                         </Box>
                     </Box>

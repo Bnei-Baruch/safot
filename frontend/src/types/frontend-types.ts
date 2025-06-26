@@ -82,6 +82,7 @@ export interface TranslateFormData {
   
   export interface TranslateFormProps {
     onSubmit: (data: TranslateFormData) => Promise<void>;
+    loading?: boolean;
   }
 
 export interface Example {

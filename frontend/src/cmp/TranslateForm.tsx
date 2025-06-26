@@ -16,12 +16,11 @@ import { useToast } from './Toast';
 import { TranslateFormProps } from '../types/frontend-types';
 
 
-const TranslateForm: React.FC<TranslateFormProps> = ({ onSubmit }) => {
+const TranslateForm: React.FC<TranslateFormProps> = ({ onSubmit, loading = false }) => {
   const [file, setFile] = useState<File | null>(null);
   const [sourceLang, setSourceLang] = useState('');
   const [targetLang, setTargetLang] = useState('');
   const [submitAttempted, setSubmitAttempted] = useState(false);
-  const [loading, setLoading] = useState(false);
   const { showToast } = useToast();
 
   const handleFileClick = () => {
@@ -51,7 +50,6 @@ const TranslateForm: React.FC<TranslateFormProps> = ({ onSubmit }) => {
     setSubmitAttempted(true);
     if (!file || !sourceLang || !targetLang) return;
     const name = file.name.replace(/\.docx$/, '');
-    setLoading(true);
     showToast('📄 Processing file...', 'info');
     try {
       await onSubmit({ 
@@ -64,8 +62,6 @@ const TranslateForm: React.FC<TranslateFormProps> = ({ onSubmit }) => {
       showToast('✅ Translation completed', 'success');
     } catch {
       showToast('❌ Something went wrong', 'error');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -90,6 +86,7 @@ const TranslateForm: React.FC<TranslateFormProps> = ({ onSubmit }) => {
               variant="outlined"
               error={submitAttempted && !sourceLang}
               helperText={submitAttempted && !sourceLang ? 'Required' : ' '}
+              disabled={loading}
               sx={{ width: 160, fontFamily: 'Kanit, sans-serif' }}
               InputLabelProps={{ sx: { fontFamily: 'Kanit, sans-serif' } }}
               size="small"
@@ -111,6 +108,7 @@ const TranslateForm: React.FC<TranslateFormProps> = ({ onSubmit }) => {
               variant="outlined"
               error={submitAttempted && !targetLang}
               helperText={submitAttempted && !targetLang ? 'Required' : ' '}
+              disabled={loading}
               sx={{ width: 160, fontFamily: 'Kanit, sans-serif' }}
               InputLabelProps={{ sx: { fontFamily: 'Kanit, sans-serif' } }}
               size="small"
@@ -125,25 +123,28 @@ const TranslateForm: React.FC<TranslateFormProps> = ({ onSubmit }) => {
 
           {/* Upload Area */}
           <Box
-            onClick={handleFileClick}
-            onDrop={handleDrop}
+            onClick={loading ? undefined : handleFileClick}
+            onDrop={loading ? undefined : handleDrop}
             onDragOver={(e) => e.preventDefault()}
             sx={{
               width: 300,
               height: 160,
               border: '2px dashed #bbb',
               borderRadius: 2,
-              backgroundColor: '#f5f5f5',
+              backgroundColor: loading ? '#f0f0f0' : '#f5f5f5',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
-              cursor: 'pointer',
+              cursor: loading ? 'not-allowed' : 'pointer',
               mt: 0,
+              opacity: loading ? 0.6 : 1,
             }}
           >
             <InsertDriveFileOutlinedIcon sx={{ mb: 1, fontSize: 36, color: '#777' }} />
-            <Typography sx={{ fontFamily: 'inherit' }}>Click to Upload or Drag File</Typography>
+            <Typography sx={{ fontFamily: 'inherit' }}>
+              {loading ? 'Translation in progress...' : 'Click to Upload or Drag File'}
+            </Typography>
           </Box>
 
           <input
@@ -180,6 +181,7 @@ const TranslateForm: React.FC<TranslateFormProps> = ({ onSubmit }) => {
                 <Button
                   variant="contained"
                   onClick={() => handleSubmit()}
+                  disabled={loading}
                   sx={{ width: 180, height: 40, fontFamily: 'inherit' }}
                 >
                   Translate
@@ -188,6 +190,7 @@ const TranslateForm: React.FC<TranslateFormProps> = ({ onSubmit }) => {
                 <Button
                   variant="outlined"
                   onClick={() => handleSubmit(true)}
+                  disabled={loading}
                   sx={{ width: 220, height: 40, fontFamily: 'inherit' }}
                 >
                   Translate Step by Step
