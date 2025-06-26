@@ -18,9 +18,10 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 class TranslationService:
-    def __init__(self, api_key: str, options: TranslationServiceOptions):
+    def __init__(self, api_key: str, options: TranslationServiceOptions, examples: List[TranslationExample] | None = None):
         self.client = OpenAI(api_key=api_key)
         self.options = options
+        self.examples = examples
         self.encoding = tiktoken.encoding_for_model(self.options.model)
         self.prompt = TRANSLATION_PROMPTS[self.options.prompt_key]
 
@@ -74,18 +75,20 @@ class TranslationService:
         return chunks
     
     def build_prompt(self, chunk: str, examples: List[TranslationExample] | None = None) -> str:
-        has_examples = bool(examples and any("firstTranslation" in ex and "lastTranslation" in ex for ex in examples))
-        
+        has_examples = bool(examples and any(
+            "sourceText" in ex and "firstTranslation" in ex and "lastTranslation" in ex for ex in examples))
+
         if has_examples:
             formatted_examples = "\n\n".join(
-                f"Source: {ex['firstTranslation']}\nTarget: {ex['lastTranslation']}" for ex in examples
-                if ex.get("firstTranslation") and ex.get("lastTranslation")
+                f"Source: {ex['sourceText']}\nFirst Translation: {ex['firstTranslation']}\nFinal Translation: {ex['lastTranslation']}"
+                for ex in examples
+                if ex.get("sourceText") and ex.get("firstTranslation") and ex.get("lastTranslation")
             )
 
             base_prompt = self.prompt.format(
                 source_language=self.options.source_language,
                 target_language=self.options.target_language,
-                examples=formatted_examples  # רק אם קיים
+                examples=formatted_examples
             )
 
             logger.debug("Examples added to prompt")
@@ -93,7 +96,7 @@ class TranslationService:
             base_prompt = self.prompt.format(
                 source_language=self.options.source_language,
                 target_language=self.options.target_language,
-                examples=""  
+                examples=""
             )
 
         return base_prompt
@@ -142,15 +145,16 @@ class TranslationService:
             logger.error("Unexpected error during OpenAI call: %s", str(e))
             return f"Translation failed due to unexpected error: {str(e)}"
     
-    def translate_paragraphs(self, paragraphs: List[str], examples: List[TranslationExample] | None = None) -> tuple[List[str], dict]:
+    def translate_paragraphs(self, paragraphs: List[str], dictionary_id: int | None = None, dictionary_timestamp: str | None = None) -> tuple[List[str], dict]:
         max_chunk_tokens = self.calculate_chunk_token_limit()
         prepared_chunks = self.prepare_chunks_for_translation(paragraphs, max_chunk_tokens)
 
+        # TODO: Fetch examples from database using dictionary_id and timestamp
         translated_paragraphs = []
         for i, chunk in enumerate(prepared_chunks, 1):
             logger.debug("Translating chunk %d", i)
 
-            prompt = self.build_prompt(chunk=chunk, examples=examples)
+            prompt = self.build_prompt(chunk=chunk, examples=self.examples)
 
             translated_text = self.send_chunk_for_translation(chunk=chunk, prompt=prompt)
             if translated_text:
@@ -165,7 +169,9 @@ class TranslationService:
                 "target_language": self.options.target_language,
                 "prompt_key": self.options.prompt_key,
                 "prompt": self.prompt,
-                "temperature": self.options.temperature
+                "temperature": self.options.temperature,
+                "dictionary_id": dictionary_id,
+                "dictionary_timestamp": dictionary_timestamp
             }
         }
 

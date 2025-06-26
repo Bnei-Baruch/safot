@@ -7,6 +7,12 @@ from db import db
 from typing import List, TypedDict
 
 
+class TranslationExample(TypedDict):
+    sourceText: str
+    firstTranslation: str
+    lastTranslation: str
+
+
 class Dictionary(Model):
     id = IntegerField(sequence='dictionary_id_seq')
     timestamp = DateTimeField(default=datetime.utcnow)
@@ -33,7 +39,7 @@ class Rule(Model):
         database = db
         primary_key = CompositeKey('id', 'timestamp')
         indexes = (
-            (('dictionary_id', 'dictionary_timestamp'), True),
+            (('dictionary_id', 'dictionary_timestamp'), False),
         )
 
 
@@ -94,23 +100,23 @@ class Segment(Model):
         )
 
 
-class TranslationExample(TypedDict):
-    firstTranslation: str
-    lastTranslation: str
-
-
-class ParagraphsTranslateRequest(BaseModel):
-    paragraphs: List[str]
-    source_language: str
-    target_language: str
-    examples: List[TranslationExample] | None = None
-
-
 class Provider(str, Enum):
     DEFAULT_DEV = "dev"
     SIMPLE_GPT_1 = "simple-gpt-1"
     OPENAI = "openai"
 
+class Example(BaseModel):
+    sourceText: str
+    firstTranslation: str
+    lastTranslation: str
+
+class ParagraphsTranslateRequest(BaseModel):
+    paragraphs: List[str]
+    source_language: str
+    target_language: str
+    dictionary_id: int | None = None
+    dictionary_timestamp: str | None = None
+    examples: List[Example] | None = None
 
 class TranslationServiceOptions(BaseModel):
     source_language: str

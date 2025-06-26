@@ -4,12 +4,14 @@ import { useParams, useNavigate } from "react-router-dom";
 import compareTwoStrings from 'string-similarity-js';
 import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, TextField, Button, Box, Typography, Container, Fab } from "@mui/material";
 import { segmentService } from '../services/segment.service';
+import { ruleService } from '../services/rule.service';
+import { dictionaryService } from '../services/dictionary.service';
 import SaveIcon from '@mui/icons-material/Save';
 import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
 import AddIcon from '@mui/icons-material/Add';
 import { translateParagraphs } from '../services/translation.service';
 import { fetchSegments, saveSegments} from '../SegmentSlice';
-import { Segment } from '../types/frontend-types';
+import { Segment, Rule, Example } from '../types/frontend-types';
 import { fetchSource } from '../SourceSlice';
 import { useAppDispatch, RootState } from '../store';
 import { useToast } from '../cmp/Toast';
@@ -164,41 +166,45 @@ const SourceEdit: React.FC = () => {
         return batch;
     };
 
-    const getSavedExamples = (): { firstTranslation: string; lastTranslation: string }[] => {
-        if (!parsedId) return [];
-      
+    const getSavedExamples = (): { sourceText: string; firstTranslation: string; lastTranslation: string }[] => {
+        if (!parsedId || !originalSourceId) return [];
+
+        const sourceSegments = segments[originalSourceId] || [];
         const targetSegments = segments[parsedId] || [];
-      
+
         const byOrder: { [order: number]: Segment[] } = {};
         targetSegments.forEach(seg => {
-          if (!seg.text?.trim() || !seg.timestamp) return;
-          if (!byOrder[seg.order]) byOrder[seg.order] = [];
-          byOrder[seg.order].push(seg);
+            if (!seg.text?.trim() || !seg.timestamp) return;
+            if (!byOrder[seg.order]) byOrder[seg.order] = [];
+            byOrder[seg.order].push(seg);
         });
-      
-        const examples: { firstTranslation: string; lastTranslation: string; score: number }[] = [];
-      
+
+        const examples: (Example & { score: number })[] = [];
+
         for (const order in byOrder) {
-          const segs = byOrder[order];
-          if (segs.length < 2) continue;
-      
-          const sorted = segs.sort((a, b) => (a.timestamp ?? '').localeCompare(b.timestamp ?? ''));
-          const first = sorted[0].text.trim();
-          const last = sorted[sorted.length - 1].text.trim();
-      
-          if (first !== last) {
-            const score = 1 - compareTwoStrings(first, last);
-            examples.push({ firstTranslation: first, lastTranslation: last, score });
-          }
+            const segs = byOrder[order];
+            if (segs.length < 2) continue;
+
+            const sorted = segs.sort((a, b) => (a.timestamp ?? '').localeCompare(b.timestamp ?? ''));
+            const first = sorted[0].text.trim();
+            const last = sorted[sorted.length - 1].text.trim();
+
+            const sourceText = sourceSegments.find(s => s.order === Number(order))?.text || '';
+
+            if (first !== last && sourceText) {
+                const score = 1 - compareTwoStrings(first, last);
+                examples.push({ sourceText, firstTranslation: first, lastTranslation: last, score });
+            }
         }
-      
+
         return examples
-          .sort((a, b) => b.score - a.score)
-          .slice(0, 4)
-          .map(({ firstTranslation, lastTranslation }) => ({
-            firstTranslation,
-            lastTranslation
-          }));
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 4)
+            .map(({ sourceText, firstTranslation, lastTranslation }) => ({
+                sourceText,
+                firstTranslation,
+                lastTranslation
+            }));
     };
 
     const buildAndSaveSegments = async (
@@ -225,34 +231,75 @@ const SourceEdit: React.FC = () => {
 
 
     const handleTranslateMore = async () => {
-        const batch = getNextBatch();
+      const batch = getNextBatch();
+      if (!batch.length) {
+        showToast("No more paragraphs to translate.", "info");
+        return;
+      }
+
+      try {
+        // 1 Create new dictionary version and get id + timestamp
+        const { dictionary_id: dictionaryId, dictionary_timestamp: dictionaryTimestamp } = 
+          await createNewDictionaryVersion(parsedId!);
+
+        // 2 Build and save rules (examples + prompt_key)
         const examples = getSavedExamples();
-      
-        if (!batch.length) {
-          showToast("No more paragraphs to translate.", "info");
-          return;
-        }
-      
-        try {
-          const paragraphs = batch.map(seg => seg.text);
-      
-          const { translated_paragraphs, properties, total_segments_translated } =
-            await translateParagraphs(paragraphs, sources[originalSourceId!].language, sourceData?.language!, examples.length ? examples : undefined);
-      
-          await buildAndSaveSegments(
-            translated_paragraphs,
-            parsedId!,
-            properties,
-            batch // ← originalSegments
+        const rules = buildRules(examples, dictionaryId, dictionaryTimestamp);
+        await ruleService.saveRules(rules);
+
+        // 3 Send translation with the new dictionary version
+        const paragraphs = batch.map(seg => seg.text);
+        const { translated_paragraphs, properties, total_segments_translated } =
+          await translateParagraphs(
+            paragraphs,
+            sources[originalSourceId!].language,
+            sourceData?.language!,
+            dictionaryId,
+            dictionaryTimestamp,
+            examples
           );
-      
-          showToast(`${total_segments_translated} segments translated & saved!`, "success");
-        } catch (err) {
-          console.error("❌ Translate More failed:", err);
-          showToast("Failed to translate more paragraphs.", "error");
-        }
-      };
-         
+
+        // 4 Save the new segments
+        await buildAndSaveSegments(translated_paragraphs, parsedId!, properties, batch);
+
+        showToast(`${total_segments_translated} segments translated & saved!`, "success");
+      } catch (err) {
+        console.error("❌ Translate More failed:", err);
+        showToast("Failed to translate more paragraphs.", "error");
+      }
+    };
+
+    const createNewDictionaryVersion = async (sourceId: number) => {
+      return await dictionaryService.createNewDictionaryVersion(sourceId);
+    };
+
+    const buildRules = (examples: Example[], dictionaryId: number, dictionaryTimestamp: string): Rule[] => {
+      const rules: Rule[] = examples.map(example => ({
+        name: "example",
+        type: "example",
+        dictionary_id: dictionaryId,
+        dictionary_timestamp: dictionaryTimestamp,
+        properties: {
+          source_text: example.sourceText,
+          provider_translation: example.firstTranslation,
+          user_translation: example.lastTranslation,
+        },
+      }));
+
+      // Add prompt_key rule
+      rules.push({
+        name: "prompt_key",
+        type: "prompt_key",
+        dictionary_id: dictionaryId,
+        dictionary_timestamp: dictionaryTimestamp,
+        properties: {
+          prompt_key: "prompt_2",
+        },
+      });
+
+      return rules;
+    };
+
     const getLatestSegments = (segmentsArr: Segment[]): Segment[] => {
         const latestByOrder: { [order: number]: Segment } = {};
         segmentsArr.forEach(seg => {

@@ -14,6 +14,9 @@ from starlette.status import HTTP_401_UNAUTHORIZED
 
 from services.translation_service import TranslationService
 from services.segment_service import get_paragraphs_from_file, get_latest_segments, store_segments
+from services.rule_service import store_rules, create_initial_prompt_rule
+from services.dictionary_service import create_new_dictionary, create_new_dictionary_version, create_source_dictionary_link
+from services.source_service import create_source
 from models import Source, Segment, ParagraphsTranslateRequest, TranslationServiceOptions, Dictionary, Rule, SourceDictionaryLink
 from db import db
 from peewee_migrate import Router
@@ -110,17 +113,8 @@ def read_source(source_id: int, user_info: dict = Depends(get_user_info)):
         raise HTTPException(status_code=404, detail='Source not found')
 
 @app.post('/sources', response_model=dict)
-def create_source(source: dict, user_info: dict = Depends(get_user_info)):
-    # Generate a new ID using the database sequence
-    cursor = db.execute_sql("SELECT nextval('source_id_seq')")
-    id_value = cursor.fetchone()[0]
-
-    created_source = Source.create(
-        id=id_value,
-        username=user_info['preferred_username'],
-        **source  # Unpack additional source fields from the request
-    )
-    return model_to_dict(created_source)
+def create_source_handler(source: dict, user_info: dict = Depends(get_user_info)):
+    return create_source(source, user_info['preferred_username'])
 
 @app.put('/sources/{source_id}', response_model=dict)
 def update_source(source_id: int, source: dict, user_info: dict = Depends(get_user_info)):
@@ -187,29 +181,33 @@ def translate_paragraphs_handler(
 ):
     try:
         start_time = datetime.utcnow()
-        paragraphs = request.paragraphs
-        source_language = request.source_language
-        target_language = request.target_language
 
-        if not paragraphs:
+        if not request.paragraphs:
             raise HTTPException(status_code=400, detail="No paragraphs provided.")
-        if request.examples : prompt_key= "prompt_2"
-        else : prompt_key= "prompt_1"
+        
+        prompt_key = "prompt_2" if (request.examples and len(request.examples) > 0) else "prompt_1"
 
         options = TranslationServiceOptions(
-            source_language=source_language,
-            target_language=target_language,
+            source_language=request.source_language,
+            target_language=request.target_language,
             prompt_key=prompt_key 
         )
 
-        translation_service = TranslationService(api_key=OPENAI_API_KEY, options=options)
+        translation_service = TranslationService(
+            api_key=OPENAI_API_KEY,
+            options=options,
+            examples=request.examples  
+        )
 
-        translated_paragraphs, properties = translation_service.translate_paragraphs(paragraphs=paragraphs,
-            examples=request.examples)
-        
+        translated_paragraphs, properties = translation_service.translate_paragraphs(
+            paragraphs=request.paragraphs,
+            dictionary_id=request.dictionary_id,
+            dictionary_timestamp=request.dictionary_timestamp
+        )
+
         end_time = datetime.utcnow()
         total_duration = (end_time - start_time).total_seconds()
-        logger.info("Total translation time: %.2f seconds for %d paragraphs", total_duration, len(paragraphs))
+        logger.info("Total translation time: %.2f seconds for %d paragraphs", total_duration, len(request.paragraphs))
 
         return {
             "translated_paragraphs": translated_paragraphs,
@@ -274,7 +272,7 @@ def export_translation(source_id: int):
 
 ####### DICTIONARY
 @app.post("/dictionary/{source_id}", response_model=dict)
-def setup_dictionary_for_source(source_id: int, user_info: dict = Depends(get_user_info)):
+def create_dictionary_or_version_for_source(source_id: int, user_info: dict = Depends(get_user_info)):
     try:
         existing_link = (
             SourceDictionaryLink
@@ -284,41 +282,32 @@ def setup_dictionary_for_source(source_id: int, user_info: dict = Depends(get_us
             .first()
         )
 
+        now = datetime.utcnow()
+
         if existing_link:
-            dictionary = Dictionary.get(Dictionary.id == existing_link.dictionary_id,
-                                        Dictionary.timestamp == existing_link.dictionary_timestamp)
+            dictionary = create_new_dictionary_version(
+                existing_link.dictionary_id,
+                source_id,
+                user_info["preferred_username"],
+                now
+            )
         else:
-            now = datetime.utcnow()
-            dictionary = Dictionary.create(
-                name=f"source_{source_id}_dictionary",
-                username=user_info["preferred_username"],
-                timestamp=now
+            dictionary = create_new_dictionary(
+                source_id,
+                user_info["preferred_username"],
+                now
             )
-            logger.info(f"✅ Dictionary created: id={dictionary.id}, timestamp={dictionary.timestamp}")
-            
-            dictionary = Dictionary.get(
-                Dictionary.name == f"source_{source_id}_dictionary",
-                Dictionary.username == user_info["preferred_username"],
-                Dictionary.timestamp == now
+            create_initial_prompt_rule(
+                dictionary.id,
+                dictionary.timestamp,
+                user_info["preferred_username"]
             )
-            logger.info(f"🔁 Reloaded dictionary from DB: id={dictionary.id}, timestamp={dictionary.timestamp}")
 
-            rule =Rule.create(
-                name="initial_prompt_rule",
-                username=user_info["preferred_username"],
-                type="prompt_key",
-                dictionary_id=dictionary.id,
-                dictionary_timestamp=dictionary.timestamp,
-                properties={"prompt_key": "prompt_1"}
-            )
-            logger.info(f"✅ Rule created: id={rule.id}, type={rule.type}, dictionary_id={rule.dictionary_id}")
-
-            SourceDictionaryLink.create(
-                source_id=source_id,
-                dictionary_id=dictionary.id,
-                dictionary_timestamp=dictionary.timestamp,
-                origin="self"
-            )
+        create_source_dictionary_link(
+            source_id,
+            dictionary.id,
+            dictionary.timestamp
+        )
 
         return {
             "dictionary_id": dictionary.id,
@@ -326,8 +315,30 @@ def setup_dictionary_for_source(source_id: int, user_info: dict = Depends(get_us
         }
 
     except Exception as e:
-        logger.error("Error creating dictionary for source %s: %s", source_id, e)
-        raise HTTPException(status_code=500, detail=f"Failed to create dictionary: {str(e)}")
+        logger.error("Error: %s", e)
+        raise HTTPException(status_code=500, detail=f"Failed to create dictionary/version: {str(e)}")
+
+####### RULES
+@app.post("/rules", response_model=list[dict])
+async def save_rules(request: Request, user_info: dict = Depends(get_user_info)):
+    try:
+        data = await request.json()
+
+        rules = data.get("rules", [])
+        if not isinstance(rules, list):
+            raise HTTPException(status_code=400, detail="Invalid request format - 'rules' must be a list")
+
+        now = datetime.utcnow()
+        for rule in rules:
+            rule["username"] = user_info["preferred_username"]
+            rule["timestamp"] = now
+
+        saved_rules = store_rules(rules)
+        return saved_rules
+
+    except Exception as e:
+        logger.error("Error in /rules: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to store rules")
 
 
 

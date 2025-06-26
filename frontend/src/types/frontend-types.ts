@@ -83,3 +83,20 @@ export interface TranslateFormData {
   export interface TranslateFormProps {
     onSubmit: (data: TranslateFormData) => Promise<void>;
   }
+
+export interface Example {
+  sourceText: string;
+  firstTranslation: string;
+  lastTranslation: string;
+}
+
+export interface Rule {
+  id?: number;
+  timestamp?: string;
+  name: string;
+  username?: string;
+  type: string;
+  dictionary_id: number;
+  dictionary_timestamp?: string;
+  properties: Record<string, any>;
+}
