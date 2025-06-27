@@ -1,5 +1,6 @@
 import { httpService } from './http.service';
 import { Segment, BuildSegmentParams, PaginationInfo } from '../types/frontend-types';
+import { PAGE_SIZE } from '../constants/pagination';
 
 const SEGMENTS = 'segments';
 
@@ -38,7 +39,7 @@ async function extractParagraphs(file: File,): Promise<{paragraphs: string[], pr
     return  await httpService.post("/docx2text", formData);
 }
 
-async function fetchSegments(source_id: number, offset: number = 0, limit: number = 100): Promise<{
+async function fetchSegments(source_id: number, offset: number = 0, limit: number = PAGE_SIZE): Promise<{
     segments: Segment[];
     pagination: PaginationInfo;
 }> {

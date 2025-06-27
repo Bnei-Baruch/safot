@@ -16,6 +16,7 @@ import { fetchSource } from '../SourceSlice';
 import { useAppDispatch, RootState } from '../store';
 import { useToast } from '../cmp/Toast';
 import { LANGUAGES } from '../constants/languages';
+import { PAGE_SIZE } from '../constants/pagination';
 
 
 const SourceEdit: React.FC = () => {
@@ -42,7 +43,7 @@ const SourceEdit: React.FC = () => {
 
     const [translateMoreLoading, setTranslateMoreLoading] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
-    const pageSize = 100;
+    const pageSize = PAGE_SIZE;
 
     const isAllTranslated = parsedId && originalSourceId &&
         segments[originalSourceId]?.pagination &&

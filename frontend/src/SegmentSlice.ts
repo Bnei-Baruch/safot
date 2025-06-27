@@ -2,6 +2,7 @@ import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import { segmentService } from './services/segment.service';
 import { Segment } from './types/frontend-types';
 import { PaginationInfo } from './types/frontend-types';
+import { PAGE_SIZE } from './constants/pagination';
 
 
 interface SegmentState {
@@ -84,7 +85,7 @@ const segmentSlice = createSlice({
             }
             
             // Add to the appropriate page based on order
-            const page = Math.floor((segment.order - 1) / 100);
+            const page = Math.floor((segment.order - 1) / PAGE_SIZE);
             if (!state.segments[source_id].pages[page]) {
                 state.segments[source_id].pages[page] = [];
             }
@@ -107,7 +108,7 @@ const segmentSlice = createSlice({
             })
             .addCase(fetchSegments.fulfilled, (state, action: PayloadAction<{ source_id: number, segments: Segment[], pagination: PaginationInfo }>) => {
                 const { source_id, segments, pagination } = action.payload;
-                const page = Math.floor(pagination.offset / 100);
+                const page = Math.floor(pagination.offset / PAGE_SIZE);
                 
                 if (!state.segments[source_id]) {
                     state.segments[source_id] = {
@@ -146,7 +147,7 @@ const segmentSlice = createSlice({
                         };
                     }
                     
-                    const page = Math.floor((segment.order - 1) / 100);
+                    const page = Math.floor((segment.order - 1) / PAGE_SIZE);
                     if (!state.segments[source_id].pages[page]) {
                         state.segments[source_id].pages[page] = [];
                     }

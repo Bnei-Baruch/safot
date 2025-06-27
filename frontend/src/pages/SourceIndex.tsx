@@ -15,6 +15,7 @@ import SourceFilter from '../cmp/SourceFilter';
 import { useToast } from '../cmp/Toast';
 import TranslateForm from '../cmp/TranslateForm';
 import { Segment, SourcePair, FilterType, TranslateFormData } from '../types/frontend-types';
+import { PAGE_SIZE } from '../constants/pagination';
 
 const SourceIndex: React.FC = () => {
     const { keycloak } = useKeycloak();
@@ -97,8 +98,8 @@ const SourceIndex: React.FC = () => {
     
                 if (savedTranslatedSegments.length > 0) {
                     // Fetch first page of segments to get pagination info
-                    await dispatch(fetchSegments({ source_id: translationSource.id, offset: 0, limit: 100 }));
-                    await dispatch(fetchSegments({ source_id: originalSource.id, offset: 0, limit: 100 })); // חדש
+                    await dispatch(fetchSegments({ source_id: translationSource.id, offset: 0, limit: PAGE_SIZE }));
+                    await dispatch(fetchSegments({ source_id: originalSource.id, offset: 0, limit: PAGE_SIZE })); 
                     navigate(`/source-edit/${translationSource.id}`);
 
                 } else {
@@ -119,7 +120,7 @@ const SourceIndex: React.FC = () => {
                 if (savedTranslatedSegments.length > 0) {
                     showToast(`${total_segments_translated} segments translated & saved!`, "success");
                     // Fetch first page of segments to get pagination info
-                    await dispatch(fetchSegments({ source_id: translationSource.id, offset: 0, limit: 100 }));
+                    await dispatch(fetchSegments({ source_id: translationSource.id, offset: 0, limit: PAGE_SIZE }));
                     navigate(`/source-edit/${translationSource.id}`);
                 } else {
                     showToast("No segments were translated. Please try again.", "error");
