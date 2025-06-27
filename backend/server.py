@@ -139,12 +139,29 @@ def delete_source(source_id: int, _: dict = Depends(get_user_info)):
     return rows_deleted
 
 ####### SEGMENTS 
-@app.get('/segments/{source_id}', response_model=list[dict])
-def read_sources(source_id: int, user_info: dict = Depends(get_user_info)):
+@app.get('/segments/{source_id}', response_model=dict)
+def read_segments(source_id: int, offset: int = 0, limit: int = 100, user_info: dict = Depends(get_user_info)):
     try:
-        # Get all segments instead of just the latest ones
-        segments = list(Segment.select().where(Segment.source_id == source_id).dicts())
-        return segments
+        # Get total count for pagination info
+        total_count = Segment.select().where(Segment.source_id == source_id).count()
+        
+        # Get paginated segments
+        segments = list(Segment.select()
+                       .where(Segment.source_id == source_id)
+                       .order_by(Segment.order)
+                       .offset(offset)
+                       .limit(limit)
+                       .dicts())
+        
+        return {
+            "segments": segments,
+            "pagination": {
+                "offset": offset,
+                "limit": limit,
+                "total_count": total_count,
+                "has_more": offset + limit < total_count
+            }
+        }
 
     except Exception as e:
         logger.error("Error fetching segments: %s", e)

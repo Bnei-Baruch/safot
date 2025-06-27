@@ -3,7 +3,7 @@ import { useKeycloak } from '@react-keycloak/web';
 import { useSelector } from 'react-redux';
 import { useNavigate } from "react-router-dom";
 import { fetchSources, addSource } from '../SourceSlice';
-import { saveSegments as storeSegments } from '../SegmentSlice';
+import { fetchSegments, saveSegments as storeSegments } from '../SegmentSlice';
 import { useAppDispatch, RootState } from '../store';
 import { Box, Typography, Container } from '@mui/material';
 
@@ -96,7 +96,11 @@ const SourceIndex: React.FC = () => {
                 );
     
                 if (savedTranslatedSegments.length > 0) {
+                    // Fetch first page of segments to get pagination info
+                    await dispatch(fetchSegments({ source_id: translationSource.id, offset: 0, limit: 100 }));
+                    await dispatch(fetchSegments({ source_id: originalSource.id, offset: 0, limit: 100 })); // חדש
                     navigate(`/source-edit/${translationSource.id}`);
+
                 } else {
                     showToast("No segments were translated. Please try again.", "error");
                 }
@@ -114,6 +118,8 @@ const SourceIndex: React.FC = () => {
     
                 if (savedTranslatedSegments.length > 0) {
                     showToast(`${total_segments_translated} segments translated & saved!`, "success");
+                    // Fetch first page of segments to get pagination info
+                    await dispatch(fetchSegments({ source_id: translationSource.id, offset: 0, limit: 100 }));
                     navigate(`/source-edit/${translationSource.id}`);
                 } else {
                     showToast("No segments were translated. Please try again.", "error");

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useParams, useNavigate } from "react-router-dom";
 import compareTwoStrings from 'string-similarity-js';
-import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, TextField, Button, Box, Typography, Container, Fab } from "@mui/material";
+import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, TextField, Button, Box, Typography, Container, Fab, Pagination } from "@mui/material";
 import { segmentService } from '../services/segment.service';
 import { ruleService } from '../services/rule.service';
 import { dictionaryService } from '../services/dictionary.service';
@@ -10,7 +10,7 @@ import SaveIcon from '@mui/icons-material/Save';
 import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
 import AddIcon from '@mui/icons-material/Add';
 import { translateParagraphs } from '../services/translation.service';
-import { fetchSegments, saveSegments} from '../SegmentSlice';
+import { fetchSegments, saveSegments, updateSegment } from '../SegmentSlice';
 import { Segment, Rule, Example } from '../types/frontend-types';
 import { fetchSource } from '../SourceSlice';
 import { useAppDispatch, RootState } from '../store';
@@ -41,12 +41,14 @@ const SourceEdit: React.FC = () => {
     }>({});
 
     const [translateMoreLoading, setTranslateMoreLoading] = useState(false);
+    const [currentPage, setCurrentPage] = useState(1);
+    const pageSize = 100;
 
     const isAllTranslated = parsedId && originalSourceId &&
-        segments[originalSourceId] &&
-        segments[parsedId] &&
-        segments[originalSourceId].length === segments[parsedId].length &&
-        segments[parsedId].every(segment => segment.text?.trim() !== '');
+        segments[originalSourceId]?.pagination &&
+        segments[parsedId]?.pagination &&
+        segments[originalSourceId].pagination?.total_count === segments[parsedId].pagination?.total_count &&
+        segments[parsedId].pagination?.total_count > 0;
 
     useEffect(() => {
         if (parsedId && !(parsedId in sources)) {
@@ -58,14 +60,16 @@ const SourceEdit: React.FC = () => {
     }, [dispatch, parsedId, originalSourceId, sources]);
 
     useEffect(() => {
-
-        if (originalSourceId && !(originalSourceId in segments)) {
-            dispatch(fetchSegments({ source_id: originalSourceId }));
+        // Load both source and translation for the same page
+        if (originalSourceId && !segments[originalSourceId]?.pages[currentPage - 1]) {
+            const offset = (currentPage - 1) * pageSize;
+            dispatch(fetchSegments({ source_id: originalSourceId, offset, limit: pageSize }));
         }
-        if (parsedId && !(parsedId in segments)) {
-            dispatch(fetchSegments({ source_id: parsedId }));
+        if (parsedId && !segments[parsedId]?.pages[currentPage - 1]) {
+            const offset = (currentPage - 1) * pageSize;
+            dispatch(fetchSegments({ source_id: parsedId, offset, limit: pageSize }));
         }
-    }, [dispatch, parsedId, originalSourceId, segments]);
+    }, [dispatch, parsedId, originalSourceId, currentPage, segments]);
 
     const handleTranslationChange = (sourceSegmentId: number, order: number, timestamp: string, value: string) => {
         setTranslations(prev => ({
@@ -83,9 +87,9 @@ const SourceEdit: React.FC = () => {
         if (!parsedId || !translations[sourceSegmentId] || originalSourceId == null) return;
       
         const translation = translations[sourceSegmentId];
-        const originalSegment = segments[originalSourceId]?.find(s => s.id === sourceSegmentId);
+        const originalSegment = getCurrentOriginalSegments().find(s => s.id === sourceSegmentId);
         const order = originalSegment?.order ?? translation.order;
-        const existingTranslation = segments[parsedId]?.find(t => t.order === order);
+        const existingTranslation = getCurrentTranslatedSegments().find(t => t.order === order);
       
         const segment = segmentService.buildSegment({
             text: translation.text,
@@ -100,8 +104,9 @@ const SourceEdit: React.FC = () => {
         });
        
         try {
-            await dispatch(saveSegments([segment])).unwrap();
-            await dispatch(fetchSegments({ source_id: parsedId }));
+            const savedSegment = await dispatch(saveSegments([segment])).unwrap();
+            // Update Redux directly instead of refetching
+            dispatch(updateSegment({ source_id: parsedId, segment: savedSegment.segments[0] }));
             showToast("Translation saved successfully!", "success");
             setTranslations(prev => {
                 const updated = { ...prev };
@@ -113,7 +118,26 @@ const SourceEdit: React.FC = () => {
             showToast("Failed to save translation. Please try again.", "error");
         }
     };
-      
+
+    const getCurrentOriginalSegments = (): Segment[] => {
+        if (!originalSourceId || !segments[originalSourceId]) return [];
+        return segments[originalSourceId].pages[currentPage - 1] || [];
+    };
+
+    const getCurrentTranslatedSegments = (): Segment[] => {
+        if (!parsedId || !segments[parsedId]) return [];
+        return segments[parsedId].pages[currentPage - 1] || [];
+    };
+
+    const getTotalPages = (): number => {
+        if (!originalSourceId || !segments[originalSourceId]?.pagination) return 0;
+        return Math.ceil(segments[originalSourceId].pagination.total_count / pageSize);
+    };
+
+    const handlePageChange = (event: React.ChangeEvent<unknown>, value: number) => {
+        setCurrentPage(value);
+    };
+
     const getLanguageName = (code: string): string => {
         const languageMap: { [key: string]: string } = {
             'he': 'Hebrew',
@@ -152,8 +176,8 @@ const SourceEdit: React.FC = () => {
     const getNextBatch = (): Segment[] => {
         if (!originalSourceId || !parsedId) return [];
       
-        const sourceSegments = segments[originalSourceId] || [];
-        const targetSegments = segments[parsedId] || [];
+        const sourceSegments = getCurrentOriginalSegments();
+        const targetSegments = getCurrentTranslatedSegments();
         const translatedOrders = new Set(targetSegments.map(seg => seg.order));
       
         const batch: Segment[] = [];
@@ -171,8 +195,8 @@ const SourceEdit: React.FC = () => {
     const getSavedExamples = (): { sourceText: string; firstTranslation: string; lastTranslation: string }[] => {
         if (!parsedId || !originalSourceId) return [];
 
-        const sourceSegments = segments[originalSourceId] || [];
-        const targetSegments = segments[parsedId] || [];
+        const sourceSegments = getCurrentOriginalSegments();
+        const targetSegments = getCurrentTranslatedSegments();
 
         const byOrder: { [order: number]: Segment[] } = {};
         targetSegments.forEach(seg => {
@@ -341,7 +365,7 @@ const SourceEdit: React.FC = () => {
                                 Document: {sourceData?.name}
                             </Typography>
                             <Typography variant="body2" color="text.secondary">
-                                {segments[parsedId!]?.length || 0} paragraphs
+                                {segments[parsedId!]?.pagination?.total_count || 0} paragraphs
                             </Typography>
                         </Box>
             
@@ -370,6 +394,24 @@ const SourceEdit: React.FC = () => {
                 </Box>
             </Container>
       
+          {/* Pagination Controls - Moved to top */}
+            <Container maxWidth="lg">
+                <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2, pl: 9 }}>
+                    <Box>
+                        <Typography variant="body2" color="text.secondary" gutterBottom align="center">
+                            Page {currentPage} of {getTotalPages()} • {segments[parsedId!]?.pagination?.total_count || 0} total segments
+                        </Typography>
+                        <Pagination 
+                            count={getTotalPages()}
+                            page={currentPage}
+                            onChange={handlePageChange}
+                            size="small"
+                            disabled={!originalSourceId || !segments[originalSourceId]}
+                        />
+                    </Box>
+                </Box>
+            </Container>
+      
           {/* Scrollable table */}
             <Container maxWidth="lg">
                 <Box sx={{ maxHeight: '70vh', overflow: 'auto', pl: 9,pb: 4  }}>
@@ -389,8 +431,8 @@ const SourceEdit: React.FC = () => {
                         </TableHead>
                         <TableBody>
                         {originalSourceId && segments[originalSourceId] && parsedId ? (
-                            getLatestSegments(segments[originalSourceId]).map((sourceSegment: Segment) => {
-                                const latestTargetSegments = getLatestSegments(segments[parsedId] || []);
+                            getLatestSegments(getCurrentOriginalSegments()).map((sourceSegment: Segment) => {
+                                const latestTargetSegments = getLatestSegments(getCurrentTranslatedSegments());
                                 const existingTranslation = latestTargetSegments.find(t => t.order === sourceSegment.order)?.text || '';
                                 const hasChanged = sourceSegment.id !== undefined &&
                                 (translations[sourceSegment.id]?.text ?? existingTranslation) !== existingTranslation;

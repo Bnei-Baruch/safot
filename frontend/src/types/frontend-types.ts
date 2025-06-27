@@ -101,3 +101,10 @@ export interface Rule {
   dictionary_timestamp?: string;
   properties: Record<string, any>;
 }
+
+export interface PaginationInfo {
+  offset: number;
+  limit: number;
+  total_count: number;
+  has_more: boolean;
+}
