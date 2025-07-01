@@ -133,12 +133,20 @@ def update_source(source_id: int, source: dict, user_info: dict = Depends(get_us
     except DoesNotExist:
         raise HTTPException(status_code=404, detail='Source not found')
 
+
 @app.delete('/sources/{source_id}', response_model=int)
 def delete_source(source_id: int, _: dict = Depends(get_user_info)):
-    rows_deleted = Source.delete().where(Source.id == source_id).execute()
+    logger.info(f"Source ID to delete: {source_id}")
+     # Delete all segments for these sources
+    segments_deleted = Segment.delete().where((Source.id == source_id) | (Source.original_segment_id == source_id)).execute()
+    logger.info(f"Segments deleted: {segments_deleted}")
+    # Delete the sources themselves
+    rows_deleted = Source.delete().where((Source.id == source_id) | (Source.original_source_id == source_id)).execute()
+    logger.info(f"Sources deleted: {rows_deleted}")
     if rows_deleted == 0:
+        logger.warning(f"No sources found for deletion with id {source_id}")
         raise HTTPException(status_code=404, detail='Source not found')
-    return rows_deleted
+
 
 ####### SEGMENTS 
 @app.get('/segments/{source_id}', response_model=list[dict])
@@ -215,8 +223,6 @@ def translate_paragraphs_handler(
 def extract_segments_handler(
     file: UploadFile = File(...),
 ):
-    if not file.filename.lower().endswith('.docx'):
-        raise HTTPException(status_code=400, detail="Only .docx files are supported.")
     try:
         paragraphs = get_paragraphs_from_file(file)
         properties = {"segment_type": "file"}
