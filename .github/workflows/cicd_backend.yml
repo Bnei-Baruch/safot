@@ -1,0 +1,51 @@
+name: Backend CI/CD Pipeline
+
+on:
+  workflow_dispatch:
+    
+jobs:
+
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.BBDEPLOYMENT_DOCKERHUB_USERNAME }}
+          password: ${{ secrets.BBDEPLOYMENT_DOCKERHUB_PASSWORD }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: backend
+          push: true
+          tags: |
+            bneibaruch/safot_backend:latest
+            bneibaruch/safot_backend:${{github.run_number}}
+          build-args: |
+            build_number=${{github.run_number}}
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Deploy to production via SSH
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.SAFOT_HOST_PRODUCTION }}
+          username: root
+          key: ${{ secrets.BBDEPLOYMENT_SSH_PRIVATE_KEY }}
+          proxy_host: ${{ secrets.SSH_PROXY_HOST }}
+          proxy_username: ${{ secrets.SSH_PROXY_USERNAME }}
+          proxy_key: ${{ secrets.BBDEPLOYMENT_SSH_PRIVATE_KEY }}
+          script: |
+            cd /root/safot/backend
+            sed -i 's/SAFOT_VERSION.*/SAFOT_VERSION=${{github.run_number}}/g' .env
+            docker compose -f docker-compose.yml pull
+            docker compose -f docker-compose.yml up -d --no-deps
+            docker network connect mynetwork safot_backend || true
