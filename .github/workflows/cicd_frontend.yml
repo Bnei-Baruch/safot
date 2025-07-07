@@ -25,9 +25,9 @@ jobs:
           push: true
           tags: |
             bneibaruch/safot_frontend:latest
-            bneibaruch/safot_frontend:${{github.run_number}}
+            bneibaruch/safot_frontend:gh_${{github.run_number}}
           build-args: |
-            build_number=${{github.run_number}}
+            build_number=gh_${{github.run_number}}
             REACT_APP_KEYCLOAK_URL=https://accounts.kab.info/auth
             REACT_APP_KEYCLOAK_REALM=main
             REACT_APP_KEYCLOAK_CLIENT_ID=safot
@@ -49,7 +49,7 @@ jobs:
           proxy_key: ${{ secrets.BBDEPLOYMENT_SSH_PRIVATE_KEY }}
           script: |
             cd /root/safot/frontend
-            sed -i 's/SAFOT_VERSION.*/SAFOT_VERSION=${{github.run_number}}/g' .env
+            sed -i 's/SAFOT_VERSION.*/SAFOT_VERSION=gh_${{github.run_number}}/g' .env
             docker network inspect mynetwork || docker network create mynetwork
             docker compose -f docker-compose.yml down
             docker compose -f docker-compose.yml pull
