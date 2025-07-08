@@ -14,14 +14,18 @@ from starlette.status import HTTP_401_UNAUTHORIZED
 
 from services.translation_service import TranslationService
 from services.segment_service import get_paragraphs_from_file, get_latest_segments, store_segments
-from models import Source, Segment, ParagraphsTranslateRequest, TranslationServiceOptions
+from services.rule_service import store_rules, create_initial_prompt_rule
+from services.dictionary_service import create_new_dictionary, create_new_dictionary_version, create_source_dictionary_link
+from services.source_service import create_source
+from models import Source, Segment, ParagraphsTranslateRequest, TranslationServiceOptions, Dictionary, Rule, SourceDictionaryLink
 from db import db
+from peewee_migrate import Router
 
 
 def configure_logging():
     """Configure logging for the entire application"""
     logging.basicConfig(
-        level=logging.INFO,
+        level=logging.DEBUG,
         format='%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s'
     )
     # Configure peewee logger
@@ -82,8 +86,11 @@ async def get_user_info(request: Request):
 def startup():
     if db.is_closed():
         db.connect()
-        db.create_tables([Source, Segment], safe=True)
-    logger.info('Database connected and tables ensured')
+    
+    router = Router(db, migrate_dir='migrations/versions')
+    router.run()
+
+    logger.info('Database connected and migrations applied')
 
 @app.on_event('shutdown')
 def shutdown():
@@ -106,17 +113,8 @@ def read_source(source_id: int, user_info: dict = Depends(get_user_info)):
         raise HTTPException(status_code=404, detail='Source not found')
 
 @app.post('/sources', response_model=dict)
-def create_source(source: dict, user_info: dict = Depends(get_user_info)):
-    # Generate a new ID using the database sequence
-    cursor = db.execute_sql("SELECT nextval('source_id_seq')")
-    id_value = cursor.fetchone()[0]
-
-    created_source = Source.create(
-        id=id_value,
-        username=user_info['preferred_username'],
-        **source  # Unpack additional source fields from the request
-    )
-    return model_to_dict(created_source)
+def create_source_handler(source: dict, user_info: dict = Depends(get_user_info)):
+    return create_source(source, user_info['preferred_username'])
 
 @app.put('/sources/{source_id}', response_model=dict)
 def update_source(source_id: int, source: dict, user_info: dict = Depends(get_user_info)):
@@ -141,20 +139,35 @@ def delete_source(source_id: int, _: dict = Depends(get_user_info)):
     return rows_deleted
 
 ####### SEGMENTS 
-@app.get('/segments/{source_id}', response_model=list[dict])
-def read_sources(source_id: int, user_info: dict = Depends(get_user_info)):
+@app.get('/segments/{source_id}', response_model=dict)
+def read_segments(source_id: int, offset: int = 0, limit: int = 100, user_info: dict = Depends(get_user_info)):
     try:
-        latest_segments = get_latest_segments(source_id)
-        return latest_segments
+        # Get total count for pagination info
+        total_count = Segment.select().where(Segment.source_id == source_id).count()
+        
+        # Get paginated segments
+        segments = list(Segment.select()
+                       .where(Segment.source_id == source_id)
+                       .order_by(Segment.order)
+                       .offset(offset)
+                       .limit(limit)
+                       .dicts())
+        
+        return {
+            "segments": segments,
+            "pagination": {
+                "offset": offset,
+                "limit": limit,
+                "total_count": total_count,
+                "has_more": offset + limit < total_count
+            }
+        }
 
     except Exception as e:
         logger.error("Error fetching segments: %s", e)
         raise HTTPException(
             status_code=500, detail=f"Failed to fetch segments: {str(e)}")
 
-        logger.error("Error starting translation: %s", e)
-        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
-    
 @app.post('/segments', response_model=list[dict])
 async def save_segments(request: Request, user_info: dict = Depends(get_user_info)):
     try:
@@ -184,26 +197,40 @@ def translate_paragraphs_handler(
     user_info: dict = Depends(get_user_info)
 ):
     try:
-        paragraphs = request.paragraphs
-        source_language = request.source_language
-        target_language = request.target_language
+        start_time = datetime.utcnow()
 
-        if not paragraphs:
+        if not request.paragraphs:
             raise HTTPException(status_code=400, detail="No paragraphs provided.")
+        
+        prompt_key = "prompt_2" if (request.examples and len(request.examples) > 0) else "prompt_1"
 
         options = TranslationServiceOptions(
-            source_language=source_language,
-            target_language=target_language
+            source_language=request.source_language,
+            target_language=request.target_language,
+            prompt_key=prompt_key 
         )
 
-        translation_service = TranslationService(api_key=OPENAI_API_KEY, options=options)
+        translation_service = TranslationService(
+            api_key=OPENAI_API_KEY,
+            options=options,
+            examples=request.examples  
+        )
 
-        translated_paragraphs, properties = translation_service.translate_paragraphs(paragraphs)
+        translated_paragraphs, properties = translation_service.translate_paragraphs(
+            paragraphs=request.paragraphs,
+            dictionary_id=request.dictionary_id,
+            dictionary_timestamp=request.dictionary_timestamp
+        )
+
+        end_time = datetime.utcnow()
+        total_duration = (end_time - start_time).total_seconds()
+        logger.info("Total translation time: %.2f seconds for %d paragraphs", total_duration, len(request.paragraphs))
 
         return {
             "translated_paragraphs": translated_paragraphs,
             "properties": properties,
-            "total_segments_translated": len(translated_paragraphs)
+            "total_segments_translated": len(translated_paragraphs),
+            "translation_time_seconds": total_duration
         }
 
     except Exception as e:
@@ -258,5 +285,77 @@ def export_translation(source_id: int):
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Error generating DOCX: {str(e)}")
+
+
+####### DICTIONARY
+@app.post("/dictionary/{source_id}", response_model=dict)
+def create_dictionary_or_version_for_source(source_id: int, user_info: dict = Depends(get_user_info)):
+    try:
+        existing_link = (
+            SourceDictionaryLink
+            .select()
+            .where(SourceDictionaryLink.source_id == source_id)
+            .order_by(SourceDictionaryLink.dictionary_timestamp.desc())
+            .first()
+        )
+
+        now = datetime.utcnow()
+
+        if existing_link:
+            dictionary = create_new_dictionary_version(
+                existing_link.dictionary_id,
+                source_id,
+                user_info["preferred_username"],
+                now
+            )
+        else:
+            dictionary = create_new_dictionary(
+                source_id,
+                user_info["preferred_username"],
+                now
+            )
+            create_initial_prompt_rule(
+                dictionary.id,
+                dictionary.timestamp,
+                user_info["preferred_username"]
+            )
+
+        create_source_dictionary_link(
+            source_id,
+            dictionary.id,
+            dictionary.timestamp
+        )
+
+        return {
+            "dictionary_id": dictionary.id,
+            "dictionary_timestamp": dictionary.timestamp.isoformat()
+        }
+
+    except Exception as e:
+        logger.error("Error: %s", e)
+        raise HTTPException(status_code=500, detail=f"Failed to create dictionary/version: {str(e)}")
+
+####### RULES
+@app.post("/rules", response_model=list[dict])
+async def save_rules(request: Request, user_info: dict = Depends(get_user_info)):
+    try:
+        data = await request.json()
+
+        rules = data.get("rules", [])
+        if not isinstance(rules, list):
+            raise HTTPException(status_code=400, detail="Invalid request format - 'rules' must be a list")
+
+        now = datetime.utcnow()
+        for rule in rules:
+            rule["username"] = user_info["preferred_username"]
+            rule["timestamp"] = now
+
+        saved_rules = store_rules(rules)
+        return saved_rules
+
+    except Exception as e:
+        logger.error("Error in /rules: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to store rules")
+
 
 

@@ -175,10 +175,8 @@ const AddSourceForm: React.FC<AddSourceFormProps> = ({ onSubmit, mode }) => {
                 select
                 label="Type"
                 value={type}
-                // onChange={(e) => setType(e.target.value)}
                 onChange={(e) => setType(e.target.value as SourceType)}
                 placeholder="e.g., Book, Chapter, Article"
-                // helperText="Enter the type of the text."
                 fullWidth
                 margin="normal"
                 required
