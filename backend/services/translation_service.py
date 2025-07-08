@@ -74,7 +74,7 @@ class TranslationService:
 
         return chunks
     
-    def build_prompt(self, chunk: str, examples: List[TranslationExample] | None = None) -> str:
+    def build_prompt(self, examples: List[TranslationExample] | None = None) -> str:
         has_examples = bool(examples and any(
             "sourceText" in ex and "firstTranslation" in ex and "lastTranslation" in ex for ex in examples))
 
@@ -154,7 +154,7 @@ class TranslationService:
         for i, chunk in enumerate(prepared_chunks, 1):
             logger.debug("Translating chunk %d", i)
 
-            prompt = self.build_prompt(chunk=chunk, examples=self.examples)
+            prompt = self.build_prompt(examples=self.examples)
 
             translated_text = self.send_chunk_for_translation(chunk=chunk, prompt=prompt)
             if translated_text:
