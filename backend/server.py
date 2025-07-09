@@ -134,18 +134,29 @@ def update_source(source_id: int, source: dict, user_info: dict = Depends(get_us
         raise HTTPException(status_code=404, detail='Source not found')
 
 
-@app.delete('/sources/{source_id}', response_model=int)
-def delete_source(source_id: int, _: dict = Depends(get_user_info)):
-    logger.info(f"Source ID to delete: {source_id}")
-     # Delete all segments for these sources
-    segments_deleted = Segment.delete().where((Source.id == source_id) | (Source.original_segment_id == source_id)).execute()
-    logger.info(f"Segments deleted: {segments_deleted}")
-    # Delete the sources themselves
-    rows_deleted = Source.delete().where((Source.id == source_id) | (Source.original_source_id == source_id)).execute()
-    logger.info(f"Sources deleted: {rows_deleted}")
-    if rows_deleted == 0:
-        logger.warning(f"No sources found for deletion with id {source_id}")
+@app.delete('/sources/{translation_source_id}', response_model=int)
+def delete_source(translation_source_id: int, _: dict = Depends(get_user_info)):
+    # Try to get the source to delete
+    try:
+        source = Source.get(Source.id == translation_source_id)
+    except Exception as e:
+        logger.error(f"Deletion - Source not found: {e}")
         raise HTTPException(status_code=404, detail='Source not found')
+
+    # Get all translations of the original source
+    translations = list(Source.select().where(Source.original_source_id == source.original_source_id))
+    if len(translations) == 1:
+        # This is the last translation, allow deletion of both translation and original
+        source_ids_to_delete = [translation_source_id, source.original_source_id]
+    else:
+        # There are other translations, only delete this translation
+        source_ids_to_delete = [translation_source_id]
+
+    # Delete all segments for these sources
+    Segment.delete().where(Segment.source_id.in_(source_ids_to_delete)).execute()
+    # Delete the sources themselves
+    rows_deleted = Source.delete().where(Source.id.in_(source_ids_to_delete)).execute()
+    return rows_deleted
 
 
 ####### SEGMENTS 

@@ -80,7 +80,8 @@ const SourceTable: React.FC<SourceTableProps> = ({ pairs, onDelete }) => {
                                     )}
                                 </TableCell>
                                 <TableCell>
-                                    <Button onClick={() => handleDeleteClick(original.id)}>Delete</Button>
+                                    {/* Change: Pass translated.id if present, else original.id */}
+                                    <Button onClick={() => handleDeleteClick(translated ? translated.id : original.id)}>Delete</Button>
                                     <Button disabled>Download</Button>
                                 </TableCell>
                             </TableRow>
