@@ -1,18 +1,17 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useKeycloak } from '@react-keycloak/web';
 import { useSelector } from 'react-redux';
 import { useNavigate } from "react-router-dom";
-import { fetchSources, addSource } from '../SourceSlice';
+import { fetchSources, addSource, deleteSource } from '../SourceSlice';
 import { saveSegments as storeSegments } from '../SegmentSlice';
 import { useAppDispatch, RootState } from '../store';
-import { Box, Typography, Container } from '@mui/material';
+import { Button,Box,Typography } from '@mui/material';
 import { segmentService } from '../services/segment.service';
-import { translateParagraphs as translateParagraphsAPI } from '../services/translation.service';
+import { translateParagraphs  as translateParagraphsAPI } from '../services/translation.service'
+import TranslateDocumentDialog from '../cmp/TranslateDocumentDialog';
 import SourceTable from '../cmp/SourceTable';
-import SourceFilter from '../cmp/SourceFilter';
 import { useToast } from '../cmp/Toast';
-import TranslateForm from '../cmp/TranslateForm';
-import { Segment, SourcePair, FilterType, TranslateFormData } from '../types/frontend-types';
+import { Source, Segment, SourcePair } from '../types/frontend-types';
 
 const SourceIndex: React.FC = () => {
     const { keycloak } = useKeycloak();
@@ -20,77 +19,26 @@ const SourceIndex: React.FC = () => {
     const dispatch = useAppDispatch();
     const { showToast } = useToast();
     const { sources, loading, error } = useSelector((state: RootState) => state.sources);
-
-    const [filterType, setFilterType] = useState<FilterType>('mine');
-    const [languageFilter, setLanguageFilter] = useState<string | null>(null);
-    const [fileNameFilter, setFileNameFilter] = useState<string>('');
-    const [fromLanguageFilter, setFromLanguageFilter] = useState<string | null>(null);
+    const [translateDialogOpen, setTranslateDialogOpen] = useState(false);
+    const sourcePairs = buildSourcePairs(sources);
+    
     useEffect(() => {
         if (keycloak.authenticated) {
             dispatch(fetchSources());
         }
     }, [dispatch, keycloak.authenticated]);
 
-    const sourcePairs = useMemo<SourcePair[]>(() => {
+    function buildSourcePairs(sources: Record<number, Source>):SourcePair[] {
         return Object.values(sources)
             .filter(s => !s.original_source_id)
             .map(original => {
                 const translated = Object.values(sources).find(
                     s => s.original_source_id === original.id
                 ) || null;
+    
                 return { original, translated };
             });
-    }, [sources]);
-
-    const filteredSourcePairs = useMemo<SourcePair[]>(() => {
-        return sourcePairs.filter(pair => {
-          if (filterType === 'mine') {
-            return pair.original.username === keycloak.tokenParsed?.preferred_username;
-          }
-    
-          if (filterType === 'file') {
-            return pair.original.name.toLowerCase().includes(fileNameFilter.toLowerCase());
-          }
-    
-          if (filterType === 'language') {
-            return !languageFilter || pair.translated?.language === languageFilter;
-          }
-          if (filterType === 'from_language') {
-            return !fromLanguageFilter || pair.original.language === fromLanguageFilter;
-          }
-    
-          return true; // 'none'
-        });
-      }, [sourcePairs, filterType, fileNameFilter, languageFilter, fromLanguageFilter, keycloak.tokenParsed]);
-
-    const handleTranslateDocumentSubmit = async (data: TranslateFormData) => {
-        try {
-            const { originalSource, translationSource } = await createSources(data);
-            const { paragraphs, properties } = await extractParagraphsFromFile(data.file);
-
-            const savedOriginalSegments = await buildAndSaveSegments(
-                paragraphs,
-                originalSource.id,
-                properties
-            );
-
-            const { translated_paragraphs, properties: providerProperties, total_segments_translated } =
-                await translateParagraphs(paragraphs, data.source_language, data.target_language);
-
-            await buildAndSaveSegments(
-                translated_paragraphs,
-                translationSource.id,
-                providerProperties,
-                savedOriginalSegments
-            );
-
-            showToast(`${total_segments_translated} segments translated & saved!`, "success");
-            navigate(`/source-edit/${translationSource.id}`);
-        } catch (error) {
-            console.error("❌ Translation flow failed:", error);
-            showToast("Translation process failed. Please try again.", "error");
-        }
-    };
+    }
 
     const buildAndSaveSegments = async (
         paragraphs: string[],
@@ -113,26 +61,74 @@ const SourceIndex: React.FC = () => {
         return savedSegments;
     };
 
-    const createSources = async (data: TranslateFormData) => {
+    const handleTranslateDocumentSubmit = async (data: {
+        file: File;
+        name: string;
+        source_language: string;
+        target_language: string;
+    }) => {
+        try {
+            console.log("🚀 Starting full translation flow");
+
+            const { originalSource, translationSource: translationSource } = await createSources(data);
+            const { paragraphs: fileParagraphs, properties: fileProperties } = await extractParagraphsFromFile(data.file);
+            
+            const savedOriginalSegments = await buildAndSaveSegments(
+                fileParagraphs,
+                originalSource.id,
+                fileProperties
+            );
+            
+            const { translated_paragraphs, properties: providerProperties, total_segments_translated } = await translateParagraphs(
+                fileParagraphs,
+                data.source_language,
+                data.target_language
+            );
+
+            const savedTranslatedSegments = await buildAndSaveSegments(
+                translated_paragraphs,
+                translationSource.id,
+                providerProperties,
+                savedOriginalSegments
+            );
+
+            showToast(`${total_segments_translated} segments translated & saved!`, "success");
+            navigate(`/source-edit/${translationSource.id}`);
+
+        } catch (error) {
+            console.error("❌ Translation flow failed:", error);
+            showToast("Translation process failed. Please try again.", "error");
+        } finally {
+            setTranslateDialogOpen(false);
+        }
+    };
+    
+    const createSources = async (data: {
+        file: File;
+        name: string;
+        source_language: string;
+        target_language: string;
+    }) => {
         const normalizeName = (filename: string) =>
             filename.replace(/\.docx$/i, '').trim().replace(/\s+/g, '-');
-
+    
         const baseName = normalizeName(data.name);
-
+        const targetLang = data.target_language.toLowerCase().replace(/\s+/g, '-');
+    
         const originalSource = await dispatch(addSource({
             name: baseName,
             language: data.source_language
         } as any)).unwrap();
-
+    
         const translatedSource = await dispatch(addSource({
-            name: `${baseName}-${data.target_language}`,
+            name: `${baseName}-${targetLang}`,
             language: data.target_language,
             original_source_id: originalSource.id
         } as any)).unwrap();
-
+    
         return { originalSource, translationSource: translatedSource };
     };
-
+    
     const extractParagraphsFromFile = async (file: File): Promise<{ paragraphs: string[], properties: object }> => {
         return await segmentService.extractParagraphs(file);
     };
@@ -147,7 +143,11 @@ const SourceIndex: React.FC = () => {
         total_segments_translated: number
     }> => {
         try {
-            const response = await translateParagraphsAPI(paragraphs, sourceLang, targetLang);
+            const response = await translateParagraphsAPI(
+                paragraphs,
+                sourceLang,
+                targetLang,
+            );
             showToast(`${response.total_segments_translated} segments translated successfully!`, "success");
             return response;
         } catch (error) {
@@ -160,44 +160,66 @@ const SourceIndex: React.FC = () => {
             };
         }
     };
-
+    
+    const handleDeleteSource = async (sourceId: number) => {
+        try {
+            await dispatch(deleteSource(sourceId)).unwrap();
+            showToast('Deleted successfully', 'success');
+            dispatch(fetchSources());
+        } catch (error) {
+            showToast('Failed to delete', 'error');
+        }
+    };
+    
     if (!keycloak.authenticated) {
         return (
-            <Box display="flex" justifyContent="center" alignItems="center" height="100vh" textAlign="center">
-                <Typography variant="h4">Please log in to continue.</Typography>
+            <Box
+                display="flex"
+                flexDirection="column"
+                justifyContent="center"
+                alignItems="center"
+                height="100vh"
+                textAlign="center"
+                sx={{
+                    backgroundColor: "#f5f5f5",
+                    padding: "2rem",
+                    borderRadius: "12px",
+                    boxShadow: "0px 4px 10px rgba(0, 0, 0, 0.1)"
+                }}
+            >
+                <Typography variant="h4" sx={{ mb: 2, fontWeight: "bold", color: "#333" }}>
+                    Welcome to Safot
+                </Typography>
+                <Typography variant="body1" sx={{ mb: 3, color: "#666" }}>
+                    Please log in using the button in the top right corner.
+                </Typography>
             </Box>
         );
     }
 
     return (
-        <>
-            <Box sx={{ backgroundColor: '#f5f5f5', py: 5, width: '100%' }}>
-                <Container maxWidth="lg">
-                    <Box sx={{ pl: 9 }}>
-                        <TranslateForm onSubmit={handleTranslateDocumentSubmit} />
-                    </Box>
-                </Container>
-            </Box>
-
-            <Container maxWidth="lg" sx={{ py: 4 }}>
-                <Box sx={{ pl: 9 }}>
-                    <SourceFilter
-                    filterType={filterType}
-                    setFilterType={setFilterType}
-                    languageFilter={languageFilter}
-                    setLanguageFilter={setLanguageFilter}
-                    fileNameFilter={fileNameFilter}
-                    setFileNameFilter={setFileNameFilter}
-                    fromLanguageFilter={fromLanguageFilter}
-                    setFromLanguageFilter={setFromLanguageFilter}
-                    />
-
-                    {loading && <Typography>Loading...</Typography>}
-                    {error && <Typography color="error">Error: {error}</Typography>}
-                    {!loading && !error && <SourceTable pairs={filteredSourcePairs} />}
-                </Box>
-            </Container>
-        </>
+        <div className="source-index">
+            <h1>Source Index CMP</h1>
+            <Button
+                variant="outlined"
+                color="secondary"
+                onClick={() => setTranslateDialogOpen(true)}
+                style={{ marginBottom: '20px', marginLeft: '10px' }}>
+                Translate Document
+            </Button>
+            {loading && <p>Loading...</p>}
+            {error && <p>Error: {error}</p>}
+            {!loading && !error && (
+                <SourceTable pairs={sourcePairs} onDelete={handleDeleteSource} />
+            )}
+            {translateDialogOpen && (
+                <TranslateDocumentDialog
+                    open={translateDialogOpen}
+                    onClose={() => setTranslateDialogOpen(false)}
+                    onSubmit={handleTranslateDocumentSubmit}
+                />
+            )}
+        </div>
     );
 };
 

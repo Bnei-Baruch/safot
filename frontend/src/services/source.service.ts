@@ -6,6 +6,7 @@ export const sourceService = {
     querySources,
     getSourceById,
     addSource,
+    deleteSource,
 };
 
 async function querySources(): Promise<any[]> {
@@ -18,5 +19,10 @@ async function getSourceById(sourceId: number): Promise<any> {
 
 async function addSource(source: Omit<any, 'id'>): Promise<any> {
     return await httpService.post(ENTITY_TYPE, source);
+}
+
+// deleteSource calls the backend to delete a source by ID
+async function deleteSource(sourceId: number): Promise<any> {
+    return await httpService.delete(`${ENTITY_TYPE}/${sourceId}`);
 }
 

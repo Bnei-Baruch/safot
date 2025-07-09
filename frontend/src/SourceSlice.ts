@@ -48,6 +48,23 @@ export const addSource = createAsyncThunk<
     }
 );
 
+// Async thunk for deleting a source by ID
+export const deleteSource = createAsyncThunk<
+    number,
+    number,
+    { rejectValue: string }
+>(
+    'sources/deleteSource',
+    async (sourceId, { rejectWithValue }) => {
+        try {
+            await sourceService.deleteSource(sourceId);
+            return sourceId;
+        } catch (err: any) {
+            return rejectWithValue(err.message || 'Failed to delete source');
+        }
+    }
+);
+
 type SourcesState = {
     sources: Record<string, Source>;
     loading: boolean;
@@ -105,8 +122,21 @@ const sourcesSlice = createSlice({
             .addCase(addSource.rejected, (state, action: PayloadAction<string | undefined>) => {
                 state.loading = false;
                 state.error = action.payload || 'Failed to add source';
+            })
+            .addCase(deleteSource.pending, (state) => {
+                state.loading = true;
+                state.error = null;
+            })
+            .addCase(deleteSource.fulfilled, (state, action: PayloadAction<number>) => {
+                state.loading = false;
+                delete state.sources[action.payload];
+            })
+            .addCase(deleteSource.rejected, (state, action: PayloadAction<string | undefined>) => {
+                state.loading = false;
+                state.error = action.payload || 'Failed to delete source';
             });
     },
 });
 
+// export const { resetSources, updateSourceLocal } = sourcesSlice.actions;
 export default sourcesSlice.reducer;
