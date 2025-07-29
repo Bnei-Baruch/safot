@@ -1,9 +1,9 @@
 from datetime import datetime
 from models import Dictionary, SourceDictionaryLink
 from db import db
+ 
 
-
-def create_new_dictionary(source_id, username, timestamp):
+def create_new_dictionary(source_id, username, timestamp, name):
     """Create a new dictionary for a source and return a fully loaded object with ID."""
     # Generate a new ID using the database sequence
     cursor = db.execute_sql("SELECT nextval('dictionary_id_seq')")
@@ -11,7 +11,7 @@ def create_new_dictionary(source_id, username, timestamp):
     
     dictionary = Dictionary.create(
         id=id_value,
-        name=f"source_{source_id}_dictionary",
+        name=name,
         username=username,
         timestamp=timestamp
     )

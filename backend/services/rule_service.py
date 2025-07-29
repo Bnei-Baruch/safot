@@ -16,17 +16,29 @@ def create_initial_prompt_rule(dictionary_id, dictionary_timestamp, username):
     )
 
 
-def store_rules(rules: list[dict]) -> list[dict]:
+def store_rules(rules: list[dict], username: str) -> list[dict]:
     """
     Save a list of rules to the database efficiently using bulk insert.
-    Assumes each rule has all necessary fields including timestamp.
+    Adds missing fields (id, username, timestamp) to rules from frontend.
     """
-    required_fields = ["name", "username", "type", "dictionary_id", "dictionary_timestamp", "timestamp", "properties"]
-
+    from db import db
+    
+    now = datetime.utcnow()
+    rules_to_insert = []
+    
     for rule in rules:
-        missing = [key for key in required_fields if key not in rule]
-        if missing:
-            raise ValueError(f"Rule is missing required fields: {', '.join(missing)}")
+        # Generate new ID using database sequence
+        cursor = db.execute_sql("SELECT nextval('rule_id_seq')")
+        rule_id = cursor.fetchone()[0]
+        
+        # Add missing fields
+        rule_with_id = {
+            **rule,
+            'id': rule_id,
+            'username': username,
+            'timestamp': now
+        }
+        rules_to_insert.append(rule_with_id)
 
-    inserted = Rule.insert_many(rules).returning(Rule).execute()
-    return [model_to_dict(rule) for rule in inserted] 
+    inserted = Rule.insert_many(rules_to_insert).returning(Rule).execute()
+    return [model_to_dict(rule) for rule in inserted]

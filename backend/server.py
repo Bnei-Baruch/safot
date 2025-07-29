@@ -288,9 +288,42 @@ def export_translation(source_id: int):
 
 
 ####### DICTIONARY
-@app.post("/dictionary/{source_id}", response_model=dict)
-def create_dictionary_or_version_for_source(source_id: int, user_info: dict = Depends(get_user_info)):
+@app.post("/dictionary/new/{source_id}", response_model=dict)
+async def create_new_dictionary_handler(source_id: int, request: Request, user_info: dict = Depends(get_user_info)):
     try:
+        data = await request.json()
+        dictionary_name = data["name"]
+        
+        now = datetime.utcnow()
+        
+        # Create new dictionary
+        dictionary = create_new_dictionary(
+            source_id,
+            user_info["preferred_username"],
+            now,
+            dictionary_name
+        )
+        
+        # Create source dictionary link
+        create_source_dictionary_link(
+            source_id,
+            dictionary.id,
+            dictionary.timestamp
+        )
+        
+        return {
+            "dictionary_id": dictionary.id,
+            "dictionary_timestamp": dictionary.timestamp.isoformat()
+        }
+        
+    except Exception as e:
+        logger.error("Error creating new dictionary: %s", e)
+        raise HTTPException(status_code=500, detail=f"Failed to create new dictionary: {str(e)}")
+
+@app.post("/dictionary/version/{source_id}", response_model=dict)
+def create_dictionary_version_handler(source_id: int, user_info: dict = Depends(get_user_info)):
+    try:
+        # Find existing dictionary link
         existing_link = (
             SourceDictionaryLink
             .select()
@@ -298,42 +331,37 @@ def create_dictionary_or_version_for_source(source_id: int, user_info: dict = De
             .order_by(SourceDictionaryLink.dictionary_timestamp.desc())
             .first()
         )
-
+        
+        if not existing_link:
+            raise HTTPException(status_code=404, detail="No existing dictionary found for this source")
+        
         now = datetime.utcnow()
-
-        if existing_link:
-            dictionary = create_new_dictionary_version(
-                existing_link.dictionary_id,
-                source_id,
-                user_info["preferred_username"],
-                now
-            )
-        else:
-            dictionary = create_new_dictionary(
-                source_id,
-                user_info["preferred_username"],
-                now
-            )
-            create_initial_prompt_rule(
-                dictionary.id,
-                dictionary.timestamp,
-                user_info["preferred_username"]
-            )
-
+        
+        # Create new version (same ID, new timestamp)
+        dictionary = create_new_dictionary_version(
+            existing_link.dictionary_id,
+            source_id,
+            user_info["preferred_username"],
+            now
+        )
+        
+        # Create source dictionary link
         create_source_dictionary_link(
             source_id,
             dictionary.id,
             dictionary.timestamp
         )
-
+        
         return {
             "dictionary_id": dictionary.id,
             "dictionary_timestamp": dictionary.timestamp.isoformat()
         }
-
+        
+    except HTTPException as e:
+        raise e
     except Exception as e:
-        logger.error("Error: %s", e)
-        raise HTTPException(status_code=500, detail=f"Failed to create dictionary/version: {str(e)}")
+        logger.error("Error creating dictionary version: %s", e)
+        raise HTTPException(status_code=500, detail=f"Failed to create dictionary version: {str(e)}")
 
 ####### RULES
 @app.post("/rules", response_model=list[dict])
@@ -345,12 +373,7 @@ async def save_rules(request: Request, user_info: dict = Depends(get_user_info))
         if not isinstance(rules, list):
             raise HTTPException(status_code=400, detail="Invalid request format - 'rules' must be a list")
 
-        now = datetime.utcnow()
-        for rule in rules:
-            rule["username"] = user_info["preferred_username"]
-            rule["timestamp"] = now
-
-        saved_rules = store_rules(rules)
+        saved_rules = store_rules(rules, user_info["preferred_username"])
         return saved_rules
 
     except Exception as e:
