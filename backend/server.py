@@ -342,7 +342,8 @@ def create_dictionary_version_handler(source_id: int, user_info: dict = Depends(
             existing_link.dictionary_id,
             source_id,
             user_info["preferred_username"],
-            now
+            now,
+            existing_link.dictionary.name  # Pass the original dictionary name
         )
         
         # Create source dictionary link

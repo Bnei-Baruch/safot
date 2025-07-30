@@ -8,7 +8,7 @@ export const dictionaryService = {
 };
 
 async function createNewDictionaryVersion(sourceId: number): Promise<{ dictionary_id: number; dictionary_timestamp: string }> {
-    return await httpService.post(`${ENTITY_TYPE}/${sourceId}`, null);
+    return await httpService.post(`${ENTITY_TYPE}/version/${sourceId}`, null);
 }
 
 async function createNewDictionary(sourceId: number, customName?: string): Promise<{ dictionary_id: number; dictionary_timestamp: string }> {

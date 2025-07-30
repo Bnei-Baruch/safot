@@ -19,11 +19,11 @@ def create_new_dictionary(source_id, username, timestamp, name):
 
 
 
-def create_new_dictionary_version(original_dictionary_id, source_id, username, timestamp):
+def create_new_dictionary_version(original_dictionary_id, source_id, username, timestamp, original_name):
     """Create a new version of an existing dictionary."""
     d = Dictionary.create(
         id=original_dictionary_id,
-        name=f"source_{source_id}_dictionary",
+        name=original_name,  # Use the original name instead of creating new one
         username=username,
         timestamp=timestamp
     )
