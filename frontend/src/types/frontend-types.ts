@@ -77,8 +77,34 @@ export interface TranslateFormData {
     name: string;
     source_language: string;
     target_language: string;
+    step_by_step?: boolean | undefined;
   }
   
   export interface TranslateFormProps {
     onSubmit: (data: TranslateFormData) => Promise<void>;
+    loading?: boolean;
   }
+
+export interface Example {
+  sourceText: string;
+  firstTranslation: string;
+  lastTranslation: string;
+}
+
+export interface Rule {
+  id?: number;
+  timestamp?: string;
+  name: string;
+  username?: string;
+  type: string;
+  dictionary_id: number;
+  dictionary_timestamp?: string;
+  properties: Record<string, any>;
+}
+
+export interface PaginationInfo {
+  offset: number;
+  limit: number;
+  total_count: number;
+  has_more: boolean;
+}

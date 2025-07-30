@@ -1,16 +1,23 @@
 import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useParams, useNavigate } from "react-router-dom";
-import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, TextField, Button, Box, Typography, Container } from "@mui/material";
+import compareTwoStrings from 'string-similarity-js';
+import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, TextField, Button, Box, Typography, Container, Fab, Pagination } from "@mui/material";
 import { segmentService } from '../services/segment.service';
+import { ruleService } from '../services/rule.service';
+import { dictionaryService } from '../services/dictionary.service';
 import SaveIcon from '@mui/icons-material/Save';
 import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
-import { fetchSegments, saveSegments } from '../SegmentSlice';
-import { Segment } from '../types/frontend-types';
+import AddIcon from '@mui/icons-material/Add';
+import { translateParagraphs } from '../services/translation.service';
+import { fetchSegments, saveSegments, updateSegment } from '../SegmentSlice';
+import { Segment, Rule, Example } from '../types/frontend-types';
 import { fetchSource } from '../SourceSlice';
 import { useAppDispatch, RootState } from '../store';
 import { useToast } from '../cmp/Toast';
 import { LANGUAGES } from '../constants/languages';
+import { PAGE_SIZE } from '../constants/pagination';
+
 
 const SourceEdit: React.FC = () => {
     const navigate = useNavigate();
@@ -34,11 +41,15 @@ const SourceEdit: React.FC = () => {
         }
     }>({});
 
+    const [translateMoreLoading, setTranslateMoreLoading] = useState(false);
+    const [currentPage, setCurrentPage] = useState(1);
+    const pageSize = PAGE_SIZE;
+
     const isAllTranslated = parsedId && originalSourceId &&
-        segments[originalSourceId] &&
-        segments[parsedId] &&
-        segments[originalSourceId].length === segments[parsedId].length &&
-        segments[parsedId].every(segment => segment.text?.trim() !== '');
+        segments[originalSourceId]?.pagination &&
+        segments[parsedId]?.pagination &&
+        segments[originalSourceId].pagination?.total_count === segments[parsedId].pagination?.total_count &&
+        segments[parsedId].pagination?.total_count > 0;
 
     useEffect(() => {
         if (parsedId && !(parsedId in sources)) {
@@ -50,14 +61,16 @@ const SourceEdit: React.FC = () => {
     }, [dispatch, parsedId, originalSourceId, sources]);
 
     useEffect(() => {
-
-        if (originalSourceId && !(originalSourceId in segments)) {
-            dispatch(fetchSegments({ source_id: originalSourceId }));
+        // Load both source and translation for the same page
+        if (originalSourceId && !segments[originalSourceId]?.pages[currentPage - 1]) {
+            const offset = (currentPage - 1) * pageSize;
+            dispatch(fetchSegments({ source_id: originalSourceId, offset, limit: pageSize }));
         }
-        if (parsedId && !(parsedId in segments)) {
-            dispatch(fetchSegments({ source_id: parsedId }));
+        if (parsedId && !segments[parsedId]?.pages[currentPage - 1]) {
+            const offset = (currentPage - 1) * pageSize;
+            dispatch(fetchSegments({ source_id: parsedId, offset, limit: pageSize }));
         }
-    }, [dispatch, parsedId, originalSourceId, segments]);
+    }, [dispatch, parsedId, originalSourceId, currentPage, segments]);
 
     const handleTranslationChange = (sourceSegmentId: number, order: number, timestamp: string, value: string) => {
         setTranslations(prev => ({
@@ -75,9 +88,9 @@ const SourceEdit: React.FC = () => {
         if (!parsedId || !translations[sourceSegmentId] || originalSourceId == null) return;
       
         const translation = translations[sourceSegmentId];
-        const originalSegment = segments[originalSourceId]?.find(s => s.id === sourceSegmentId);
+        const originalSegment = getCurrentOriginalSegments().find(s => s.id === sourceSegmentId);
         const order = originalSegment?.order ?? translation.order;
-        const existingTranslation = segments[parsedId]?.find(t => t.order === order);
+        const existingTranslation = getCurrentTranslatedSegments().find(t => t.order === order);
       
         const segment = segmentService.buildSegment({
             text: translation.text,
@@ -90,12 +103,11 @@ const SourceEdit: React.FC = () => {
             original_segment_id: translation.original_segment_id,
             original_segment_timestamp: translation.original_segment_timestamp
         });
-
-        console.log("Saving segment:", segment);
-      
+       
         try {
-            await dispatch(saveSegments([segment])).unwrap();
-      
+            const savedSegment = await dispatch(saveSegments([segment])).unwrap();
+            // Update Redux directly instead of refetching
+            dispatch(updateSegment({ source_id: parsedId, segment: savedSegment.segments[0] }));
             showToast("Translation saved successfully!", "success");
             setTranslations(prev => {
                 const updated = { ...prev };
@@ -107,7 +119,26 @@ const SourceEdit: React.FC = () => {
             showToast("Failed to save translation. Please try again.", "error");
         }
     };
-      
+
+    const getCurrentOriginalSegments = (): Segment[] => {
+        if (!originalSourceId || !segments[originalSourceId]) return [];
+        return segments[originalSourceId].pages[currentPage - 1] || [];
+    };
+
+    const getCurrentTranslatedSegments = (): Segment[] => {
+        if (!parsedId || !segments[parsedId]) return [];
+        return segments[parsedId].pages[currentPage - 1] || [];
+    };
+
+    const getTotalPages = (): number => {
+        if (!originalSourceId || !segments[originalSourceId]?.pagination) return 0;
+        return Math.ceil(segments[originalSourceId].pagination.total_count / pageSize);
+    };
+
+    const handlePageChange = (event: React.ChangeEvent<unknown>, value: number) => {
+        setCurrentPage(value);
+    };
+
     const getLanguageName = (code: string): string => {
         const languageMap: { [key: string]: string } = {
             'he': 'Hebrew',
@@ -143,111 +174,340 @@ const SourceEdit: React.FC = () => {
         }
     };
 
+    const getNextBatch = (): Segment[] => {
+        if (!originalSourceId || !parsedId) return [];
+      
+        const sourceSegments = getCurrentOriginalSegments();
+        const targetSegments = getCurrentTranslatedSegments();
+        const translatedOrders = new Set(targetSegments.map(seg => seg.order));
+      
+        const batch: Segment[] = [];
+      
+        for (const seg of sourceSegments) {
+          if (!translatedOrders.has(seg.order)) {
+            batch.push(seg);
+            if (batch.length === 20) break;
+          }
+        }
+      
+        return batch;
+    };
+
+    const getSavedExamples = (): { sourceText: string; firstTranslation: string; lastTranslation: string }[] => {
+        if (!parsedId || !originalSourceId) return [];
+
+        const sourceSegments = getCurrentOriginalSegments();
+        const targetSegments = getCurrentTranslatedSegments();
+
+        const byOrder: { [order: number]: Segment[] } = {};
+        targetSegments.forEach(seg => {
+            if (!seg.text?.trim() || !seg.timestamp) return;
+            if (!byOrder[seg.order]) byOrder[seg.order] = [];
+            byOrder[seg.order].push(seg);
+        });
+
+        const examples: (Example & { score: number })[] = [];
+
+        for (const order in byOrder) {
+            const segs = byOrder[order];
+            if (segs.length < 2) continue;
+
+            const sorted = segs.sort((a, b) => (a.timestamp ?? '').localeCompare(b.timestamp ?? ''));
+            const first = sorted[0].text.trim();
+            const last = sorted[sorted.length - 1].text.trim();
+
+            const sourceText = sourceSegments.find(s => s.order === Number(order))?.text || '';
+
+            if (first !== last && sourceText) {
+                const score = 1 - compareTwoStrings(first, last);
+                examples.push({ sourceText, firstTranslation: first, lastTranslation: last, score });
+            }
+        }
+
+        return examples
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 4)
+            .map(({ sourceText, firstTranslation, lastTranslation }) => ({
+                sourceText,
+                firstTranslation,
+                lastTranslation
+            }));
+    };
+
+    const buildAndSaveSegments = async (
+        paragraphs: string[],
+        source_id: number,
+        properties: Record<string, any>,
+        originalSegments?: Segment[]
+      ): Promise<Segment[]> => {
+        const segments = paragraphs.map((text, index) => {
+          const originalSegment = originalSegments?.[index];
+          return segmentService.buildSegment({
+            text,
+            source_id,
+            order: originalSegment?.order ?? index + 1,
+            properties,
+            original_segment_id: originalSegment?.id,
+            original_segment_timestamp: originalSegment?.timestamp
+          });
+        });
+      
+        const { segments: savedSegments } = await dispatch(saveSegments(segments)).unwrap();
+        return savedSegments;
+      };
+
+
+    const handleTranslateMore = async () => {
+      const batch = getNextBatch();
+      if (!batch.length) {
+        showToast("No more paragraphs to translate.", "info");
+        return;
+      }
+
+      setTranslateMoreLoading(true);
+      try {
+        // 1 Create new dictionary version and get id + timestamp
+        const { dictionary_id: dictionaryId, dictionary_timestamp: dictionaryTimestamp } = 
+          await createNewDictionaryVersion(parsedId!);
+
+        // 2 Build and save rules (examples + prompt_key)
+        const examples = getSavedExamples();
+        const rules = buildRules(examples, dictionaryId, dictionaryTimestamp);
+        await ruleService.saveRules(rules);
+
+        // 3 Send translation with the new dictionary version
+        const paragraphs = batch.map(seg => seg.text);
+        const { translated_paragraphs, properties, total_segments_translated } =
+          await translateParagraphs(
+            paragraphs,
+            sources[originalSourceId!].language,
+            sourceData?.language!,
+            dictionaryId,
+            dictionaryTimestamp,
+            examples
+          );
+
+        // 4 Save the new segments
+        await buildAndSaveSegments(translated_paragraphs, parsedId!, properties, batch);
+
+        showToast(`${total_segments_translated} segments translated & saved!`, "success");
+      } catch (err) {
+        console.error("❌ Translate More failed:", err);
+        showToast("Failed to translate more paragraphs.", "error");
+      } finally {
+        setTranslateMoreLoading(false);
+      }
+    };
+
+    const createNewDictionaryVersion = async (sourceId: number) => {
+      return await dictionaryService.createNewDictionaryVersion(sourceId);
+    };
+
+    const buildRules = (examples: Example[], dictionaryId: number, dictionaryTimestamp: string): Rule[] => {
+      const rules: Rule[] = examples.map(example => ({
+        name: "example",
+        type: "example",
+        dictionary_id: dictionaryId,
+        dictionary_timestamp: dictionaryTimestamp,
+        properties: {
+          source_text: example.sourceText,
+          provider_translation: example.firstTranslation,
+          user_translation: example.lastTranslation,
+        },
+      }));
+
+      // Add prompt_key rule
+      rules.push({
+        name: "prompt_key",
+        type: "prompt_key",
+        dictionary_id: dictionaryId,
+        dictionary_timestamp: dictionaryTimestamp,
+        properties: {
+          prompt_key: "prompt_2",
+        },
+      });
+
+      return rules;
+    };
+
+    const getLatestSegments = (segmentsArr: Segment[]): Segment[] => {
+        const latestByOrder: { [order: number]: Segment } = {};
+        segmentsArr.forEach(seg => {
+            const segTime = (typeof seg.timestamp === 'string' && seg.timestamp) ? new Date(seg.timestamp) : new Date(0);
+            const currTimestamp = latestByOrder[seg.order]?.timestamp;
+            const currTime = (typeof currTimestamp === 'string' && currTimestamp) ? new Date(currTimestamp) : new Date(0);
+            if (!latestByOrder[seg.order] || segTime > currTime) {
+                latestByOrder[seg.order] = seg;
+            }
+        });
+        return Object.values(latestByOrder).sort((a, b) => a.order - b.order);
+    };
 
     return (
-        <Box sx={{ backgroundColor: '#f5f5f5', py: 4, width: '100%' }}>
-            <Container maxWidth="lg"  >
+        <Box sx={{ backgroundColor: '#f5f5f5', width: '100vw', display: 'flex', flexDirection: 'column' }}>
+            <Container maxWidth="lg" >
                 <Box sx={{ pl: 9 }}>
-                    <Box sx={{  display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-                        <Button
-                            onClick={() => navigate('/')}
-                            startIcon={<ArrowBackIosNewIcon />}
-                            sx={{ color: '#1976d2', textTransform: 'none', fontWeight: 'bold', mb: 2, pl: 0 }}
-                        >
-                            Back to sources
-                        </Button>
-                    </Box>
-                    
+                {/* Back button */}ֿ
+                <Box sx={{  display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                    <Button
+                        onClick={() => navigate('/')}
+                        startIcon={<ArrowBackIosNewIcon />}
+                        sx={{ color: '#1976d2', textTransform: 'none', fontWeight: 'bold', mb: 2, pl: 0 }}
+                    >
+                        Back to sources
+                    </Button>
+                </Box>
+                
+        
+                {/* Header and actions */}
                     <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
                         <Box>
                             <Typography variant="h5" sx={{ fontWeight: 'bold', fontFamily: 'inherit' }}>
                                 Document: {sourceData?.name}
                             </Typography>
                             <Typography variant="body2" color="text.secondary">
-                                {segments[parsedId!]?.length || 0} paragraphs
+                                {segments[parsedId!]?.pagination?.total_count || 0} paragraphs
                             </Typography>
                         </Box>
-
-                        <Button
-                        variant="contained"
-                        color="primary"
-                        disabled={!isAllTranslated}
-                        onClick={handleExportDocx}
-                        >
-                        Export to DOCX
-                        </Button>
+            
+                        <Box display="flex" gap={2}>
+                            <Button
+                                variant="contained"
+                                color="primary"
+                                disabled={!isAllTranslated}
+                                onClick={handleExportDocx}
+                            >
+                                Export to DOCX
+                            </Button>
+                            <Button
+                                color="primary"
+                                variant="contained"
+                                onClick={handleTranslateMore}
+                                disabled={translateMoreLoading}
+                                size="medium"
+                                sx={{ boxShadow: 'none', height: 40 }}
+                            >
+                                <AddIcon sx={{ mr: 1 }} /> 
+                                {translateMoreLoading ? 'Translating...' : 'Translate More'}
+                            </Button>
+                        </Box>
                     </Box>
-                    
-                    <TableContainer component={Paper} >
-                        <Table>
-                            <TableHead>
-                                <TableRow>
-                                    <TableCell>Order</TableCell>
-                                    <TableCell style={{ width: "40%" }}>Source ({originalSourceId && getLanguageName(sources[originalSourceId]?.language) || 'Unknown'})</TableCell>
-                                    <TableCell style={{ width: "50%" }}>Translation ({getLanguageName(sourceData?.language || '')})</TableCell>
-                                    <TableCell style={{ width: "10%" }}>Actions</TableCell>
+                </Box>
+            </Container>
+      
+          {/* Pagination Controls - Moved to top */}
+            <Container maxWidth="lg">
+                <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2, pl: 9 }}>
+                    <Box>
+                        <Typography variant="body2" color="text.secondary" gutterBottom align="center">
+                            Page {currentPage} of {getTotalPages()} • {segments[parsedId!]?.pagination?.total_count || 0} total segments
+                        </Typography>
+                        <Pagination 
+                            count={getTotalPages()}
+                            page={currentPage}
+                            onChange={handlePageChange}
+                            size="small"
+                            disabled={!originalSourceId || !segments[originalSourceId]}
+                        />
+                    </Box>
+                </Box>
+            </Container>
+      
+          {/* Scrollable table */}
+            <Container maxWidth="lg">
+                <Box sx={{ maxHeight: '70vh', overflow: 'auto', pl: 9,pb: 4  }}>
+                    <TableContainer component={Paper} sx={{ }}>
+                    <Table stickyHeader>
+                        <TableHead>
+                        <TableRow>
+                            <TableCell>Order</TableCell>
+                            <TableCell style={{ width: '40%' }}>
+                            Source ({originalSourceId && getLanguageName(sources[originalSourceId]?.language) || 'Unknown'})
+                            </TableCell>
+                            <TableCell style={{ width: '50%' }}>
+                            Translation ({getLanguageName(sourceData?.language || '')})
+                            </TableCell>
+                            <TableCell style={{ width: '10%' }}>Actions</TableCell>
+                        </TableRow>
+                        </TableHead>
+                        <TableBody>
+                        {originalSourceId && segments[originalSourceId] && parsedId ? (
+                            getLatestSegments(getCurrentOriginalSegments()).map((sourceSegment: Segment) => {
+                                const latestTargetSegments = getLatestSegments(getCurrentTranslatedSegments());
+                                const existingTranslation = latestTargetSegments.find(t => t.order === sourceSegment.order)?.text || '';
+                                const hasChanged = sourceSegment.id !== undefined &&
+                                (translations[sourceSegment.id]?.text ?? existingTranslation) !== existingTranslation;
+            
+                                const sourceLangOption = LANGUAGES.find(lang => lang.code === sources[originalSourceId]?.language);
+                                const sourceLangDirection = sourceLangOption?.direction || 'ltr';
+                                const translationLangOption = LANGUAGES.find(lang => lang.code === sourceData?.language);
+                                const translationLangDirection = translationLangOption?.direction || 'ltr';
+            
+                                return (
+                                <TableRow key={sourceSegment.id ?? `temp-${sourceSegment.order}`}>
+                                    <TableCell>{sourceSegment.order}</TableCell>
+                                    <TableCell style={{
+                                    wordBreak: 'break-word',
+                                    whiteSpace: 'pre-wrap',
+                                    verticalAlign: 'top',
+                                    direction: sourceLangDirection,
+                                    textAlign: sourceLangDirection === 'rtl' ? 'right' : 'left'
+                                    }}>
+                                    {sourceSegment.text}
+                                    </TableCell>
+                                    <TableCell style={{
+                                    wordBreak: 'break-word',
+                                    whiteSpace: 'pre-wrap',
+                                    verticalAlign: 'top',
+                                    direction: translationLangDirection,
+                                    textAlign: translationLangDirection === 'rtl' ? 'right' : 'left'
+                                    }}>
+                                    <TextField
+                                        fullWidth
+                                        multiline
+                                        minRows={1}
+                                        maxRows={30}
+                                        value={sourceSegment.id !== undefined ? translations[sourceSegment.id]?.text ?? existingTranslation : existingTranslation}
+                                        onChange={(e) => handleTranslationChange(
+                                        sourceSegment.id!,
+                                        sourceSegment.order,
+                                        sourceSegment.timestamp || '',
+                                        e.target.value
+                                        )}
+                                        placeholder="Enter translation"
+                                        inputProps={{
+                                        style: {
+                                            direction: translationLangDirection,
+                                            textAlign: translationLangDirection === 'rtl' ? 'right' : 'left'
+                                        }
+                                        }}
+                                    />
+                                    </TableCell>
+                                    <TableCell>
+                                    <Button
+                                        variant="contained"
+                                        color="primary"
+                                        onClick={() => handleSaveTranslation(sourceSegment.id!)}
+                                        disabled={!hasChanged}
+                                    >
+                                        <SaveIcon />
+                                    </Button>
+                                    </TableCell>
                                 </TableRow>
-                            </TableHead>
-                            <TableBody>
-                                {originalSourceId && segments[originalSourceId] && parsedId ? (
-                                    [...segments[originalSourceId]]
-                                    .sort((a, b) => a.order - b.order)
-                                    .map((sourceSegment: Segment) => {
-                                        const existingTranslation = segments[parsedId]?.find(t => t.order === sourceSegment.order)?.text || '';
-                                        const hasChanged = sourceSegment.id !== undefined && (translations[sourceSegment.id]?.text ?? existingTranslation) !== existingTranslation;
-
-                                        // Get directions
-                                        const sourceLangOption = LANGUAGES.find(lang => lang.code === sources[originalSourceId]?.language);
-                                        const sourceLangDirection = sourceLangOption?.direction || 'ltr';
-                                        const translationLangOption = LANGUAGES.find(lang => lang.code === sourceData?.language);
-                                        const translationLangDirection = translationLangOption?.direction || 'ltr';
-
-                                        return (
-                                            <TableRow key={sourceSegment.id ?? `temp-${sourceSegment.order}`}>
-                                                <TableCell>{sourceSegment.order}</TableCell>
-                                                <TableCell style={{ wordBreak: "break-word", whiteSpace: "pre-wrap", verticalAlign: "top", direction: sourceLangDirection, textAlign: sourceLangDirection === 'rtl' ? 'right' : 'left' }}>{sourceSegment.text}</TableCell>
-                                                <TableCell style={{ wordBreak: "break-word", whiteSpace: "pre-wrap", verticalAlign: "top", direction: translationLangDirection, textAlign: translationLangDirection === 'rtl' ? 'right' : 'left' }}>
-                                                    <TextField
-                                                        fullWidth
-                                                        multiline
-                                                        minRows={1}
-                                                        maxRows={20}
-                                                        value={sourceSegment.id !== undefined ? translations[sourceSegment.id]?.text ?? existingTranslation : existingTranslation}
-                                                        onChange={(e) => handleTranslationChange(
-                                                            sourceSegment.id!, //non-null assertion operator
-                                                            sourceSegment.order,
-                                                            sourceSegment.timestamp || "", 
-                                                            e.target.value
-                                                        )}
-                                                        placeholder="Enter translation"
-                                                        inputProps={{ style: { direction: translationLangDirection, textAlign: translationLangDirection === 'rtl' ? 'right' : 'left' } }}
-                                                    />
-                                                </TableCell>
-                                                <TableCell>
-                                                    <Button
-                                                        variant="contained"
-                                                        color="primary"
-                                                        onClick={() => handleSaveTranslation(sourceSegment.id!)}
-                                                        disabled={!hasChanged}
-                                                    >
-                                                        <SaveIcon />
-                                                    </Button>
-                                                </TableCell>
-                                            </TableRow>
-                                        );
-                                    })
-                                ) : (
-                                    <TableRow>
-                                        <TableCell colSpan={4} align="center">Loading segments...</TableCell>
-                                    </TableRow>
-                                )}
-                            </TableBody>
-                        </Table>
+                                );
+                            })
+                        ) : (
+                            <TableRow>
+                            <TableCell colSpan={4} align="center">Loading segments...</TableCell>
+                            </TableRow>
+                        )}
+                        </TableBody>
+                    </Table>
                     </TableContainer>
                 </Box>
             </Container>
         </Box>
-    );
+      );
 };
 
 export default SourceEdit;

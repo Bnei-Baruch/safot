@@ -3,9 +3,11 @@ import { useKeycloak } from '@react-keycloak/web';
 import { useSelector } from 'react-redux';
 import { useNavigate } from "react-router-dom";
 import { fetchSources, addSource } from '../SourceSlice';
-import { saveSegments as storeSegments } from '../SegmentSlice';
+import { fetchSegments, saveSegments as storeSegments } from '../SegmentSlice';
 import { useAppDispatch, RootState } from '../store';
 import { Box, Typography, Container } from '@mui/material';
+
+import { dictionaryService } from '../services/dictionary.service';
 import { segmentService } from '../services/segment.service';
 import { translateParagraphs as translateParagraphsAPI } from '../services/translation.service';
 import SourceTable from '../cmp/SourceTable';
@@ -13,6 +15,8 @@ import SourceFilter from '../cmp/SourceFilter';
 import { useToast } from '../cmp/Toast';
 import TranslateForm from '../cmp/TranslateForm';
 import { Segment, SourcePair, FilterType, TranslateFormData } from '../types/frontend-types';
+import { PAGE_SIZE } from '../constants/pagination';
+import { ruleService } from '../services/rule.service';
 
 const SourceIndex: React.FC = () => {
     const { keycloak } = useKeycloak();
@@ -25,6 +29,8 @@ const SourceIndex: React.FC = () => {
     const [languageFilter, setLanguageFilter] = useState<string | null>(null);
     const [fileNameFilter, setFileNameFilter] = useState<string>('');
     const [fromLanguageFilter, setFromLanguageFilter] = useState<string | null>(null);
+    const [translationLoading, setTranslationLoading] = useState(false);
+
     useEffect(() => {
         if (keycloak.authenticated) {
             dispatch(fetchSources());
@@ -64,31 +70,80 @@ const SourceIndex: React.FC = () => {
       }, [sourcePairs, filterType, fileNameFilter, languageFilter, fromLanguageFilter, keycloak.tokenParsed]);
 
     const handleTranslateDocumentSubmit = async (data: TranslateFormData) => {
+        setTranslationLoading(true);
         try {
+            // Step 1: Create original and translation sources
             const { originalSource, translationSource } = await createSources(data);
+    
+            // Step 2: Create new dictionary for the translation source
+            const { dictionary_id, dictionary_timestamp } = await dictionaryService.createNewDictionary(translationSource.id);
+            
+            // Step 3: Create initial prompt rule for the dictionary
+            await ruleService.createInitialPromptRule(dictionary_id, dictionary_timestamp);
+            
+            // Step 4: Extract paragraphs from uploaded file
             const { paragraphs, properties } = await extractParagraphsFromFile(data.file);
-
+    
+            // Step 5: Save original segments to database
             const savedOriginalSegments = await buildAndSaveSegments(
                 paragraphs,
                 originalSource.id,
                 properties
             );
+    
+            if (data.step_by_step) {
+                // Step 6a-1: Step-by-step translation (first 10 paragraphs only)
+                const firstChunk = paragraphs.slice(0, 10);
+                console.log("Step-by-step translation started");
+    
+                const { translated_paragraphs, properties: providerProperties } =
+                    await translateParagraphs(firstChunk, data.source_language, data.target_language);
+    
+                // Step 6a-2: Save translated segments to database
+                const savedTranslatedSegments = await buildAndSaveSegments(
+                    translated_paragraphs,
+                    translationSource.id,
+                    providerProperties,
+                    savedOriginalSegments
+                );
+    
+                if (savedTranslatedSegments.length > 0) {
+                    // Step 6a-3: Fetch segments and navigate to edit page
+                    await dispatch(fetchSegments({ source_id: translationSource.id, offset: 0, limit: PAGE_SIZE }));
+                    await dispatch(fetchSegments({ source_id: originalSource.id, offset: 0, limit: PAGE_SIZE })); 
+                    navigate(`/source-edit/${translationSource.id}`);
 
-            const { translated_paragraphs, properties: providerProperties, total_segments_translated } =
-                await translateParagraphs(paragraphs, data.source_language, data.target_language);
-
-            await buildAndSaveSegments(
-                translated_paragraphs,
-                translationSource.id,
-                providerProperties,
-                savedOriginalSegments
-            );
-
-            showToast(`${total_segments_translated} segments translated & saved!`, "success");
-            navigate(`/source-edit/${translationSource.id}`);
+                } else {
+                    showToast("No segments were translated. Please try again.", "error");
+                }
+    
+            } else {
+                // Step 6b-1: Full translation (all paragraphs)
+                const { translated_paragraphs, properties: providerProperties, total_segments_translated } =
+                    await translateParagraphs(paragraphs, data.source_language, data.target_language);
+    
+                // Step 6b-2: Save translated segments to database
+                const savedTranslatedSegments = await buildAndSaveSegments(
+                    translated_paragraphs,
+                    translationSource.id,
+                    providerProperties,
+                    savedOriginalSegments
+                );
+    
+                if (savedTranslatedSegments.length > 0) {
+                    showToast(`${total_segments_translated} segments translated & saved!`, "success");
+                    // Step 6b-3: Fetch segments and navigate to edit page
+                    await dispatch(fetchSegments({ source_id: translationSource.id, offset: 0, limit: PAGE_SIZE }));
+                    navigate(`/source-edit/${translationSource.id}`);
+                } else {
+                    showToast("No segments were translated. Please try again.", "error");
+                }
+            }
         } catch (error) {
             console.error("❌ Translation flow failed:", error);
             showToast("Translation process failed. Please try again.", "error");
+        } finally {
+            setTranslationLoading(false);
         }
     };
 
@@ -174,7 +229,7 @@ const SourceIndex: React.FC = () => {
             <Box sx={{ backgroundColor: '#f5f5f5', py: 5, width: '100%' }}>
                 <Container maxWidth="lg">
                     <Box sx={{ pl: 9 }}>
-                        <TranslateForm onSubmit={handleTranslateDocumentSubmit} />
+                        <TranslateForm onSubmit={handleTranslateDocumentSubmit} loading={translationLoading} />
                     </Box>
                 </Container>
             </Box>

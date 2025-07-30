@@ -25,13 +25,14 @@ class HttpService {
     }
 
     async get<T>(url: string, params?: Record<string, any>): Promise<T> {
-        // console.log("📡 From http.service:  GET request to:", this.client.defaults.baseURL + url);
         const response = await this.client.get(url, { params });
         return response.data;
     }
 
     async post<T>(url: string, data: any): Promise<T> {
-        const response = await this.client.post(url, data);
+        const response = await this.client.post(url, data, {
+            timeout: 600000  
+        });
         return response.data;
     }
 
