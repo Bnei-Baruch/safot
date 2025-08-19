@@ -116,8 +116,6 @@ const SourceEdit: React.FC = () => {
        
         try {
             const savedSegment = await dispatch(saveSegments([segment])).unwrap();
-            // Update Redux directly instead of refetching
-            dispatch(updateSegment({ source_id: parsedId, segment: savedSegment.segments[0] }));
             showToast("Translation saved successfully!", "success");
             setTranslations(prev => {
                 const updated = { ...prev };

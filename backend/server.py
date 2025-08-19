@@ -148,7 +148,7 @@ def read_segments(source_id: int, offset: int = 0, limit: int = 100, user_info: 
         # Get paginated segments
         segments = list(Segment.select()
                        .where(Segment.source_id == source_id)
-                       .order_by(Segment.order)
+                       .order_by(Segment.order, Segment.timestamp)
                        .offset(offset)
                        .limit(limit)
                        .dicts())
