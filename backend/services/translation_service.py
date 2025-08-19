@@ -6,7 +6,6 @@ from openai import OpenAIError, Timeout
 from datetime import datetime
 from models import TranslationServiceOptions, TranslationExample
 from dotenv import load_dotenv
-from services.translation_prompts import TRANSLATION_PROMPTS
 from typing import List
 import re
 
@@ -18,14 +17,13 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 class TranslationService:
-    def __init__(self, api_key: str, options: TranslationServiceOptions, examples: List[TranslationExample] | None = None):
+    def __init__(self, api_key: str, options: TranslationServiceOptions, examples: List[TranslationExample] | None = None, prompt_text: str = ""):
         self.client = OpenAI(api_key=api_key)
         self.options = options
         self.examples = examples
         self.encoding = tiktoken.encoding_for_model(self.options.model)
-        self.prompt = TRANSLATION_PROMPTS[self.options.prompt_key]
+        self.prompt_text = prompt_text
 
-        logger.debug(f"Using prompt: {self.options.prompt_key}")
 
     def get_model_token_limit(self):
         model_token_limits = {
@@ -36,7 +34,7 @@ class TranslationService:
         return model_token_limits.get(self.options.model, {"context_window": 0, "max_output_tokens": 0})
 
     def calculate_chunk_token_limit(self, output_ratio=1.2):
-        prompt_tokens = len(self.encoding.encode(self.prompt))
+        prompt_tokens = len(self.encoding.encode(self.prompt_text))
         model_limits = self.get_model_token_limit()
         context_window = model_limits["context_window"]
         max_output_tokens = model_limits["max_output_tokens"]
@@ -74,34 +72,6 @@ class TranslationService:
 
         return chunks
     
-    def build_base_prompt(self, examples: List[TranslationExample] | None = None) -> str:
-        has_examples = bool(examples and any(
-            "sourceText" in ex and "firstTranslation" in ex and "lastTranslation" in ex for ex in examples))
-
-        if has_examples:
-            formatted_examples = "\n\n".join(
-                f"Source: {ex['sourceText']}\nFirst Translation: {ex['firstTranslation']}\nFinal Translation: {ex['lastTranslation']}"
-                for ex in examples
-                if ex.get("sourceText") and ex.get("firstTranslation") and ex.get("lastTranslation")
-            )
-
-            base_prompt = self.prompt.format(
-                source_language=self.options.source_language,
-                target_language=self.options.target_language,
-                examples=formatted_examples
-            )
-
-            logger.debug("Examples added to prompt")
-        else:
-            base_prompt = self.prompt.format(
-                source_language=self.options.source_language,
-                target_language=self.options.target_language,
-                examples=""
-            )
-
-        return base_prompt
-
-
     
     def send_chunk_for_translation(self, chunk: str, prompt: str) -> str:
         model_limits = self.get_model_token_limit()
@@ -154,7 +124,7 @@ class TranslationService:
         for i, chunk in enumerate(prepared_chunks, 1):
             logger.debug("Translating chunk %d", i)
 
-            prompt = self.build_base_prompt(examples=self.examples)
+            prompt = self.prompt_text
 
             translated_text = self.send_chunk_for_translation(chunk=chunk, prompt=prompt)
             if translated_text:
@@ -167,8 +137,7 @@ class TranslationService:
                 "model": self.options.model,
                 "source_language": self.options.source_language,
                 "target_language": self.options.target_language,
-                "prompt_key": self.options.prompt_key,
-                "prompt": self.prompt,
+                "prompt": self.prompt_text,
                 "temperature": self.options.temperature,
                 "dictionary_id": dictionary_id,
                 "dictionary_timestamp": dictionary_timestamp

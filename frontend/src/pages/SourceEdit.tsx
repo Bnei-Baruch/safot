@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useParams, useNavigate } from "react-router-dom";
 import compareTwoStrings from 'string-similarity-js';
-import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, TextField, Button, Box, Typography, Container, Fab, Pagination } from "@mui/material";
+import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, TextField, Button, Box, Typography, Container, Pagination } from "@mui/material";
 import { segmentService } from '../services/segment.service';
 import { ruleService } from '../services/rule.service';
 import { dictionaryService } from '../services/dictionary.service';
@@ -11,7 +11,7 @@ import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
 import AddIcon from '@mui/icons-material/Add';
 import { translateParagraphs } from '../services/translation.service';
 import { fetchSegments, saveSegments, updateSegment } from '../SegmentSlice';
-import { Segment, Rule, Example } from '../types/frontend-types';
+import { Segment, Example } from '../types/frontend-types';
 import { fetchSource } from '../SourceSlice';
 import { useAppDispatch, RootState } from '../store';
 import { useToast } from '../cmp/Toast';
@@ -26,6 +26,7 @@ const SourceEdit: React.FC = () => {
     const { id } = useParams<{ id: string }>();
     const parsedId = id ? parseInt(id, 10) : undefined;
 
+    // TODO: Check if segmentsLoading / sourcesLoading are still needed (left from Redux logic?)
     const { segments, loading: segmentsLoading, error: segmentsError } = useSelector((state: RootState) => state.segments);
     const { sources, loading: sourcesLoading, error: sourcesError } = useSelector((state: RootState) => state.sources);
 
@@ -60,6 +61,15 @@ const SourceEdit: React.FC = () => {
         }
     }, [dispatch, parsedId, originalSourceId, sources]);
 
+    // Load initial segments when source IDs are available
+    useEffect(() => {
+        if (originalSourceId && parsedId) {
+            // Load first page of segments for both source and translation
+            dispatch(fetchSegments({ source_id: originalSourceId, offset: 0, limit: pageSize }));
+            dispatch(fetchSegments({ source_id: parsedId, offset: 0, limit: pageSize }));
+        }
+    }, [dispatch, originalSourceId, parsedId, pageSize]);
+
     useEffect(() => {
         // Load both source and translation for the same page
         if (originalSourceId && !segments[originalSourceId]?.pages[currentPage - 1]) {
@@ -70,7 +80,7 @@ const SourceEdit: React.FC = () => {
             const offset = (currentPage - 1) * pageSize;
             dispatch(fetchSegments({ source_id: parsedId, offset, limit: pageSize }));
         }
-    }, [dispatch, parsedId, originalSourceId, currentPage, segments]);
+    }, [dispatch, parsedId, originalSourceId, currentPage, segments, pageSize]);
 
     const handleTranslationChange = (sourceSegmentId: number, order: number, timestamp: string, value: string) => {
         setTranslations(prev => ({
@@ -131,8 +141,14 @@ const SourceEdit: React.FC = () => {
     };
 
     const getTotalPages = (): number => {
-        if (!originalSourceId || !segments[originalSourceId]?.pagination) return 0;
-        return Math.ceil(segments[originalSourceId].pagination.total_count / pageSize);
+        // Prefer original source pagination, but fall back to current source if needed
+        if (originalSourceId && segments[originalSourceId]?.pagination) {
+            return Math.ceil(segments[originalSourceId].pagination.total_count / pageSize);
+        }
+        if (parsedId && segments[parsedId]?.pagination) {
+            return Math.ceil(segments[parsedId].pagination.total_count / pageSize);
+        }
+        return 0;
     };
 
     const handlePageChange = (event: React.ChangeEvent<unknown>, value: number) => {
@@ -193,46 +209,49 @@ const SourceEdit: React.FC = () => {
         return batch;
     };
 
-    const getSavedExamples = (): { sourceText: string; firstTranslation: string; lastTranslation: string }[] => {
-        if (!parsedId || !originalSourceId) return [];
 
+    const getSavedExamples = (maxCount: number = 5): Example[] => {
+        if (!parsedId || !originalSourceId) return [];
+      
         const sourceSegments = getCurrentOriginalSegments();
         const targetSegments = getCurrentTranslatedSegments();
-
+      
+        // Group translated segments by order
         const byOrder: { [order: number]: Segment[] } = {};
-        targetSegments.forEach(seg => {
-            if (!seg.text?.trim() || !seg.timestamp) return;
-            if (!byOrder[seg.order]) byOrder[seg.order] = [];
-            byOrder[seg.order].push(seg);
-        });
-
-        const examples: (Example & { score: number })[] = [];
-
-        for (const order in byOrder) {
-            const segs = byOrder[order];
-            if (segs.length < 2) continue;
-
-            const sorted = segs.sort((a, b) => (a.timestamp ?? '').localeCompare(b.timestamp ?? ''));
-            const first = sorted[0].text.trim();
-            const last = sorted[sorted.length - 1].text.trim();
-
-            const sourceText = sourceSegments.find(s => s.order === Number(order))?.text || '';
-
-            if (first !== last && sourceText) {
-                const score = 1 - compareTwoStrings(first, last);
-                examples.push({ sourceText, firstTranslation: first, lastTranslation: last, score });
-            }
+        for (const seg of targetSegments) {
+          if (!seg.text?.trim() || !seg.timestamp) continue;
+          (byOrder[seg.order] ||= []).push(seg);
         }
-
-        return examples
-            .sort((a, b) => b.score - a.score)
-            .slice(0, 4)
-            .map(({ sourceText, firstTranslation, lastTranslation }) => ({
-                sourceText,
-                firstTranslation,
-                lastTranslation
-            }));
-    };
+      
+        const examples: Example[] = [];
+      
+        for (const orderStr in byOrder) {
+          const order = Number(orderStr);
+          const segs = byOrder[order];
+          if (segs.length < 2) continue;
+      
+          // sort ascending by timestamp and take first/last
+          const sorted = segs.sort((a, b) => (a.timestamp ?? '').localeCompare(b.timestamp ?? ''));
+          const first = (sorted[0].text || '').trim();
+          const last  = (sorted[sorted.length - 1].text || '').trim();
+      
+          const sourceText = (sourceSegments.find(s => s.order === order)?.text || '').trim();
+          if (!sourceText || first === last) continue;
+      
+          // similarity in [0..1]; score = delta magnitude
+          const score = 1 - compareTwoStrings(first, last);
+      
+          examples.push({
+            sourceText,
+            firstTranslation: first,
+            lastTranslation: last,
+            score
+          });
+        }
+      
+        // sort by score desc and cap by maxCount
+        return examples.sort((a, b) => (b?.score ?? 0) - (a?.score ?? 0)).slice(0, maxCount);
+      };
 
     const buildAndSaveSegments = async (
         paragraphs: string[],
@@ -258,76 +277,82 @@ const SourceEdit: React.FC = () => {
 
 
     const handleTranslateMore = async () => {
-      const batch = getNextBatch();
-      if (!batch.length) {
+    const batch = getNextBatch();
+    if (!batch.length) {
         showToast("No more paragraphs to translate.", "info");
         return;
-      }
-
-      setTranslateMoreLoading(true);
-      try {
-        // 1 Create new dictionary version and get id + timestamp
+    }
+    
+    setTranslateMoreLoading(true);
+    try {
+        // 1 Create new dictionary version
         const { dictionary_id: dictionaryId, dictionary_timestamp: dictionaryTimestamp } = 
-          await createNewDictionaryVersion(parsedId!);
-
-        // 2 Build and save rules (examples + prompt_key)
-        const examples = getSavedExamples();
-        const rules = buildRules(examples, dictionaryId, dictionaryTimestamp);
-        await ruleService.saveRules(rules);
-
-        // 3 Send translation with the new dictionary version
+        await createNewDictionaryVersion(parsedId!);
+    
+        // 2 Build and save example rules if any
+        const examples = getSavedExamples(5);
+        if (examples.length > 0) {
+            await ruleService.createExampleRules(dictionaryId, dictionaryTimestamp, examples);
+        }
+        // 3 Build and save prompt
+        const { promptText } = await buildPromptAndSave(dictionaryId, dictionaryTimestamp);
+    
+        // 4 Translate paragraphs
         const paragraphs = batch.map(seg => seg.text);
         const { translated_paragraphs, properties, total_segments_translated } =
-          await translateParagraphs(
+        await translateParagraphs(
             paragraphs,
             sources[originalSourceId!].language,
             sourceData?.language!,
+            promptText,
             dictionaryId,
             dictionaryTimestamp,
             examples
-          );
-
-        // 4 Save the new segments
+        );
+    
+        // 4 Save segments
         await buildAndSaveSegments(translated_paragraphs, parsedId!, properties, batch);
-
+    
         showToast(`${total_segments_translated} segments translated & saved!`, "success");
-      } catch (err) {
-        console.error("❌ Translate More failed:", err);
+        } catch (err) {
+            console.error("❌ Translate More failed:", err);
         showToast("Failed to translate more paragraphs.", "error");
-      } finally {
-        setTranslateMoreLoading(false);
-      }
+        } finally {
+            setTranslateMoreLoading(false);
+        }
     };
 
+    const buildPromptAndSave = async (
+        dictionaryId: number,
+        dictionaryTimestamp: string
+      ) => {
+  
+        const { promptKey, selectedExamples, usedRuleIds } =
+          await ruleService.selectRulesForPrompt(dictionaryId, /* maxExamples */ 20);
+      
+     
+        const { promptText } = ruleService.buildPromptString({
+          promptKey,
+          sourceLanguage: sources[originalSourceId!].language,
+          targetLanguage: sourceData?.language!,
+          examples: selectedExamples,
+        });
+      
+        
+        await ruleService.createPromptRule(
+          dictionaryId,
+          dictionaryTimestamp,
+          promptKey,
+          promptText,
+          "translate_more_prompt",
+          usedRuleIds
+        );
+      
+        return { promptKey, promptText, usedRuleIds, examples: selectedExamples };
+      };
+    
     const createNewDictionaryVersion = async (sourceId: number) => {
       return await dictionaryService.createNewDictionaryVersion(sourceId);
-    };
-
-    const buildRules = (examples: Example[], dictionaryId: number, dictionaryTimestamp: string): Rule[] => {
-      const rules: Rule[] = examples.map(example => ({
-        name: "example",
-        type: "example",
-        dictionary_id: dictionaryId,
-        dictionary_timestamp: dictionaryTimestamp,
-        properties: {
-          source_text: example.sourceText,
-          provider_translation: example.firstTranslation,
-          user_translation: example.lastTranslation,
-        },
-      }));
-
-      // Add prompt_key rule
-      rules.push({
-        name: "prompt_key",
-        type: "prompt_key",
-        dictionary_id: dictionaryId,
-        dictionary_timestamp: dictionaryTimestamp,
-        properties: {
-          prompt_key: "prompt_2",
-        },
-      });
-
-      return rules;
     };
 
     const getLatestSegments = (segmentsArr: Segment[]): Segment[] => {
@@ -407,7 +432,7 @@ const SourceEdit: React.FC = () => {
                             page={currentPage}
                             onChange={handlePageChange}
                             size="small"
-                            disabled={!originalSourceId || !segments[originalSourceId]}
+                            disabled={!(originalSourceId && (segments[originalSourceId] || segments[parsedId!]))}
                         />
                     </Box>
                 </Box>
@@ -422,7 +447,7 @@ const SourceEdit: React.FC = () => {
                         <TableRow>
                             <TableCell>Order</TableCell>
                             <TableCell style={{ width: '40%' }}>
-                            Source ({originalSourceId && getLanguageName(sources[originalSourceId]?.language) || 'Unknown'})
+                            Source ({(originalSourceId && getLanguageName(sources[originalSourceId]?.language)) || 'Unknown'})
                             </TableCell>
                             <TableCell style={{ width: '50%' }}>
                             Translation ({getLanguageName(sourceData?.language || '')})

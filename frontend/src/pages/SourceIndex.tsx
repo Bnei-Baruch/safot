@@ -79,8 +79,23 @@ const SourceIndex: React.FC = () => {
             const { dictionary_id, dictionary_timestamp } = await dictionaryService.createNewDictionary(translationSource.id);
             
             // Step 3: Create initial prompt rule for the dictionary
-            await ruleService.createInitialPromptRule(dictionary_id, dictionary_timestamp);
-            
+            // await ruleService.createPromptRule(dictionary_id, dictionary_timestamp, "prompt_1", "initial_prompt_rule");
+            const promptKey = "prompt_1";
+            const { promptText } = ruleService.buildPromptString({
+                promptKey,
+                sourceLanguage: data.source_language,
+                targetLanguage: data.target_language,
+            });
+
+            await ruleService.createPromptRule(
+                dictionary_id,
+                dictionary_timestamp,
+                promptKey,
+                promptText,
+                "initial_prompt_rule",
+                []
+            );
+
             // Step 4: Extract paragraphs from uploaded file
             const { paragraphs, properties } = await extractParagraphsFromFile(data.file);
     
@@ -97,7 +112,7 @@ const SourceIndex: React.FC = () => {
                 console.log("Step-by-step translation started");
     
                 const { translated_paragraphs, properties: providerProperties } =
-                    await translateParagraphs(firstChunk, data.source_language, data.target_language);
+                    await translateParagraphs(firstChunk, data.source_language, data.target_language,  promptText);
     
                 // Step 6a-2: Save translated segments to database
                 const savedTranslatedSegments = await buildAndSaveSegments(
@@ -120,7 +135,7 @@ const SourceIndex: React.FC = () => {
             } else {
                 // Step 6b-1: Full translation (all paragraphs)
                 const { translated_paragraphs, properties: providerProperties, total_segments_translated } =
-                    await translateParagraphs(paragraphs, data.source_language, data.target_language);
+                    await translateParagraphs(paragraphs, data.source_language, data.target_language,  promptText );
     
                 // Step 6b-2: Save translated segments to database
                 const savedTranslatedSegments = await buildAndSaveSegments(
@@ -195,14 +210,15 @@ const SourceIndex: React.FC = () => {
     const translateParagraphs = async (
         paragraphs: string[],
         sourceLang: string,
-        targetLang: string
+        targetLang: string,
+        promptText: string
     ): Promise<{
         translated_paragraphs: string[],
         properties: Record<string, any>,
         total_segments_translated: number
     }> => {
         try {
-            const response = await translateParagraphsAPI(paragraphs, sourceLang, targetLang);
+            const response = await translateParagraphsAPI(paragraphs, sourceLang, targetLang, promptText);
             showToast(`${response.total_segments_translated} segments translated successfully!`, "success");
             return response;
         } catch (error) {

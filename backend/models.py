@@ -114,6 +114,7 @@ class ParagraphsTranslateRequest(BaseModel):
     paragraphs: List[str]
     source_language: str
     target_language: str
+    prompt_text: str
     dictionary_id: int | None = None
     dictionary_timestamp: str | None = None
     examples: List[Example] | None = None
@@ -125,4 +126,3 @@ class TranslationServiceOptions(BaseModel):
     # model: str = "gpt-3.5-turbo"
     provider: Provider = Provider.OPENAI
     temperature: float = 0.2
-    prompt_key: str = "prompt_1"

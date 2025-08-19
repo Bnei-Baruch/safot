@@ -89,6 +89,7 @@ export interface Example {
   sourceText: string;
   firstTranslation: string;
   lastTranslation: string;
+  score?: number; // optional for now
 }
 
 export interface Rule {

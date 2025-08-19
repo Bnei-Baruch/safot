@@ -27,7 +27,10 @@ def create_new_dictionary_version(original_dictionary_id, source_id, username, t
         username=username,
         timestamp=timestamp
     )
-    return Dictionary.get_by_id((d.id, d.timestamp))
+    return {
+        "dictionary_id": d.id,
+        "dictionary_timestamp": d.timestamp.isoformat()
+    }
 
 
 

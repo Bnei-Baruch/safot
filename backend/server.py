@@ -14,7 +14,7 @@ from starlette.status import HTTP_401_UNAUTHORIZED
 
 from services.translation_service import TranslationService
 from services.segment_service import get_paragraphs_from_file, get_latest_segments, store_segments
-from services.rule_service import store_rules, create_initial_prompt_rule
+from services.rule_service import store_rules, get_rules_by_dictionary, get_rules_by_dictionary_all
 from services.dictionary_service import create_new_dictionary, create_new_dictionary_version, create_source_dictionary_link
 from services.source_service import create_source
 from models import Source, Segment, ParagraphsTranslateRequest, TranslationServiceOptions, Dictionary, Rule, SourceDictionaryLink
@@ -202,18 +202,19 @@ def translate_paragraphs_handler(
         if not request.paragraphs:
             raise HTTPException(status_code=400, detail="No paragraphs provided.")
         
-        prompt_key = "prompt_2" if (request.examples and len(request.examples) > 0) else "prompt_1"
+        if not request.prompt_text or not request.prompt_text.strip():
+            raise HTTPException(status_code=400, detail="Missing prompt_text in request.")
 
         options = TranslationServiceOptions(
             source_language=request.source_language,
             target_language=request.target_language,
-            prompt_key=prompt_key 
         )
 
         translation_service = TranslationService(
             api_key=OPENAI_API_KEY,
             options=options,
-            examples=request.examples  
+            examples=request.examples,
+            prompt_text=request.prompt_text
         )
 
         translated_paragraphs, properties = translation_service.translate_paragraphs(
@@ -320,10 +321,11 @@ async def create_new_dictionary_handler(source_id: int, request: Request, user_i
         logger.error("Error creating new dictionary: %s", e)
         raise HTTPException(status_code=500, detail=f"Failed to create new dictionary: {str(e)}")
 
+
 @app.post("/dictionary/version/{source_id}", response_model=dict)
 def create_dictionary_version_handler(source_id: int, user_info: dict = Depends(get_user_info)):
     try:
-        # Find existing dictionary link
+        # find latest link by timestamp
         existing_link = (
             SourceDictionaryLink
             .select()
@@ -331,40 +333,73 @@ def create_dictionary_version_handler(source_id: int, user_info: dict = Depends(
             .order_by(SourceDictionaryLink.dictionary_timestamp.desc())
             .first()
         )
-        
         if not existing_link:
             raise HTTPException(status_code=404, detail="No existing dictionary found for this source")
-        
+
+        # fetch original dictionary to get its name (if exists)
+        try:
+            original_dict = (
+                Dictionary
+                .select()
+                .where(
+                    (Dictionary.id == existing_link.dictionary_id) &
+                    (Dictionary.timestamp == existing_link.dictionary_timestamp)
+                )
+                .first()
+            )
+            original_name = getattr(original_dict, "name", "") if original_dict else f"dictionary-{existing_link.dictionary_id}"
+        except Dictionary.DoesNotExist:
+            original_name = f"dictionary-{existing_link.dictionary_id}"
+
         now = datetime.utcnow()
-        
-        # Create new version (same ID, new timestamp)
-        dictionary = create_new_dictionary_version(
-            existing_link.dictionary_id,
-            source_id,
-            user_info["preferred_username"],
-            now,
-            existing_link.dictionary.name  # Pass the original dictionary name
+
+        # create new version (same id, new timestamp)
+        dictionary_data = create_new_dictionary_version(
+            original_dictionary_id=existing_link.dictionary_id,
+            source_id=source_id,
+            username=user_info["preferred_username"],
+            timestamp=now,
+            original_name=original_name
         )
-        
-        # Create source dictionary link
+
+        # create link between source and new version
         create_source_dictionary_link(
-            source_id,
-            dictionary.id,
-            dictionary.timestamp
+            source_id=source_id,
+            dictionary_id=dictionary_data["dictionary_id"],
+            dictionary_timestamp=datetime.fromisoformat(dictionary_data["dictionary_timestamp"])
         )
-        
-        return {
-            "dictionary_id": dictionary.id,
-            "dictionary_timestamp": dictionary.timestamp.isoformat()
-        }
-        
-    except HTTPException as e:
-        raise e
+
+        # return id and timestamp of the new version
+        return dictionary_data
+
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Error creating dictionary version: %s", e)
         raise HTTPException(status_code=500, detail=f"Failed to create dictionary version: {str(e)}")
 
+
 ####### RULES
+@app.get("/rules/by-dictionary", response_model=list[dict])
+def fetch_rules_by_dictionary(dictionary_id: int, dictionary_timestamp: datetime, user_info: dict = Depends(get_user_info)):
+    try:
+        rules = get_rules_by_dictionary(dictionary_id, dictionary_timestamp)
+        return rules
+    except Exception as e:
+        logger.error("Error fetching rules by dictionary: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to fetch rules")
+
+
+@app.get("/rules/by-dictionary-all", response_model=list[dict])
+def fetch_rules_by_dictionary_all(dictionary_id: int, user_info: dict = Depends(get_user_info)):
+    try:
+        rules = get_rules_by_dictionary_all(dictionary_id)
+        return rules
+    except Exception as e:
+        logger.error("Error fetching rules by dictionary (all): %s", e)
+        raise HTTPException(status_code=500, detail="Failed to fetch rules")
+
+
 @app.post("/rules", response_model=list[dict])
 async def save_rules(request: Request, user_info: dict = Depends(get_user_info)):
     try:
