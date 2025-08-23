@@ -4,21 +4,6 @@ import { PROMPT_TEMPLATES } from "../constants/promptTemplates";
 
 const ENTITY_TYPE = 'rules';
 
-export const ruleService = {
-   // write rules
-   createPromptRule,
-   createExampleRules,
-   createRules,
- 
-   // read rules
-   getRulesByDictionaryAll,
-   getRulesByDictionary,
- 
-   // prompt building helpers
-   selectRulesForPrompt,
-   buildPromptString,
-};
-
 /** Persist a single prompt rule with the final prompt text */
 export async function createPromptRule(
   dictionaryId: number,
@@ -63,7 +48,7 @@ export async function createExampleRules(
   return await createRules(rules);
 }
 
-async function createRules(rules: Partial<Rule>[]) {
+export async function createRules(rules: Partial<Rule>[]) {
   return await httpService.post(`${ENTITY_TYPE}`, { rules });
 }
 

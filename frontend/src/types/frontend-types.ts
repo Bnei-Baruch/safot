@@ -41,7 +41,7 @@ export interface Source {
 
 export interface SourcePair {
     original: Source;
-    translated: Source | null;
+    translated: Source;
 }
 
 export enum Language {
@@ -72,19 +72,6 @@ export interface LanguageOption {
     direction: 'ltr' | 'rtl';
 }
 
-export interface TranslateFormData {
-    file: File;
-    name: string;
-    source_language: string;
-    target_language: string;
-    step_by_step?: boolean | undefined;
-  }
-  
-  export interface TranslateFormProps {
-    onSubmit: (data: TranslateFormData) => Promise<void>;
-    loading?: boolean;
-  }
-
 export interface Example {
   sourceText: string;
   firstTranslation: string;
@@ -103,9 +90,17 @@ export interface Rule {
   properties: Record<string, any>;
 }
 
-export interface PaginationInfo {
+export interface Dictionary {
+  id: number;
+  timestamp: number;
+  name: string;
+  username: string;
+  labels: string[];
+}
+
+/*export interface PaginationInfo {
   offset: number;
   limit: number;
   total_count: number;
   has_more: boolean;
-}
+}*/

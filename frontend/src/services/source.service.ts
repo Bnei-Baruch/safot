@@ -1,22 +1,20 @@
 import { httpService } from './http.service'
 
-const ENTITY_TYPE = 'sources';
+const SOURCES = 'sources';
 
-export const sourceService = {
-    querySources,
-    getSourceById,
-    addSource,
-};
-
-async function querySources(): Promise<any[]> {
-    return await httpService.get(ENTITY_TYPE);
+export async function getSources(): Promise<any[]> {
+  return await httpService.get(SOURCES);
 }
 
-async function getSourceById(sourceId: number): Promise<any> {
-    return await httpService.get(`${ENTITY_TYPE}/${sourceId}`);
+export async function getSource(sourceId: number): Promise<any> {
+  return await httpService.get(`${SOURCES}/${sourceId}`);
 }
 
-async function addSource(source: Omit<any, 'id'>): Promise<any> {
-    return await httpService.post(ENTITY_TYPE, source);
+export async function postSource(source: Omit<any, 'id'>): Promise<any> {
+  return await httpService.post(SOURCES, source);
+}
+
+export async function delSource(sourceId: number): Promise<any> {
+  return await httpService.delete(`${SOURCES}/${sourceId}`);
 }
 

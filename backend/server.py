@@ -2,7 +2,7 @@ from datetime import datetime
 import os
 import logging
 
-from peewee import DoesNotExist
+from peewee import DoesNotExist, fn
 from dotenv import load_dotenv
 from docx import Document
 from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile, File, Form
@@ -16,7 +16,7 @@ from services.translation_service import TranslationService
 from services.segment_service import get_paragraphs_from_file, get_latest_segments, store_segments
 from services.rule_service import store_rules, get_rules_by_dictionary, get_rules_by_dictionary_all
 from services.dictionary_service import create_new_dictionary, create_new_dictionary_version, create_source_dictionary_link
-from services.source_service import create_source
+from services.source_service import create_or_update_source
 from models import Source, Segment, ParagraphsTranslateRequest, TranslationServiceOptions, Dictionary, Rule, SourceDictionaryLink
 from db import db
 from peewee_migrate import Router
@@ -68,6 +68,7 @@ async def get_user_info(request: Request):
     # Extract token from Authorization header
     auth_header = request.headers.get('Authorization')
     if not auth_header or not auth_header.startswith('Bearer '):
+        logger.error('Missing authorization header')
         raise HTTPException(status_code=HTTP_401_UNAUTHORIZED,
                             detail='Missing or invalid token')
 
@@ -113,56 +114,50 @@ def read_source(source_id: int, user_info: dict = Depends(get_user_info)):
         raise HTTPException(status_code=404, detail='Source not found')
 
 @app.post('/sources', response_model=dict)
-def create_source_handler(source: dict, user_info: dict = Depends(get_user_info)):
-    return create_source(source, user_info['preferred_username'])
+def create_or_update_source_handler(source: dict, user_info: dict = Depends(get_user_info)):
+    return create_or_update_source(source, user_info['preferred_username'])
 
-@app.put('/sources/{source_id}', response_model=dict)
-def update_source(source_id: int, source: dict, user_info: dict = Depends(get_user_info)):
+@app.delete('/sources/{translation_source_id}', response_model=list)
+def delete_source(translation_source_id: int, _: dict = Depends(get_user_info)):
     try:
-        # Update fields dynamically
-        query = Source.update(
-            **source, timestamp=datetime.utcnow()).where(Source.id == source_id)
-        updated_rows = query.execute()
-
-        if updated_rows == 0:
-            raise HTTPException(status_code=404, detail='Source not found')
-        db_source = Source.get(Source.id == source_id)
-        return model_to_dict(db_source)
-    except DoesNotExist:
+        source = Source.get(Source.id == translation_source_id)
+    except Exception as e:
+        logger.error(f"Deletion - Source not found: {e}")
         raise HTTPException(status_code=404, detail='Source not found')
 
-@app.delete('/sources/{source_id}', response_model=int)
-def delete_source(source_id: int, _: dict = Depends(get_user_info)):
-    rows_deleted = Source.delete().where(Source.id == source_id).execute()
-    if rows_deleted == 0:
-        raise HTTPException(status_code=404, detail='Source not found')
-    return rows_deleted
+    # Get all translations of the original source
+    translations = list(Source.select().where(Source.original_source_id == source.original_source_id))
+    source_ids_to_delete = [translation_source_id]
+    if len(translations) == 1:
+        # This is the last translation, allow deletion of both translation and original
+        source_ids_to_delete.append(source.original_source_id)
+
+    # Delete all segments for these sources
+    Segment.delete().where(Segment.source_id.in_(source_ids_to_delete)).execute()
+    # Delete the sources themselves
+    Source.delete().where(Source.id.in_(source_ids_to_delete)).execute()
+    return source_ids_to_delete
+
 
 ####### SEGMENTS 
-@app.get('/segments/{source_id}', response_model=dict)
-def read_segments(source_id: int, offset: int = 0, limit: int = 100, user_info: dict = Depends(get_user_info)):
+@app.get('/segments/{source_id}', response_model=list)
+def read_segments(source_id: int, user_info: dict = Depends(get_user_info)):
     try:
-        # Get total count for pagination info
-        total_count = Segment.select().where(Segment.source_id == source_id).count()
-        
-        # Get paginated segments
-        segments = list(Segment.select()
+        # Sub query to get latest segments.
+        subquery = (Segment
+                .select(Segment.id, fn.MAX(Segment.timestamp).alias('latest_timestamp'))
+                .where(Segment.source_id == source_id)
+                .group_by(Segment.id))
+        # Get all latest segments
+        return list(Segment.select()
                        .where(Segment.source_id == source_id)
-                       .order_by(Segment.order, Segment.timestamp)
-                       .offset(offset)
-                       .limit(limit)
+                       .join(subquery, on=(
+                           (Segment.id == subquery.c.id) &
+                           (Segment.timestamp == subquery.c.latest_timestamp)
+                       ))
+                       .order_by(Segment.order)
                        .dicts())
         
-        return {
-            "segments": segments,
-            "pagination": {
-                "offset": offset,
-                "limit": limit,
-                "total_count": total_count,
-                "has_more": offset + limit < total_count
-            }
-        }
-
     except Exception as e:
         logger.error("Error fetching segments: %s", e)
         raise HTTPException(

@@ -15,8 +15,11 @@ import {
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import { useNavigate } from 'react-router-dom';
+import { useAppDispatch } from '../store/store';
+import { deleteSource } from '../store/SourceSlice';
 import { SourcePair } from '../types/frontend-types';
 import { LANGUAGES } from '../constants/languages';
+import { exportTranslationDocx } from '../services/segment.service';
 
 const renderLang = (code: string) => {
   const lang = LANGUAGES.find(l => l.code === code);
@@ -31,11 +34,31 @@ interface SourceTableProps {
 }
 
 type SortDirection = 'asc' | 'desc';
-type SortField = 'name' | 'username' | 'language' | 'translatedLanguage';
+type SortField = 'translatedName' | 'originalName' | 'username' | 'originalLanguage' | 'translatedLanguage';
+
+const docx = async (sourceId: number, name: string, language: string) => {
+  try {
+    const blob = await exportTranslationDocx(sourceId);
+    if (!(blob instanceof Blob)) {
+      throw new Error("Response is not a valid Blob");
+    }
+
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${name}_${language}.docx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  } catch (error) {
+    console.error("Error exporting document:", error);
+  }
+};
 
 const SourceTable: React.FC<SourceTableProps> = ({ pairs }) => {
   const navigate = useNavigate();
-  const [sortField, setSortField] = useState<SortField>('name');
+  const dispatch = useAppDispatch();
+  const [sortField, setSortField] = useState<SortField>('translatedName');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
 
   const extractUsername = (email: string) => {
@@ -55,11 +78,13 @@ const SourceTable: React.FC<SourceTableProps> = ({ pairs }) => {
     const direction = sortDirection === 'asc' ? 1 : -1;
     
     switch (sortField) {
-      case 'name':
+      case 'originalName':
+        return direction * a.original.name.localeCompare(b.original.name);
+      case 'translatedName':
         return direction * a.original.name.localeCompare(b.original.name);
       case 'username':
         return direction * extractUsername(a.original.username).localeCompare(extractUsername(b.original.username));
-      case 'language':
+      case 'originalLanguage':
         return direction * a.original.language.localeCompare(b.original.language);
       case 'translatedLanguage':
         if (!a.translated && !b.translated) return 0;
@@ -103,35 +128,43 @@ const SourceTable: React.FC<SourceTableProps> = ({ pairs }) => {
   };
 
   return (
-    <TableContainer component={Paper} sx={{ margin: "auto", width: "100%", mt: 4 }}>
-      <Table>
+    <TableContainer component={Paper} sx={{ margin: "auto", width: "100%" }}>
+      <Table size="small">
         <TableHead>
           <TableRow>
-            <TableCell>
-              <SortableHeader field="name" label="Name" />
+            <TableCell sx={{ maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <SortableHeader field="originalName" label="Source" />
             </TableCell>
             <TableCell>
-              <SortableHeader field="username" label="Upload By" />
+              <SortableHeader field="originalLanguage" label="From" />
             </TableCell>
-            <TableCell>
-              <SortableHeader field="language" label="From" />
+            <TableCell sx={{ maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <SortableHeader field="translatedName" label="Trnslation" />
             </TableCell>
             <TableCell>
               <SortableHeader field="translatedLanguage" label="To" />
+            </TableCell>
+            <TableCell>
+              <SortableHeader field="username" label="Upload By" />
             </TableCell>
             <TableCell>Actions</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
           {sortedPairs.map(({ original, translated }) => (
-            <TableRow key={original.id}>
-              <TableCell>{original.name}</TableCell>
-              <TableCell>{extractUsername(original.username)}</TableCell>
+            <TableRow key={translated.id}>
+              <TableCell sx={{ maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {original.name}
+              </TableCell>
               <TableCell>{renderLang(original.language)}</TableCell>
+              <TableCell sx={{ maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {translated.name}
+               </TableCell>
               <TableCell>{translated ? renderLang(translated.language) : '-'}</TableCell>
+              <TableCell>{extractUsername(translated.username)}</TableCell>
              
               <TableCell>
-              {translated && (
+                {translated && (
                     <Button
                     variant="outlined"
                     onClick={() => navigate(`/source-edit/${translated.id}`)}
@@ -140,8 +173,10 @@ const SourceTable: React.FC<SourceTableProps> = ({ pairs }) => {
                     Edit
                   </Button>
                 )}
-                {/* <Button disabled>Delete</Button>
-                <Button disabled>Download</Button> */}
+                <Button disabled={!translated} onClick={() =>
+                    translated && window.confirm(`Are you sure you want to delete ${translated.name}`) && dispatch(deleteSource(translated.id))}>Delete</Button>
+                <Button disabled={!translated} onClick={() =>
+                    translated && docx(translated.id, translated.name, translated.language)}>DOCX</Button>
               </TableCell>
             </TableRow>
           ))}
