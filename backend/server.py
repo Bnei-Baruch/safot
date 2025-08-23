@@ -1,26 +1,51 @@
 from datetime import datetime
-import os
-import logging
-
-from peewee import DoesNotExist
-from dotenv import load_dotenv
+from db import db
 from docx import Document
-from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile, File, Form
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from dotenv import load_dotenv
 from keycloak import KeycloakOpenID
+import logging
+import os
+
+from peewee import (
+	SQL,
+    DoesNotExist,
+    JOIN,
+    fn,
+)
+from peewee_migrate import Router
 from playhouse.shortcuts import model_to_dict
 from starlette.status import HTTP_401_UNAUTHORIZED
+
+from fastapi import (
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+)
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 from services.translation_service import TranslationService
 from services.segment_service import get_paragraphs_from_file, get_latest_segments, store_segments
 from services.rule_service import store_rules, get_rules_by_dictionary, get_rules_by_dictionary_all
 from services.dictionary_service import create_new_dictionary, create_new_dictionary_version, create_source_dictionary_link
-from services.source_service import create_source
-from models import Source, Segment, ParagraphsTranslateRequest, TranslationServiceOptions, Dictionary, Rule, SourceDictionaryLink
-from db import db
-from peewee_migrate import Router
+from services.source_service import create_or_update_source
+from services.prompt import build_custom_prompt
 
+from models import (
+    Dictionary,
+    ParagraphsTranslateRequest,
+    PromptRequest,
+    Rule,
+    Segment,
+    Source,
+    SourceDictionaryLink,
+    TranslationServiceOptions,
+)
 
 def configure_logging():
     """Configure logging for the entire application"""
@@ -68,6 +93,7 @@ async def get_user_info(request: Request):
     # Extract token from Authorization header
     auth_header = request.headers.get('Authorization')
     if not auth_header or not auth_header.startswith('Bearer '):
+        logger.error('Missing authorization header')
         raise HTTPException(status_code=HTTP_401_UNAUTHORIZED,
                             detail='Missing or invalid token')
 
@@ -100,9 +126,41 @@ def shutdown():
 
 ####### SOURCES
 @app.get('/sources', response_model=list[dict])
-def read_sources(user_info: dict = Depends(get_user_info)):
-    sources = list(Source.select().dicts())
-    return sources
+def read_sources(metadata: bool = Query(False), user_info: dict = Depends(get_user_info)):
+    if not metadata:
+        sources = list(Source.select().dicts())
+        return sources
+
+    max_timestamp_subquery = (
+        Segment
+        .select(Segment.order, Segment.source_id, fn.MAX(Segment.timestamp).alias('max_timestamp'))
+        .group_by(Segment.order, Segment.source_id)
+    )
+
+    segments_count = (
+        Segment
+        .select(
+            Segment.source_id.alias("source_id"),
+            fn.COUNT(Segment.id).alias("count"),
+			fn.EXTRACT(SQL("EPOCH FROM MAX(timestamp)")).alias("last_modified"),
+        )
+        .join(max_timestamp_subquery, on=(
+            (Segment.order == max_timestamp_subquery.c.order) &
+            (Segment.timestamp == max_timestamp_subquery.c.max_timestamp)
+        ))
+        .group_by(Segment.source_id)
+        .alias("S")
+    )
+    query = (
+        Source
+        .select(
+            Source,
+            segments_count.c.count,
+            segments_count.c.last_modified,
+        )
+        .join(segments_count, JOIN.LEFT_OUTER, on=(segments_count.c.source_id == Source.id))
+    )
+    return list(query.dicts())
 
 @app.get('/sources/{source_id}', response_model=dict)
 def read_source(source_id: int, user_info: dict = Depends(get_user_info)):
@@ -113,56 +171,50 @@ def read_source(source_id: int, user_info: dict = Depends(get_user_info)):
         raise HTTPException(status_code=404, detail='Source not found')
 
 @app.post('/sources', response_model=dict)
-def create_source_handler(source: dict, user_info: dict = Depends(get_user_info)):
-    return create_source(source, user_info['preferred_username'])
+def create_or_update_source_handler(source: dict, user_info: dict = Depends(get_user_info)):
+    return create_or_update_source(source, user_info['preferred_username'])
 
-@app.put('/sources/{source_id}', response_model=dict)
-def update_source(source_id: int, source: dict, user_info: dict = Depends(get_user_info)):
+@app.delete('/sources/{translation_source_id}', response_model=list)
+def delete_source(translation_source_id: int, _: dict = Depends(get_user_info)):
     try:
-        # Update fields dynamically
-        query = Source.update(
-            **source, timestamp=datetime.utcnow()).where(Source.id == source_id)
-        updated_rows = query.execute()
-
-        if updated_rows == 0:
-            raise HTTPException(status_code=404, detail='Source not found')
-        db_source = Source.get(Source.id == source_id)
-        return model_to_dict(db_source)
-    except DoesNotExist:
+        source = Source.get(Source.id == translation_source_id)
+    except Exception as e:
+        logger.error(f"Deletion - Source not found: {e}")
         raise HTTPException(status_code=404, detail='Source not found')
 
-@app.delete('/sources/{source_id}', response_model=int)
-def delete_source(source_id: int, _: dict = Depends(get_user_info)):
-    rows_deleted = Source.delete().where(Source.id == source_id).execute()
-    if rows_deleted == 0:
-        raise HTTPException(status_code=404, detail='Source not found')
-    return rows_deleted
+    # Get all translations of the original source
+    translations = list(Source.select().where(Source.original_source_id == source.original_source_id))
+    source_ids_to_delete = [translation_source_id]
+    if len(translations) == 1:
+        # This is the last translation, allow deletion of both translation and original
+        source_ids_to_delete.append(source.original_source_id)
+
+    # Delete all segments for these sources
+    Segment.delete().where(Segment.source_id.in_(source_ids_to_delete)).execute()
+    # Delete the sources themselves
+    Source.delete().where(Source.id.in_(source_ids_to_delete)).execute()
+    return source_ids_to_delete
+
 
 ####### SEGMENTS 
-@app.get('/segments/{source_id}', response_model=dict)
-def read_segments(source_id: int, offset: int = 0, limit: int = 100, user_info: dict = Depends(get_user_info)):
+@app.get('/segments/{source_id}', response_model=list)
+def read_segments(source_id: int, user_info: dict = Depends(get_user_info)):
     try:
-        # Get total count for pagination info
-        total_count = Segment.select().where(Segment.source_id == source_id).count()
-        
-        # Get paginated segments
-        segments = list(Segment.select()
+        # Sub query to get latest segments.
+        subquery = (Segment
+                .select(Segment.id, fn.MAX(Segment.timestamp).alias('latest_timestamp'))
+                .where(Segment.source_id == source_id)
+                .group_by(Segment.id))
+        # Get all latest segments
+        return list(Segment.select()
                        .where(Segment.source_id == source_id)
-                       .order_by(Segment.order, Segment.timestamp)
-                       .offset(offset)
-                       .limit(limit)
+                       .join(subquery, on=(
+                           (Segment.id == subquery.c.id) &
+                           (Segment.timestamp == subquery.c.latest_timestamp)
+                       ))
+                       .order_by(Segment.order)
                        .dicts())
         
-        return {
-            "segments": segments,
-            "pagination": {
-                "offset": offset,
-                "limit": limit,
-                "total_count": total_count,
-                "has_more": offset + limit < total_count
-            }
-        }
-
     except Exception as e:
         logger.error("Error fetching segments: %s", e)
         raise HTTPException(
@@ -205,24 +257,13 @@ def translate_paragraphs_handler(
         if not request.prompt_text or not request.prompt_text.strip():
             raise HTTPException(status_code=400, detail="Missing prompt_text in request.")
 
-        options = TranslationServiceOptions(
-            source_language=request.source_language,
-            target_language=request.target_language,
-        )
-
         translation_service = TranslationService(
             api_key=OPENAI_API_KEY,
-            options=options,
-            examples=request.examples,
+            options=TranslationServiceOptions(),  # Allow setting options via request.
             prompt_text=request.prompt_text
         )
 
-        translated_paragraphs, properties = translation_service.translate_paragraphs(
-            paragraphs=request.paragraphs,
-            dictionary_id=request.dictionary_id,
-            dictionary_timestamp=request.dictionary_timestamp
-        )
-
+        translated_paragraphs, properties = translation_service.translate_paragraphs(request.paragraphs)
         end_time = datetime.utcnow()
         total_duration = (end_time - start_time).total_seconds()
         logger.info("Total translation time: %.2f seconds for %d paragraphs", total_duration, len(request.paragraphs))
@@ -240,9 +281,7 @@ def translate_paragraphs_handler(
     
 ####### IMPORT/EXPORT
 @app.post('/docx2text')
-def extract_segments_handler(
-    file: UploadFile = File(...),
-):
+def extract_segments_handler(file: UploadFile = File(...)):
     if not file.filename.lower().endswith('.docx'):
         raise HTTPException(status_code=400, detail="Only .docx files are supported.")
     try:
@@ -289,6 +328,23 @@ def export_translation(source_id: int):
 
 
 ####### DICTIONARY
+@app.post("/prompt", response_model=str)
+async def get_prompt(request: PromptRequest, dict = Depends(get_user_info)):
+    if request.dictionary_id is None and not request.custom_key:
+        raise HTTPException(status_code=400, detail=f"Either dictionary_id or custom_key should be set.")
+    try:
+        if request.custom_key:
+            return build_custom_prompt(
+                request.custom_key,
+                request.source_language,
+                request.target_language)
+        else:
+            # build prompt from dictionary_id 
+            raise HTTPException(status_code=500, detail=f"Unimplemented")
+    except Exception as e:
+        logger.error("Error getting prompt: %s", e)
+        raise HTTPException(status_code=500, detail=f"Failed to get prompt: {str(e)}")
+
 @app.post("/dictionary/new/{source_id}", response_model=dict)
 async def create_new_dictionary_handler(source_id: int, request: Request, user_info: dict = Depends(get_user_info)):
     try:

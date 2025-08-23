@@ -6,6 +6,14 @@ declare module 'keycloak-js' {
 
     // Add more KeycloakInstance methods as needed
 		authenticated?: boolean;
+    tokenParsed?: {
+      preferred_username?: string;
+    }
+  }
+
+  export interface AuthClientTokens {
+    token: string;
+    refreshToken: string
   }
 
   export interface KeycloakInitOptions {

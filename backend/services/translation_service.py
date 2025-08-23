@@ -17,10 +17,9 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 class TranslationService:
-    def __init__(self, api_key: str, options: TranslationServiceOptions, examples: List[TranslationExample] | None = None, prompt_text: str = ""):
+    def __init__(self, api_key: str, options: TranslationServiceOptions, prompt_text: str = ""):
         self.client = OpenAI(api_key=api_key)
         self.options = options
-        self.examples = examples
         self.encoding = tiktoken.encoding_for_model(self.options.model)
         self.prompt_text = prompt_text
 
@@ -115,11 +114,10 @@ class TranslationService:
             logger.error("Unexpected error during OpenAI call: %s", str(e))
             return f"Translation failed due to unexpected error: {str(e)}"
     
-    def translate_paragraphs(self, paragraphs: List[str], dictionary_id: int | None = None, dictionary_timestamp: str | None = None) -> tuple[List[str], dict]:
+    def translate_paragraphs(self, paragraphs: List[str]) -> tuple[List[str], dict]:
         max_chunk_tokens = self.calculate_chunk_token_limit()
         prepared_chunks = self.prepare_chunks_for_translation(paragraphs, max_chunk_tokens)
 
-        # TODO: Fetch examples from database using dictionary_id and timestamp
         translated_paragraphs = []
         for i, chunk in enumerate(prepared_chunks, 1):
             logger.debug("Translating chunk %d", i)
@@ -131,17 +129,9 @@ class TranslationService:
                 translated_paragraphs.extend(re.split(r'\s*\|\|\|\s*', translated_text.strip()))
 
         properties = {
-            "segment_type": "provider",
-            "translation": {
-                "provider": self.options.provider.value,
-                "model": self.options.model,
-                "source_language": self.options.source_language,
-                "target_language": self.options.target_language,
-                "prompt": self.prompt_text,
-                "temperature": self.options.temperature,
-                "dictionary_id": dictionary_id,
-                "dictionary_timestamp": dictionary_timestamp
-            }
+            "provider": self.options.provider.value,
+            "model": self.options.model,
+            "temperature": self.options.temperature,
         }
 
         logger.info("Translation completed successfully. Translated %d paragraphs", len(translated_paragraphs))
