@@ -22,29 +22,12 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         // Extract user info directly from Keycloak token (matching backend logic)
         const tokenParsed = keycloak.tokenParsed;
         
-        // Extract roles from token claims - only custom user roles, not account management roles
+        // Extract roles from token claims - only custom user roles
         let userRoles: string[] = [];
         
         // Check direct roles property (this is where our custom roles are!)
         if (tokenParsed.roles && Array.isArray(tokenParsed.roles)) {
           userRoles = [...tokenParsed.roles];
-        }
-        
-        // Check realm_access (realm-level roles) as backup
-        if (tokenParsed.realm_access && tokenParsed.realm_access.roles) {
-          userRoles = [...userRoles, ...tokenParsed.realm_access.roles];
-        }
-        
-        // Skip resource_access.account.roles as those are just Keycloak account management roles
-        
-        // Determine role based on roles (matching backend logic)
-        let role = 'read'; // default role
-        if (userRoles.includes('safot-admin')) {
-          role = 'admin';
-        } else if (userRoles.includes('safot-write')) {
-          role = 'write';
-        } else if (userRoles.includes('safot-read')) {
-          role = 'read';
         }
         
         const userData: CurrentUser = {
