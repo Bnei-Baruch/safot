@@ -7,13 +7,16 @@ import {
   TextField,
   MenuItem,
   Divider,
-  CircularProgress
+  CircularProgress,
+  Alert,
+  Tooltip
 } from '@mui/material';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import InsertDriveFileOutlinedIcon from '@mui/icons-material/InsertDriveFileOutlined';
 import { LANGUAGES } from '../constants/languages'
 import { useToast } from './Toast';
 import { TranslateFormProps } from '../types/frontend-types';
+import { useUser } from '../contexts/UserContext';
 
 
 const TranslateForm: React.FC<TranslateFormProps> = ({ onSubmit, loading = false }) => {
@@ -22,8 +25,13 @@ const TranslateForm: React.FC<TranslateFormProps> = ({ onSubmit, loading = false
   const [targetLang, setTargetLang] = useState('');
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const { showToast } = useToast();
+  const { permissions } = useUser();
 
   const handleFileClick = () => {
+    if (!permissions.hasRole('safot-write')) {
+      showToast(permissions.getAuthMessage("upload files", "safot-write"), 'warning');
+      return;
+    }
     document.getElementById('fileInput')?.click();
   };
 
@@ -123,27 +131,29 @@ const TranslateForm: React.FC<TranslateFormProps> = ({ onSubmit, loading = false
 
           {/* Upload Area */}
           <Box
-            onClick={loading ? undefined : handleFileClick}
-            onDrop={loading ? undefined : handleDrop}
+            onClick={loading || !permissions.hasRole('safot-write') ? undefined : handleFileClick}
+            onDrop={loading || !permissions.hasRole('safot-write') ? undefined : handleDrop}
             onDragOver={(e) => e.preventDefault()}
             sx={{
               width: 300,
               height: 160,
               border: '2px dashed #bbb',
               borderRadius: 2,
-              backgroundColor: loading ? '#f0f0f0' : '#f5f5f5',
+              backgroundColor: loading || !permissions.hasRole('safot-write') ? '#f0f0f0' : '#f5f5f5',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
-              cursor: loading ? 'not-allowed' : 'pointer',
+              cursor: loading || !permissions.hasRole('safot-write') ? 'not-allowed' : 'pointer',
               mt: 0,
-              opacity: loading ? 0.6 : 1,
+              opacity: loading || !permissions.hasRole('safot-write') ? 0.6 : 1,
             }}
           >
             <InsertDriveFileOutlinedIcon sx={{ mb: 1, fontSize: 36, color: '#777' }} />
             <Typography sx={{ fontFamily: 'inherit' }}>
-              {loading ? 'Translation in progress...' : 'Click to Upload or Drag File'}
+              {loading ? 'Translation in progress...' : 
+               !permissions.hasRole('safot-write') ? 'Upload disabled - Read-only access' : 
+               'Click to Upload or Drag File'}
             </Typography>
           </Box>
 
@@ -177,24 +187,41 @@ const TranslateForm: React.FC<TranslateFormProps> = ({ onSubmit, loading = false
           minHeight={200}
         >
           {!loading ? (
-              <Box display="flex" gap={2}>
-                <Button
-                  variant="contained"
-                  onClick={() => handleSubmit()}
-                  disabled={loading}
-                  sx={{ width: 180, height: 40, fontFamily: 'inherit' }}
-                >
-                  Translate
-                </Button>
+              <Box display="flex" flexDirection="column" gap={2} alignItems="center">
+                {/* Authorization warning for read-only users */}
+                {!permissions.hasRole('safot-write') && (
+                  <Alert severity="info" sx={{ mb: 1, maxWidth: 400 }}>
+                    {permissions.getAuthMessage("upload files and translate", "safot-write")}
+                  </Alert>
+                )}
+                
+                <Box display="flex" gap={2}>
+                  <Tooltip title={permissions.hasRole('safot-write') ? "Translate file" : permissions.getAuthMessage("translate files", "safot-write")}>
+                    <span>
+                      <Button
+                        variant="contained"
+                        onClick={() => handleSubmit()}
+                        disabled={loading || !permissions.hasRole('safot-write')}
+                        sx={{ width: 180, height: 40, fontFamily: 'inherit' }}
+                      >
+                        Translate
+                      </Button>
+                    </span>
+                  </Tooltip>
 
-                <Button
-                  variant="outlined"
-                  onClick={() => handleSubmit(true)}
-                  disabled={loading}
-                  sx={{ width: 220, height: 40, fontFamily: 'inherit' }}
-                >
-                  Translate Step by Step
-                </Button>
+                  <Tooltip title={permissions.hasRole('safot-write') ? "Translate file step by step" : permissions.getAuthMessage("translate files step by step", "safot-write")}>
+                    <span>
+                      <Button
+                        variant="outlined"
+                        onClick={() => handleSubmit(true)}
+                        disabled={loading || !permissions.hasRole('safot-write')}
+                        sx={{ width: 220, height: 40, fontFamily: 'inherit' }}
+                      >
+                        Translate Step by Step
+                      </Button>
+                    </span>
+                  </Tooltip>
+                </Box>
               </Box>
             ) : (
               <>

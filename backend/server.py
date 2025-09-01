@@ -8,6 +8,7 @@ from docx import Document
 from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from services.auth_decorators import *
 from keycloak import KeycloakOpenID
 from playhouse.shortcuts import model_to_dict
 from starlette.status import HTTP_401_UNAUTHORIZED
@@ -100,11 +101,13 @@ def shutdown():
 
 ####### SOURCES
 @app.get('/sources', response_model=list[dict])
+@require_read
 def read_sources(user_info: dict = Depends(get_user_info)):
     sources = list(Source.select().dicts())
     return sources
 
 @app.get('/sources/{source_id}', response_model=dict)
+@require_read
 def read_source(source_id: int, user_info: dict = Depends(get_user_info)):
     try:
         source = Source.get(Source.id == source_id)
@@ -113,10 +116,12 @@ def read_source(source_id: int, user_info: dict = Depends(get_user_info)):
         raise HTTPException(status_code=404, detail='Source not found')
 
 @app.post('/sources', response_model=dict)
+@require_write
 def create_source_handler(source: dict, user_info: dict = Depends(get_user_info)):
     return create_source(source, user_info['preferred_username'])
 
 @app.put('/sources/{source_id}', response_model=dict)
+@require_write
 def update_source(source_id: int, source: dict, user_info: dict = Depends(get_user_info)):
     try:
         # Update fields dynamically
@@ -132,7 +137,8 @@ def update_source(source_id: int, source: dict, user_info: dict = Depends(get_us
         raise HTTPException(status_code=404, detail='Source not found')
 
 @app.delete('/sources/{source_id}', response_model=int)
-def delete_source(source_id: int, _: dict = Depends(get_user_info)):
+@require_write
+def delete_source(source_id: int, user_info: dict = Depends(get_user_info)):
     rows_deleted = Source.delete().where(Source.id == source_id).execute()
     if rows_deleted == 0:
         raise HTTPException(status_code=404, detail='Source not found')
@@ -140,6 +146,7 @@ def delete_source(source_id: int, _: dict = Depends(get_user_info)):
 
 ####### SEGMENTS 
 @app.get('/segments/{source_id}', response_model=dict)
+@require_read
 def read_segments(source_id: int, offset: int = 0, limit: int = 100, user_info: dict = Depends(get_user_info)):
     try:
         # Get total count for pagination info
@@ -169,6 +176,7 @@ def read_segments(source_id: int, offset: int = 0, limit: int = 100, user_info: 
             status_code=500, detail=f"Failed to fetch segments: {str(e)}")
 
 @app.post('/segments', response_model=list[dict])
+@require_write
 async def save_segments(request: Request, user_info: dict = Depends(get_user_info)):
     try:
         data = await request.json()
@@ -192,6 +200,7 @@ async def save_segments(request: Request, user_info: dict = Depends(get_user_inf
 
 ####### TRANSLATION
 @app.post("/translate", response_model=dict)
+@require_write
 def translate_paragraphs_handler(
     request: ParagraphsTranslateRequest,
     user_info: dict = Depends(get_user_info)
@@ -239,8 +248,10 @@ def translate_paragraphs_handler(
     
 ####### IMPORT/EXPORT
 @app.post('/docx2text')
+@require_write
 def extract_segments_handler(
     file: UploadFile = File(...),
+    user_info: dict = Depends(get_user_info)
 ):
     if not file.filename.lower().endswith('.docx'):
         raise HTTPException(status_code=400, detail="Only .docx files are supported.")
@@ -257,7 +268,8 @@ def extract_segments_handler(
         raise HTTPException(status_code=500, detail="Failed to extract segments")
     
 @app.get("/export/{source_id}", response_class=FileResponse)
-def export_translation(source_id: int):
+@require_read
+def export_translation(source_id: int, user_info: dict = Depends(get_user_info)):
 
     try:
         segments = get_latest_segments(source_id)
@@ -289,6 +301,7 @@ def export_translation(source_id: int):
 
 ####### DICTIONARY
 @app.post("/dictionary/new/{source_id}", response_model=dict)
+@require_write
 async def create_new_dictionary_handler(source_id: int, request: Request, user_info: dict = Depends(get_user_info)):
     try:
         data = await request.json()
@@ -321,6 +334,7 @@ async def create_new_dictionary_handler(source_id: int, request: Request, user_i
         raise HTTPException(status_code=500, detail=f"Failed to create new dictionary: {str(e)}")
 
 @app.post("/dictionary/version/{source_id}", response_model=dict)
+@require_write
 def create_dictionary_version_handler(source_id: int, user_info: dict = Depends(get_user_info)):
     try:
         # Find existing dictionary link
@@ -366,6 +380,7 @@ def create_dictionary_version_handler(source_id: int, user_info: dict = Depends(
 
 ####### RULES
 @app.post("/rules", response_model=list[dict])
+@require_write
 async def save_rules(request: Request, user_info: dict = Depends(get_user_info)):
     try:
         data = await request.json()

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useParams, useNavigate } from "react-router-dom";
 import compareTwoStrings from 'string-similarity-js';
-import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, TextField, Button, Box, Typography, Container, Fab, Pagination } from "@mui/material";
+import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, TextField, Button, Box, Typography, Container, Fab, Pagination, Alert, Tooltip } from "@mui/material";
 import { segmentService } from '../services/segment.service';
 import { ruleService } from '../services/rule.service';
 import { dictionaryService } from '../services/dictionary.service';
@@ -17,12 +17,14 @@ import { useAppDispatch, RootState } from '../store';
 import { useToast } from '../cmp/Toast';
 import { LANGUAGES } from '../constants/languages';
 import { PAGE_SIZE } from '../constants/pagination';
+import { useUser } from '../contexts/UserContext';
 
 
 const SourceEdit: React.FC = () => {
     const navigate = useNavigate();
     const dispatch = useAppDispatch();
     const { showToast } = useToast();
+    const { permissions } = useUser();
     const { id } = useParams<{ id: string }>();
     const parsedId = id ? parseInt(id, 10) : undefined;
 
@@ -371,27 +373,42 @@ const SourceEdit: React.FC = () => {
                         </Box>
             
                         <Box display="flex" gap={2}>
-                            <Button
-                                variant="contained"
-                                color="primary"
-                                disabled={!isAllTranslated}
-                                onClick={handleExportDocx}
-                            >
-                                Export to DOCX
-                            </Button>
-                            <Button
-                                color="primary"
-                                variant="contained"
-                                onClick={handleTranslateMore}
-                                disabled={translateMoreLoading}
-                                size="medium"
-                                sx={{ boxShadow: 'none', height: 40 }}
-                            >
-                                <AddIcon sx={{ mr: 1 }} /> 
-                                {translateMoreLoading ? 'Translating...' : 'Translate More'}
-                            </Button>
+                            <Tooltip title={permissions.hasRole('safot-read') ? "Export to DOCX" : permissions.getAuthMessage("export documents", "safot-read")}>
+                                <span>
+                                    <Button
+                                        variant="contained"
+                                        color="primary"
+                                        disabled={!isAllTranslated || !permissions.hasRole('safot-read')}
+                                        onClick={handleExportDocx}
+                                    >
+                                        Export to DOCX
+                                    </Button>
+                                </span>
+                            </Tooltip>
+                            <Tooltip title={permissions.hasRole('safot-write') ? "Translate more paragraphs" : permissions.getAuthMessage("translate more paragraphs", "safot-write")}>
+                                <span>
+                                    <Button
+                                        color="primary"
+                                        variant="contained"
+                                        onClick={handleTranslateMore}
+                                        disabled={translateMoreLoading || !permissions.hasRole('safot-write')}
+                                        size="medium"
+                                        sx={{ boxShadow: 'none', height: 40 }}
+                                    >
+                                        <AddIcon sx={{ mr: 1 }} /> 
+                                        {translateMoreLoading ? 'Translating...' : 'Translate More'}
+                                    </Button>
+                                </span>
+                            </Tooltip>
                         </Box>
                     </Box>
+
+                    {/* Authorization warning for read-only users */}
+                    {!permissions.hasRole('safot-write') && (
+                        <Alert severity="info" sx={{ mb: 2 }}>
+                            You have read-only access. You can view and export translations, but cannot edit or create new translations.
+                        </Alert>
+                    )}
                 </Box>
             </Container>
       
@@ -475,6 +492,7 @@ const SourceEdit: React.FC = () => {
                                         e.target.value
                                         )}
                                         placeholder="Enter translation"
+                                        disabled={!permissions.hasRole('safot-write')}
                                         inputProps={{
                                         style: {
                                             direction: translationLangDirection,
@@ -484,14 +502,18 @@ const SourceEdit: React.FC = () => {
                                     />
                                     </TableCell>
                                     <TableCell>
-                                    <Button
-                                        variant="contained"
-                                        color="primary"
-                                        onClick={() => handleSaveTranslation(sourceSegment.id!)}
-                                        disabled={!hasChanged}
-                                    >
-                                        <SaveIcon />
-                                    </Button>
+                                    <Tooltip title={permissions.hasRole('safot-write') ? "Save translation" : permissions.getAuthMessage("save translations", "safot-write")}>
+                                        <span>
+                                            <Button
+                                                variant="contained"
+                                                color="primary"
+                                                onClick={() => handleSaveTranslation(sourceSegment.id!)}
+                                                disabled={!hasChanged || !permissions.hasRole('safot-write')}
+                                            >
+                                                <SaveIcon />
+                                            </Button>
+                                        </span>
+                                    </Tooltip>
                                     </TableCell>
                                 </TableRow>
                                 );

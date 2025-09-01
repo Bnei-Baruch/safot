@@ -11,6 +11,7 @@ import App from './App';
 import keycloak from './keycloak';
 import reportWebVitals from './reportWebVitals';
 import store from "./store";
+import { UserProvider } from './contexts/UserContext';
 
 const onKeycloakTokens = (tokens: { token: string; refreshToken: string }) => {
   console.log('Tokens refreshed:', tokens);
@@ -34,7 +35,9 @@ root.render(
     }}>
     <ToastContainer />
     <Provider store={store}>
-      <App />
+      <UserProvider>
+        <App />
+      </UserProvider>
     </Provider>
   </ReactKeycloakProvider>
 );
