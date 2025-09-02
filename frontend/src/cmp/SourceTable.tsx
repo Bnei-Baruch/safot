@@ -11,15 +11,18 @@ import {
   Box,
   Typography,
   TableSortLabel,
-  Tooltip
+  Tooltip,
+  IconButton
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
+import DeleteIcon from '@mui/icons-material/Delete';
 import { useNavigate } from 'react-router-dom';
 import { useAppDispatch } from '../store/store';
 import { deleteSource } from '../store/SourceSlice';
 import { SourcePair } from '../types/frontend-types';
 import { LANGUAGES } from '../constants/languages';
 import { exportTranslationDocx } from '../services/segment.service';
+import { useUser } from '../contexts/UserContext';
 
 const renderLang = (code: string) => {
   const lang = LANGUAGES.find(l => l.code === code);
@@ -34,7 +37,7 @@ interface SourceTableProps {
 }
 
 type SortDirection = 'asc' | 'desc';
-type SortField = 'translatedName' | 'originalName' | 'username' | 'originalLanguage' | 'translatedLanguage';
+type SortField = 'name' | 'username' | 'language' | 'translatedLanguage';
 
 const docx = async (sourceId: number, name: string, language: string) => {
   try {
@@ -58,7 +61,8 @@ const docx = async (sourceId: number, name: string, language: string) => {
 const SourceTable: React.FC<SourceTableProps> = ({ pairs }) => {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
-  const [sortField, setSortField] = useState<SortField>('translatedName');
+  const { permissions } = useUser();
+  const [sortField, setSortField] = useState<SortField>('name');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
 
   const extractUsername = (email: string) => {
@@ -78,13 +82,11 @@ const SourceTable: React.FC<SourceTableProps> = ({ pairs }) => {
     const direction = sortDirection === 'asc' ? 1 : -1;
     
     switch (sortField) {
-      case 'originalName':
-        return direction * a.original.name.localeCompare(b.original.name);
-      case 'translatedName':
+      case 'name':
         return direction * a.original.name.localeCompare(b.original.name);
       case 'username':
         return direction * extractUsername(a.original.username).localeCompare(extractUsername(b.original.username));
-      case 'originalLanguage':
+      case 'language':
         return direction * a.original.language.localeCompare(b.original.language);
       case 'translatedLanguage':
         if (!a.translated && !b.translated) return 0;
@@ -129,54 +131,76 @@ const SourceTable: React.FC<SourceTableProps> = ({ pairs }) => {
 
   return (
     <TableContainer component={Paper} sx={{ margin: "auto", width: "100%" }}>
-      <Table size="small">
+      <Table>
         <TableHead>
           <TableRow>
-            <TableCell sx={{ maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              <SortableHeader field="originalName" label="Source" />
-            </TableCell>
             <TableCell>
-              <SortableHeader field="originalLanguage" label="From" />
-            </TableCell>
-            <TableCell sx={{ maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              <SortableHeader field="translatedName" label="Trnslation" />
-            </TableCell>
-            <TableCell>
-              <SortableHeader field="translatedLanguage" label="To" />
+              <SortableHeader field="name" label="Name" />
             </TableCell>
             <TableCell>
               <SortableHeader field="username" label="Upload By" />
+            </TableCell>
+            <TableCell>
+              <SortableHeader field="language" label="From" />
+            </TableCell>
+            <TableCell>
+              <SortableHeader field="translatedLanguage" label="To" />
             </TableCell>
             <TableCell>Actions</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
           {sortedPairs.map(({ original, translated }) => (
-            <TableRow key={translated.id}>
-              <TableCell sx={{ maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {original.name}
-              </TableCell>
+            <TableRow key={original.id}>
+              <TableCell>{original.name}</TableCell>
+              <TableCell>{extractUsername(original.username)}</TableCell>
               <TableCell>{renderLang(original.language)}</TableCell>
-              <TableCell sx={{ maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {translated.name}
-               </TableCell>
               <TableCell>{translated ? renderLang(translated.language) : '-'}</TableCell>
-              <TableCell>{extractUsername(translated.username)}</TableCell>
              
               <TableCell>
+                {/* Edit Button - Read role can view, Write role can edit */}
                 {translated && (
-                    <Button
-                    variant="outlined"
-                    onClick={() => navigate(`/source-edit/${translated.id}`)}
-                    startIcon={<EditIcon />}
-                  >
-                    Edit
-                  </Button>
+                  <Tooltip title={permissions.hasRole('safot-read') ? "View/Edit translation" : permissions.getAuthMessage("view translations", "safot-read")}>
+                    <span>
+                      <Button
+                        variant="outlined"
+                        onClick={() => navigate(`/source-edit/${translated.id}`)}
+                        startIcon={<EditIcon />}
+                        disabled={!permissions.hasRole('safot-read')}
+                      >
+                        Edit
+                      </Button>
+                    </span>
+                  </Tooltip>
                 )}
-                <Button disabled={!translated} onClick={() =>
-                    translated && window.confirm(`Are you sure you want to delete ${translated.name}`) && dispatch(deleteSource(translated.id))}>Delete</Button>
-                <Button disabled={!translated} onClick={() =>
-                    translated && docx(translated.id, translated.name, translated.language)}>DOCX</Button>
+                
+                {/* Delete Button - Always visible but disabled if unauthorized */}
+                <Tooltip title={permissions.hasRole('safot-write') ? "Delete translation" : permissions.getAuthMessage("delete translations", "safot-write")}>
+                  <span>
+                    <Button 
+                      disabled={!translated || !permissions.hasRole('safot-write')} 
+                      onClick={() =>
+                        translated && window.confirm(`Are you sure you want to delete ${translated.name}`) && dispatch(deleteSource(translated.id))
+                      }
+                    >
+                      Delete
+                    </Button>
+                  </span>
+                </Tooltip>
+                
+                {/* Export Button - Requires read role */}
+                <Tooltip title={permissions.hasRole('safot-read') ? "Export to DOCX" : permissions.getAuthMessage("export documents", "safot-read")}>
+                  <span>
+                    <Button 
+                      disabled={!translated || !permissions.hasRole('safot-read')} 
+                      onClick={() =>
+                        translated && docx(translated.id, translated.name, translated.language)
+                      }
+                    >
+                      DOCX
+                    </Button>
+                  </span>
+                </Tooltip>
               </TableCell>
             </TableRow>
           ))}

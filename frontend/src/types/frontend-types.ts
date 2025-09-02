@@ -104,3 +104,19 @@ export interface Dictionary {
   total_count: number;
   has_more: boolean;
 }*/
+
+// User Management Types
+export interface CurrentUser {
+  sub: string;  // Keycloak user ID
+  preferred_username?: string;
+  email?: string;
+  name?: string;
+  roles: string[];  // Keycloak roles (safot-admin, safot-write, safot-read)
+}
+
+export interface UserPermissions {
+  // Direct role checking - no individual action permissions
+  hasRole: (requiredRole: string) => boolean;
+  // Helper for authorization messages
+  getAuthMessage: (action: string, requiredRole: string) => string;
+}

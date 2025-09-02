@@ -8,7 +8,6 @@ import {
   Box,
   Button,
   Container,
-	IconButton,
   Paper,
   Table,
   TableCell,
@@ -16,24 +15,24 @@ import {
   TableRow,
   TextField,
   Typography,
+  Tooltip,
+  Alert,
 } from "@mui/material";
 
 import {
   Add as AddIcon,
   ArrowBackIosNew as ArrowBackIosNewIcon,
-	Check as CheckIcon,
-	Close as CloseIcon,
-	Edit as EditIcon,
   Save as SaveIcon,
 } from '@mui/icons-material';
 
 import { buildSegment, exportTranslationDocx } from '../services/segment.service';
 import { useAppDispatch, useAppSelector, RootState } from '../store/store';
 import { fetchSegments, saveSegments } from '../store/SegmentSlice';
-import { fetchSource, addOrUpdateSource } from '../store/SourceSlice';
+import { fetchSource } from '../store/SourceSlice';
 
 import { useFlow } from '../useFlow';
 import { useToast } from '../cmp/Toast';
+import { useUser } from '../contexts/UserContext';
 import { Segment, Source } from '../types/frontend-types';
 import { LANGUAGES, LANG_DIRS } from '../constants/languages';
 
@@ -43,6 +42,7 @@ const SourceEdit: React.FC = () => {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
   const { showToast } = useToast();
+  const { permissions } = useUser();
   const { translateSegments, loadingCount } = useFlow();
 
   const { id } = useParams<{ id: string }>();
@@ -66,7 +66,6 @@ const SourceEdit: React.FC = () => {
 
   // Maps translated segments order to text area value.
   const [translations, setTranslations] = useState<Record<number, string>>({});
-	const [titleEditing, setTitleEditing] = useState<string | null>(null);
 
   useEffect(() => {
     if (translatedSourceId && !(translatedSourceId in sources)) {
@@ -202,61 +201,51 @@ const SourceEdit: React.FC = () => {
               Back to sources
           </Button>
           <Box display="flex" gap={2}>
-            <Button
-                variant="contained"
-                color="primary"
-                onClick={handleExportDocx}
-            >
-                Export to DOCX
-            </Button>
-            <Button
-                color="primary"
-                variant="contained"
-                onClick={handleTranslateMore}
-                disabled={!!loadingCount}
-                size="medium"
-                sx={{ boxShadow: 'none', height: 40 }}
-            >
-                <AddIcon sx={{ mr: 1 }} /> 
-                {loadingCount ? 'Translating...' : 'Translate More'}
-            </Button>
+            {/* Export Button - Requires read role */}
+            <Tooltip title={permissions.hasRole('safot-read') ? "Export to DOCX" : permissions.getAuthMessage("export documents", "safot-read")}>
+              <span>
+                <Button
+                    variant="contained"
+                    color="primary"
+                    onClick={handleExportDocx}
+                    disabled={!permissions.hasRole('safot-read')}
+                >
+                    Export to DOCX
+                </Button>
+              </span>
+            </Tooltip>
+            
+            {/* Translate More Button - Requires write role */}
+            <Tooltip title={permissions.hasRole('safot-write') ? "Translate more paragraphs" : permissions.getAuthMessage("translate more paragraphs", "safot-write")}>
+              <span>
+                <Button
+                    color="primary"
+                    variant="contained"
+                    onClick={handleTranslateMore}
+                    disabled={!!loadingCount || !permissions.hasRole('safot-write')}
+                    size="medium"
+                    sx={{ boxShadow: 'none', height: 40 }}
+                >
+                    <AddIcon sx={{ mr: 1 }} /> 
+                    {loadingCount ? 'Translating...' : 'Translate More'}
+                </Button>
+              </span>
+            </Tooltip>
           </Box>
         </Box>
         <Box>
           <Typography variant="h4" sx={{ fontWeight: 'bold', fontFamily: 'inherit', my: 2 }}>
-              {titleEditing === null && <>
-								{translatedSource?.name}
-								<IconButton onClick={() => setTitleEditing(translatedSource?.name || '')} size="small">
-									<EditIcon fontSize="small" />
-								</IconButton>
-							</>}
-              {titleEditing !== null && <>
-								<TextField
-									variant="standard"
-									InputProps={{ sx: (theme) => ({ ...theme.typography.h5, fontWeight: 'bold', minWidth: '500px' }) }}
-									value={titleEditing}
-									onChange={(e) => setTitleEditing(e.target.value)}
-									autoFocus
-									error={titleEditing.trim() === ""}
-									helperText={titleEditing.trim() === "" ? "Title is required" : ""}
-								/>
-								<IconButton
-									disabled={titleEditing.trim() === ""}
-									onClick={async () => {
-										if (translatedSource && translatedSource.id) {
-											await dispatch(addOrUpdateSource({ ...translatedSource, name: titleEditing }));
-										}
-										setTitleEditing(null);
-									}} size="small">
-									<CheckIcon fontSize="small" />
-								</IconButton>
-								<IconButton onClick={() => setTitleEditing(null)} size="small">
-									<CloseIcon fontSize="small" />
-								</IconButton>
-							</>}
-							&nbsp;&nbsp;&nbsp;&nbsp;
-              {(translatedSourceId && segments[translatedSourceId] && segments[translatedSourceId].length) || 0}
+              {translatedSource?.name}
+              &nbsp;
+              ({(translatedSourceId && segments[translatedSourceId] && segments[translatedSourceId].length) || 0})
           </Typography>
+          
+          {/* Authorization warning for read-only users */}
+          {!permissions.hasRole('safot-write') && (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              You have read-only access. You can view and export translations, but cannot edit or create new translations.
+            </Alert>
+          )}
         </Box>
   
         {/* Scrollable table */}
@@ -309,6 +298,7 @@ const SourceEdit: React.FC = () => {
                         defaultValue={translations[originalSegment.order]}
                         onChange={(e) => updateTranslations(originalSegment.order, e.target.value)}
                         placeholder="Enter translation"
+                        disabled={!permissions.hasRole('safot-write')}
                         inputProps={{
                           style: {
                             direction: LANG_DIRS[translatedLanguage],
@@ -318,14 +308,18 @@ const SourceEdit: React.FC = () => {
                       />
                     </TableCell>
                     <TableCell>
-                      <Button
-                        variant="contained"
-                        color="primary"
-                        onClick={() => handleSaveTranslation(translatedSegment, originalSegment, translations[originalSegment.order])}
-                        disabled={translatedSegment && translations[originalSegment.order] === translatedSegment.text}
-                      >
-                        <SaveIcon />
-                      </Button>
+                      <Tooltip title={permissions.hasRole('safot-write') ? "Save translation" : permissions.getAuthMessage("save translations", "safot-write")}>
+                        <span>
+                          <Button
+                            variant="contained"
+                            color="primary"
+                            onClick={() => handleSaveTranslation(translatedSegment, originalSegment, translations[originalSegment.order])}
+                            disabled={translatedSegment && translations[originalSegment.order] === translatedSegment.text || !permissions.hasRole('safot-write')}
+                          >
+                            <SaveIcon />
+                          </Button>
+                        </span>
+                      </Tooltip>
                     </TableCell>
                   </>
                 );

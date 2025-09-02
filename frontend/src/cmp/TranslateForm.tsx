@@ -10,6 +10,8 @@ import {
   Paper,
   TextField,
   Typography,
+  Alert,
+  Tooltip,
 } from '@mui/material';
 import {
   ArrowDropDown,
@@ -20,6 +22,7 @@ import {
 import { LANGUAGES } from '../constants/languages'
 import { useToast } from './Toast';
 import { useFlow } from '../useFlow';
+import { useUser } from '../contexts/UserContext';
 
 const LANG_STYLE = {
   width: 150,
@@ -28,6 +31,7 @@ const LANG_STYLE = {
 
 const TranslateForm: React.FC = () => {
   const navigate = useNavigate();
+  const { permissions } = useUser();
 
   const [file, setFile] = useState<File | null>(null);
   const [sourceLang, setSourceLang] = useState<string>('');
@@ -86,6 +90,13 @@ const TranslateForm: React.FC = () => {
 
   return (
     <Paper sx={{ p: 3, backgroundColor: '#ffffff', borderRadius: 2, fontFamily: 'Kanit, sans-serif' }}>
+      {/* Authorization warning for read-only users */}
+      {!permissions.hasRole('safot-write') && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          {permissions.getAuthMessage("translate files", "safot-write")}
+        </Alert>
+      )}
+      
       <Box display="flex" alignItems="center" gap={2}>
         <Box display="flex" alignItems="center" flexDirection="column">
           {/* Language Selection */}
@@ -135,26 +146,28 @@ const TranslateForm: React.FC = () => {
 
           {/* Upload Area */}
           <Box
-            onClick={!!loadingCount ? undefined : handleFileClick}
-            onDrop={!!loadingCount ? undefined : handleDrop}
+            onClick={!!loadingCount || !permissions.hasRole('safot-write') ? undefined : handleFileClick}
+            onDrop={!!loadingCount || !permissions.hasRole('safot-write') ? undefined : handleDrop}
             onDragOver={(e) => e.preventDefault()}
             sx={{
               width: '100%',
               height: 120,
               border: '2px dashed #bbb',
               borderRadius: 2,
-              backgroundColor: !!loadingCount ? '#f0f0f0' : '#f5f5f5',
+              backgroundColor: !!loadingCount || !permissions.hasRole('safot-write') ? '#f0f0f0' : '#f5f5f5',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
-              cursor: !!loadingCount ? 'not-allowed' : 'pointer',
-              opacity: !!loadingCount ? 0.6 : 1,
+              cursor: !!loadingCount || !permissions.hasRole('safot-write') ? 'not-allowed' : 'pointer',
+              opacity: !!loadingCount || !permissions.hasRole('safot-write') ? 0.6 : 1,
             }}
           >
             <InsertDriveFileOutlined sx={{ mb: 1, fontSize: 36, color: '#777' }} />
             <Typography sx={{ fontFamily: 'inherit' }}>
-              {!!loadingCount ? 'Translation in progress...' : 'Click to Upload or Drag File'}
+              {!!loadingCount ? 'Translation in progress...' : 
+               !permissions.hasRole('safot-write') ? 'Upload disabled - insufficient permissions' : 
+               'Click to Upload or Drag File'}
             </Typography>
           </Box>
 
@@ -181,22 +194,27 @@ const TranslateForm: React.FC = () => {
         <Box gap={2}>
           {!loadingCount ? (
               <Box gap={2}>
-                <Button
-                  variant={stepByStep ? "contained" : "outlined"}
-                  onClick={() => handleSubmit(!stepByStep)}
-                  sx={{ width: 200, height: 40, fontFamily: 'inherit' }}
-                >
-                  <Typography sx={{ flexGrow: 1, textAlign: "center" }}>
-                    {stepByStep ? "Translate" : "Translate ALL!"}
-                  </Typography>
-                  <ArrowDropDown
-                    sx={{ ml: "auto" }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setStepByStep(!stepByStep);
-                    }}
-                  />
-                </Button>
+                <Tooltip title={permissions.hasRole('safot-write') ? "Translate file" : permissions.getAuthMessage("translate files", "safot-write")}>
+                  <span>
+                    <Button
+                      variant={stepByStep ? "contained" : "outlined"}
+                      onClick={() => handleSubmit(!stepByStep)}
+                      disabled={!permissions.hasRole('safot-write')}
+                      sx={{ width: 200, height: 40, fontFamily: 'inherit' }}
+                    >
+                      <Typography sx={{ flexGrow: 1, textAlign: "center" }}>
+                        {stepByStep ? "Translate" : "Translate ALL!"}
+                      </Typography>
+                      <ArrowDropDown
+                        sx={{ ml: "auto" }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setStepByStep(!stepByStep);
+                        }}
+                      />
+                    </Button>
+                  </span>
+                </Tooltip>
               </Box>
             ) : (
               <>

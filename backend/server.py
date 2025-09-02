@@ -17,6 +17,7 @@ from services.segment_service import get_paragraphs_from_file, get_latest_segmen
 from services.rule_service import store_rules, get_rules_by_dictionary, get_rules_by_dictionary_all
 from services.dictionary_service import create_new_dictionary, create_new_dictionary_version, create_source_dictionary_link
 from services.source_service import create_or_update_source
+from services.auth_decorators import *
 from models import Source, Segment, ParagraphsTranslateRequest, TranslationServiceOptions, Dictionary, Rule, SourceDictionaryLink
 from db import db
 from peewee_migrate import Router
@@ -101,11 +102,13 @@ def shutdown():
 
 ####### SOURCES
 @app.get('/sources', response_model=list[dict])
+@require_read
 def read_sources(user_info: dict = Depends(get_user_info)):
     sources = list(Source.select().dicts())
     return sources
 
 @app.get('/sources/{source_id}', response_model=dict)
+@require_read
 def read_source(source_id: int, user_info: dict = Depends(get_user_info)):
     try:
         source = Source.get(Source.id == source_id)
@@ -114,11 +117,30 @@ def read_source(source_id: int, user_info: dict = Depends(get_user_info)):
         raise HTTPException(status_code=404, detail='Source not found')
 
 @app.post('/sources', response_model=dict)
-def create_or_update_source_handler(source: dict, user_info: dict = Depends(get_user_info)):
-    return create_or_update_source(source, user_info['preferred_username'])
+@require_write
+def create_source_handler(source: dict, user_info: dict = Depends(get_user_info)):
+    return create_source(source, user_info['preferred_username'])
+
+""" Not used in frontend.
+@app.put('/sources/{source_id}', response_model=dict)
+def update_source(source_id: int, source: dict, user_info: dict = Depends(get_user_info)):
+    try:
+        # Update fields dynamically
+        query = Source.update(
+            **source, timestamp=datetime.utcnow()).where(Source.id == source_id)
+        updated_rows = query.execute()
+
+        if updated_rows == 0:
+            raise HTTPException(status_code=404, detail='Source not found')
+        db_source = Source.get(Source.id == source_id)
+        return model_to_dict(db_source)
+    except DoesNotExist:
+        raise HTTPException(status_code=404, detail='Source not found')
+"""
 
 @app.delete('/sources/{translation_source_id}', response_model=list)
-def delete_source(translation_source_id: int, _: dict = Depends(get_user_info)):
+@require_write
+def delete_source(translation_source_id: int, user_info: dict = Depends(get_user_info)):
     try:
         source = Source.get(Source.id == translation_source_id)
     except Exception as e:
@@ -141,6 +163,7 @@ def delete_source(translation_source_id: int, _: dict = Depends(get_user_info)):
 
 ####### SEGMENTS 
 @app.get('/segments/{source_id}', response_model=list)
+@require_read
 def read_segments(source_id: int, user_info: dict = Depends(get_user_info)):
     try:
         # Sub query to get latest segments.
@@ -164,6 +187,7 @@ def read_segments(source_id: int, user_info: dict = Depends(get_user_info)):
             status_code=500, detail=f"Failed to fetch segments: {str(e)}")
 
 @app.post('/segments', response_model=list[dict])
+@require_write
 async def save_segments(request: Request, user_info: dict = Depends(get_user_info)):
     try:
         data = await request.json()
@@ -187,6 +211,7 @@ async def save_segments(request: Request, user_info: dict = Depends(get_user_inf
 
 ####### TRANSLATION
 @app.post("/translate", response_model=dict)
+@require_write
 def translate_paragraphs_handler(
     request: ParagraphsTranslateRequest,
     user_info: dict = Depends(get_user_info)
@@ -235,8 +260,10 @@ def translate_paragraphs_handler(
     
 ####### IMPORT/EXPORT
 @app.post('/docx2text')
+@require_write
 def extract_segments_handler(
     file: UploadFile = File(...),
+    user_info: dict = Depends(get_user_info)
 ):
     if not file.filename.lower().endswith('.docx'):
         raise HTTPException(status_code=400, detail="Only .docx files are supported.")
@@ -253,7 +280,8 @@ def extract_segments_handler(
         raise HTTPException(status_code=500, detail="Failed to extract segments")
     
 @app.get("/export/{source_id}", response_class=FileResponse)
-def export_translation(source_id: int):
+@require_read
+def export_translation(source_id: int, user_info: dict = Depends(get_user_info)):
 
     try:
         segments = get_latest_segments(source_id)
@@ -285,6 +313,7 @@ def export_translation(source_id: int):
 
 ####### DICTIONARY
 @app.post("/dictionary/new/{source_id}", response_model=dict)
+@require_write
 async def create_new_dictionary_handler(source_id: int, request: Request, user_info: dict = Depends(get_user_info)):
     try:
         data = await request.json()
@@ -318,6 +347,7 @@ async def create_new_dictionary_handler(source_id: int, request: Request, user_i
 
 
 @app.post("/dictionary/version/{source_id}", response_model=dict)
+@require_write
 def create_dictionary_version_handler(source_id: int, user_info: dict = Depends(get_user_info)):
     try:
         # find latest link by timestamp
@@ -376,6 +406,7 @@ def create_dictionary_version_handler(source_id: int, user_info: dict = Depends(
 
 ####### RULES
 @app.get("/rules/by-dictionary", response_model=list[dict])
+@require_read
 def fetch_rules_by_dictionary(dictionary_id: int, dictionary_timestamp: datetime, user_info: dict = Depends(get_user_info)):
     try:
         rules = get_rules_by_dictionary(dictionary_id, dictionary_timestamp)
@@ -386,6 +417,7 @@ def fetch_rules_by_dictionary(dictionary_id: int, dictionary_timestamp: datetime
 
 
 @app.get("/rules/by-dictionary-all", response_model=list[dict])
+@require_read
 def fetch_rules_by_dictionary_all(dictionary_id: int, user_info: dict = Depends(get_user_info)):
     try:
         rules = get_rules_by_dictionary_all(dictionary_id)
@@ -396,6 +428,7 @@ def fetch_rules_by_dictionary_all(dictionary_id: int, user_info: dict = Depends(
 
 
 @app.post("/rules", response_model=list[dict])
+@require_write
 async def save_rules(request: Request, user_info: dict = Depends(get_user_info)):
     try:
         data = await request.json()
