@@ -5,10 +5,8 @@ import {
   InputLabel,
   MenuItem,
   Select,
-  SelectChangeEvent,
   TextField,
   Typography,
-  Avatar
 } from '@mui/material';
 import { SourceFilterProps } from '../types/frontend-types';
 import { LANGUAGES } from '../constants/languages'; 

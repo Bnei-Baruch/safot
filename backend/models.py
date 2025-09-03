@@ -112,17 +112,22 @@ class Example(BaseModel):
 
 class ParagraphsTranslateRequest(BaseModel):
     paragraphs: List[str]
-    source_language: str
-    target_language: str
     prompt_text: str
-    dictionary_id: int | None = None
-    dictionary_timestamp: str | None = None
-    examples: List[Example] | None = None
 
 class TranslationServiceOptions(BaseModel):
-    source_language: str
-    target_language: str
     model: str = "gpt-4o"
     # model: str = "gpt-3.5-turbo"
     provider: Provider = Provider.OPENAI
     temperature: float = 0.2
+
+class PromptRequest(BaseModel):
+    dictionary_id: int | None = None
+    # If timestamp not set will take latest version of that dictionary.
+    dictionary_timestamp: int | None = None
+
+    # Eigher dictionary_id or custom_key should be set, not both.
+    custom_key: str = ""
+
+    # Extra params for custom_key.
+    source_language: str = ""
+    target_language: str = ""
