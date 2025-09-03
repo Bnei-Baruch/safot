@@ -4,15 +4,21 @@ from playhouse.postgres_ext import ArrayField, JSONField
 from pydantic import BaseModel, validator
 from enum import Enum
 from db import db
-from typing import List
+from typing import List, TypedDict
+
+
+class TranslationExample(TypedDict):
+    sourceText: str
+    firstTranslation: str
+    lastTranslation: str
 
 
 class Dictionary(Model):
     id = IntegerField(sequence='dictionary_id_seq')
-    timestamp = DateTimeField(default=datetime.utcnow())
+    timestamp = DateTimeField(default=datetime.utcnow)
     name = CharField()
     username = CharField()
-    labels = ArrayField(CharField)
+    labels = ArrayField(CharField, null=True)
 
     class Meta:
         database = db
@@ -33,7 +39,7 @@ class Rule(Model):
         database = db
         primary_key = CompositeKey('id', 'timestamp')
         indexes = (
-            (('dictionary_id', 'dictionary_timestamp'), True),
+            (('dictionary_id', 'dictionary_timestamp'), False),
         )
 
 
@@ -53,6 +59,25 @@ class Source(Model):
         database = db
         primary_key = CompositeKey('id')
 
+
+class SourceDictionaryLink(Model):
+    # Foreign key to Source with cascade delete
+    source = ForeignKeyField(Source, backref='dictionary_links', to_field='id', on_delete='CASCADE')
+    # Can't be ForeignKeyField due to composite PK in Dictionary
+    dictionary_id = IntegerField()
+    dictionary_timestamp = DateTimeField()
+
+    origin = CharField()  # Options: 'self', 'reused', 'copied', 'imported'
+
+    class Meta:
+        database = db
+        primary_key = CompositeKey('source', 'dictionary_id', 'dictionary_timestamp')
+        indexes = (
+            # Index to efficiently query which sources used a specific dictionary snapshot
+            (('dictionary_id', 'dictionary_timestamp'), False),
+            # Index to efficiently query which dictionaries are linked to a specific source
+            (('source_id',), False),
+        )
 
 class Segment(Model):
     id = IntegerField(sequence='segment_id_seq')
@@ -75,22 +100,34 @@ class Segment(Model):
         )
 
 
-class ParagraphsTranslateRequest(BaseModel):
-    paragraphs: list[str]
-    source_language: str
-    target_language: str
-
-
 class Provider(str, Enum):
     DEFAULT_DEV = "dev"
     SIMPLE_GPT_1 = "simple-gpt-1"
     OPENAI = "openai"
 
+class Example(BaseModel):
+    sourceText: str
+    firstTranslation: str
+    lastTranslation: str
+
+class ParagraphsTranslateRequest(BaseModel):
+    paragraphs: List[str]
+    prompt_text: str
 
 class TranslationServiceOptions(BaseModel):
-    source_language: str
-    target_language: str
     model: str = "gpt-4o"
+    # model: str = "gpt-3.5-turbo"
     provider: Provider = Provider.OPENAI
     temperature: float = 0.2
-    prompt_key: str = "prompt_1"
+
+class PromptRequest(BaseModel):
+    dictionary_id: int | None = None
+    # If timestamp not set will take latest version of that dictionary.
+    dictionary_timestamp: int | None = None
+
+    # Eigher dictionary_id or custom_key should be set, not both.
+    custom_key: str = ""
+
+    # Extra params for custom_key.
+    source_language: str = ""
+    target_language: str = ""

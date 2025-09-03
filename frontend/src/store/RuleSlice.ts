@@ -1,6 +1,7 @@
 // Currently not used, for future usage.
-import { createAsyncThunk, createSlice, PayloadAction } from '@reduxjs/toolkit';
+import { /*createAsyncThunk,*/ createSlice, /*PayloadAction*/ } from '@reduxjs/toolkit';
 
+/*
 const BACKEND_URL = process.env.REACT_APP_BASE_URL;
 
 const getDefaultHeaders = () => ({
@@ -100,12 +101,13 @@ const initialState: SafotState = {
   loading: false,
   error: null,
 };
+*/
 
 const safotSlice = createSlice({
   name: 'safot',
-  initialState,
+  initialState: {}, /*initialState,*/
   reducers: {},
-  extraReducers: (builder) => {
+  /*extraReducers: (builder) => {
     // Fetch dictionaries
     builder.addCase(fetchDictionaries.pending, (state) => {
       state.loading = true;
@@ -147,7 +149,7 @@ const safotSlice = createSlice({
       state.error = action.payload;
     });
 
-  },
+  },*/
 });
 
 export default safotSlice.reducer;

@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { ReactKeycloakProvider } from '@react-keycloak/web';
 import { Provider } from "react-redux";
 import { ToastContainer } from "react-toastify";
+import { AuthClientError, AuthClientEvent, AuthClientTokens } from "@react-keycloak/core";
 
 import './assets/style/style.css';
 import "react-toastify/dist/ReactToastify.css";
@@ -10,20 +11,21 @@ import "react-toastify/dist/ReactToastify.css";
 import App from './App';
 import keycloak from './keycloak';
 import reportWebVitals from './reportWebVitals';
-import store from "./store";
+import store from "./store/store";
 
-const onKeycloakTokens = (tokens: { token: string; refreshToken: string }) => {
+const onKeycloakTokens = (tokens: AuthClientTokens) => {
   console.log('Tokens refreshed:', tokens);
-  localStorage.setItem('token', tokens.token);
+  localStorage.setItem('token', tokens.token || '');
 };
 
-const onKeycloakEvent = async (event: string, error?: Error) => {
+const onKeycloakEvent = async (event: AuthClientEvent, error?: AuthClientError) => {
   console.log('Keycloak event:', event, error);
 };
 
 const root = ReactDOM.createRoot(
   document.getElementById('root') as HTMLElement
 );
+
 root.render(
   <ReactKeycloakProvider
     authClient={keycloak}

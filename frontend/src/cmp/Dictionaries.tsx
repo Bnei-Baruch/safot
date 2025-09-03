@@ -1,24 +1,16 @@
-// Currently not used, for future usage.
-
 import React, { useEffect, useState } from 'react';
-import { toast } from "react-toastify";
 
-import { useAppDispatch, useAppSelector } from './hooks';
-import {
-  fetchDictionaries,
-  addDictionary,
-  updateDictionary,
-  deleteDictionary,
-  Dictionary
-} from './SafotSlice';
+import { useAppDispatch, useAppSelector } from '../store/store';
+import { Dictionary } from '../types/frontend-types';
+import { fetchDictionaries } from '../store/DictionarySlice';
+import { useToast } from '../cmp/Toast';
 
 const Dictionaries: React.FC = () => {
   const dispatch = useAppDispatch();
-  const dictionaries = useAppSelector((state) => state.safot.dictionaries);
-  const loading = useAppSelector((state) => state.safot.loading);
-  const error = useAppSelector((state) => state.safot.error);
+  const { dictionaries, loading, error } = useAppSelector((state) => state.dictionaries);
   const [newDictName, setNewDictName] = useState('');
   const [editDict, setEditDict] = useState<Dictionary | null>(null);
+  const { showToast } = useToast();
 
   useEffect(() => {
     dispatch(fetchDictionaries());
@@ -27,12 +19,16 @@ const Dictionaries: React.FC = () => {
   const handleAdd = async () => {
     if (newDictName.trim()) {
       try {
-        const payload = await dispatch(addDictionary({ name: newDictName, labels: [] })).unwrap();
+        // const payload = await dispatch(addDictionary({ name: newDictName, labels: [] })).unwrap();
         setNewDictName('');
-        toast.success("Dictionary added successfully!");
+        showToast("Dictionary added successfully!", "info");
         dispatch(fetchDictionaries());
       } catch (error) {
-        toast.error(error.stack);
+        if (error instanceof Error) {
+          showToast(String(error), "error");
+        } else {
+          showToast('Unknown error adding dictionary.', "error");
+        }
       }
     }
   };
@@ -44,18 +40,22 @@ const Dictionaries: React.FC = () => {
   const handleUpdate = async () => {
     if (editDict) {
       try {
-        const payload = await dispatch(updateDictionary(editDict)).unwrap();
-        toast.success("Dictionary updated successfully!");
+        // const payload = await dispatch(updateDictionary(editDict)).unwrap();
+        showToast("Dictionary updated successfully!", "info");
         setEditDict(null);
         dispatch(fetchDictionaries());
       } catch (error) {
-        toast.error(error.stack);
+        if (error instanceof Error) {
+          showToast(String(error), "error");
+        } else {
+          showToast('Unknown error updating dictionary.', "error");
+        }
       }
     }
   };
 
   const handleDelete = (id: number) => {
-    dispatch(deleteDictionary(id));
+    // dispatch(deleteDictionary(id));
   };
 
   return (
@@ -65,10 +65,10 @@ const Dictionaries: React.FC = () => {
       {loading ? (
         <p>Loading dictionaries...</p>
       ) : error ? (
-        <p>Error: {error.stack || error}</p>
+        <p>Error: {error}</p>
       ) : (
         <div>
-          {dictionaries.map((dict) => (
+          {Object.values(dictionaries).map((dict) => (
             <div key={dict.id} style={{ display: 'flex', alignItems: 'center' }}>
               {editDict && editDict.id === dict.id ? (
                 <input

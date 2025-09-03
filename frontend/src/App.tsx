@@ -2,24 +2,29 @@ import React from 'react';
 import '../src/assets/style/style.css';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Header from './cmp/Header';
-import SourceIndex from './pages/SourceIndex';
+import Main from './pages/Main';
 import SourceEdit from './pages/SourceEdit';
 import { ToastProvider } from './cmp/Toast';
+import { useKeycloak } from '@react-keycloak/web';
 
-function App() {
-    return (
-        <BrowserRouter>
-            <ToastProvider>
-                <div className="App">
-                    <Header />
-                    <Routes>
-                        <Route path="/" element={<SourceIndex />} />
-                        <Route path="/source-edit/:id" element={<SourceEdit />} />
-                    </Routes>
-                </div>
-            </ToastProvider>
-        </BrowserRouter>
-    );
-}
+const App = () => {
+  const { keycloak } = useKeycloak();
+
+  return (
+    <BrowserRouter>
+      <ToastProvider>
+        <div className="App">
+          <Header />
+          {keycloak.authenticated &&
+          <Routes>
+            <Route path="/" element={<Main />} />
+            <Route path="/source-edit/:id" element={<SourceEdit />} />
+          </Routes>
+          }
+        </div>
+      </ToastProvider>
+    </BrowserRouter>
+  );
+};
 
 export default App;

@@ -1,28 +1,41 @@
 import React, { useState } from 'react';
+import { useNavigate } from "react-router-dom";
+
 import {
   Box,
   Button,
-  Typography,
+  CircularProgress,
+  Divider,
+  MenuItem,
   Paper,
   TextField,
-  MenuItem,
-  Divider,
-  CircularProgress
+  Typography,
 } from '@mui/material';
-import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
-import InsertDriveFileOutlinedIcon from '@mui/icons-material/InsertDriveFileOutlined';
+import {
+  ArrowDropDown,
+  ArrowForward,
+  InsertDriveFileOutlined,
+} from '@mui/icons-material';
+
 import { LANGUAGES } from '../constants/languages'
 import { useToast } from './Toast';
-import { TranslateFormProps } from '../types/frontend-types';
+import { useFlow } from '../useFlow';
 
+const LANG_STYLE = {
+  width: 150,
+  fontFamily: 'Kanit, sans-serif',
+};
 
-const TranslateForm: React.FC<TranslateFormProps> = ({ onSubmit }) => {
+const TranslateForm: React.FC = () => {
+  const navigate = useNavigate();
+
   const [file, setFile] = useState<File | null>(null);
-  const [sourceLang, setSourceLang] = useState('');
-  const [targetLang, setTargetLang] = useState('');
-  const [submitAttempted, setSubmitAttempted] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [sourceLang, setSourceLang] = useState<string>('');
+  const [targetLang, setTargetLang] = useState<string>('');
+  const [submitAttempted, setSubmitAttempted] = useState<boolean>(false);
   const { showToast } = useToast();
+  const [stepByStep, setStepByStep] = useState<boolean>(true);
+  const { translateFile, loadingCount } = useFlow();
 
   const handleFileClick = () => {
     document.getElementById('fileInput')?.click();
@@ -31,7 +44,7 @@ const TranslateForm: React.FC<TranslateFormProps> = ({ onSubmit }) => {
   const processUploadedFile = (file: File | null) => {
     if (!file) return;
     if (!file.name.toLowerCase().endsWith('.docx')) {
-      showToast('❌ Only .docx files are supported.', 'error');
+      showToast('Only .docx files are supported.', 'error');
       setFile(null);
       return;
     }
@@ -47,35 +60,36 @@ const TranslateForm: React.FC<TranslateFormProps> = ({ onSubmit }) => {
     processUploadedFile(e.dataTransfer.files?.[0] || null);
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (all: boolean) => {
     setSubmitAttempted(true);
     if (!file || !sourceLang || !targetLang) return;
     const name = file.name.replace(/\.docx$/, '');
-    setLoading(true);
-    showToast('📄 Processing file...', 'info');
+    showToast('Processing file...', 'info');
     try {
-      await onSubmit({ file, name, source_language: sourceLang, target_language: targetLang });
-      showToast('✅ Translation completed', 'success');
-    } catch {
-      showToast('❌ Something went wrong', 'error');
-    } finally {
-      setLoading(false);
+      const { translatedSourceId } = await translateFile( 
+        file, 
+        name, 
+        /*source_language*/ sourceLang, 
+        /*target_language*/ targetLang,
+        /*step_by_step*/ !all
+      );
+      showToast('Translation completed', 'success');
+      navigate(`/source-edit/${translatedSourceId}`);
+    } catch (error) {
+      if (error instanceof Error) {
+        showToast('Error translating file: ' + error.message, 'error');
+      } else {
+        showToast('Error translating file', 'error');
+      }
     }
   };
 
   return (
-    <Paper
-      sx={{
-        p: 4,
-        backgroundColor: '#ffffff',
-        borderRadius: 2,
-        fontFamily: 'Kanit, sans-serif',
-      }}
-    >
-      <Box display="flex" justifyContent="space-between" alignItems="flex-start" gap={2}>
-        <Box>
+    <Paper sx={{ p: 3, backgroundColor: '#ffffff', borderRadius: 2, fontFamily: 'Kanit, sans-serif' }}>
+      <Box display="flex" alignItems="center" gap={2}>
+        <Box display="flex" alignItems="center" flexDirection="column">
           {/* Language Selection */}
-          <Box display="flex" alignItems="center" gap={2} mb={2}>
+          <Box display="flex" alignItems="center" gap={2}>
             <TextField
               select
               label="From Language"
@@ -84,7 +98,8 @@ const TranslateForm: React.FC<TranslateFormProps> = ({ onSubmit }) => {
               variant="outlined"
               error={submitAttempted && !sourceLang}
               helperText={submitAttempted && !sourceLang ? 'Required' : ' '}
-              sx={{ width: 160, fontFamily: 'Kanit, sans-serif' }}
+              disabled={!!loadingCount}
+              sx={LANG_STYLE}
               InputLabelProps={{ sx: { fontFamily: 'Kanit, sans-serif' } }}
               size="small"
             >
@@ -95,7 +110,7 @@ const TranslateForm: React.FC<TranslateFormProps> = ({ onSubmit }) => {
               ))}
             </TextField>
 
-            <ArrowForwardIcon sx={{ color: '#ccc', pb:3 }} />
+            <ArrowForward sx={{ color: '#ccc', pb:3 }} />
             
             <TextField
               select
@@ -105,7 +120,8 @@ const TranslateForm: React.FC<TranslateFormProps> = ({ onSubmit }) => {
               variant="outlined"
               error={submitAttempted && !targetLang}
               helperText={submitAttempted && !targetLang ? 'Required' : ' '}
-              sx={{ width: 160, fontFamily: 'Kanit, sans-serif' }}
+              disabled={!!loadingCount}
+              sx={LANG_STYLE}
               InputLabelProps={{ sx: { fontFamily: 'Kanit, sans-serif' } }}
               size="small"
             >
@@ -119,25 +135,27 @@ const TranslateForm: React.FC<TranslateFormProps> = ({ onSubmit }) => {
 
           {/* Upload Area */}
           <Box
-            onClick={handleFileClick}
-            onDrop={handleDrop}
+            onClick={!!loadingCount ? undefined : handleFileClick}
+            onDrop={!!loadingCount ? undefined : handleDrop}
             onDragOver={(e) => e.preventDefault()}
             sx={{
-              width: 300,
-              height: 160,
+              width: '100%',
+              height: 120,
               border: '2px dashed #bbb',
               borderRadius: 2,
-              backgroundColor: '#f5f5f5',
+              backgroundColor: !!loadingCount ? '#f0f0f0' : '#f5f5f5',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
-              cursor: 'pointer',
-              mt: 0,
+              cursor: !!loadingCount ? 'not-allowed' : 'pointer',
+              opacity: !!loadingCount ? 0.6 : 1,
             }}
           >
-            <InsertDriveFileOutlinedIcon sx={{ mb: 1, fontSize: 36, color: '#777' }} />
-            <Typography sx={{ fontFamily: 'inherit' }}>Click to Upload or Drag File</Typography>
+            <InsertDriveFileOutlined sx={{ mb: 1, fontSize: 36, color: '#777' }} />
+            <Typography sx={{ fontFamily: 'inherit' }}>
+              {!!loadingCount ? 'Translation in progress...' : 'Click to Upload or Drag File'}
+            </Typography>
           </Box>
 
           <input
@@ -160,30 +178,33 @@ const TranslateForm: React.FC<TranslateFormProps> = ({ onSubmit }) => {
         {/* Translate Section */}
         <Divider orientation="vertical" flexItem sx={{ borderColor: '#ccc', mx: 1 }} />
 
-        <Box
-          display="flex"
-          flexDirection="column"
-          alignItems="center"
-          justifyContent="center"
-          gap={2}
-          flex={1}
-          minHeight={200}
-        >
-          {!loading ? (
-            <Button
-              variant="contained"
-              onClick={handleSubmit}
-              sx={{ width: 180, height: 40, fontFamily: 'inherit' }}
-            >
-              Translate
-            </Button>
-          ) : (
-            <>
-              <CircularProgress size={20} />
-              <Typography sx={{ fontFamily: 'inherit', color: '#444', mt: 1 }}>
-                Translating your file, please wait...
-              </Typography>
-            </>
+        <Box gap={2}>
+          {!loadingCount ? (
+              <Box gap={2}>
+                <Button
+                  variant={stepByStep ? "contained" : "outlined"}
+                  onClick={() => handleSubmit(!stepByStep)}
+                  sx={{ width: 200, height: 40, fontFamily: 'inherit' }}
+                >
+                  <Typography sx={{ flexGrow: 1, textAlign: "center" }}>
+                    {stepByStep ? "Translate" : "Translate ALL!"}
+                  </Typography>
+                  <ArrowDropDown
+                    sx={{ ml: "auto" }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setStepByStep(!stepByStep);
+                    }}
+                  />
+                </Button>
+              </Box>
+            ) : (
+              <>
+                <CircularProgress size={20} />
+                <Typography sx={{ fontFamily: 'inherit', color: '#444', mt: 1 }}>
+                  Translating your file, please wait...
+                </Typography>
+              </>
           )}
         </Box>
       </Box>
