@@ -1,8 +1,9 @@
 // Currently not used, for future usage.
 
 import React, { useState } from 'react';
-import { Dialog, DialogTitle, DialogContent, DialogActions, Button, CircularProgress } from '@mui/material';
+import { Dialog, DialogTitle, DialogContent, DialogActions, Button, CircularProgress, Alert } from '@mui/material';
 import AddSourceForm from './AddSourceForm';
+import { useUser } from '../contexts/UserContext';
 
 interface AddSourceDialogProps {
     open: boolean;
@@ -13,6 +14,7 @@ interface AddSourceDialogProps {
 
 const AddSourceDialog: React.FC<AddSourceDialogProps> = ({ open, onClose, onSubmit, mode = 'new_source' }) => {
     const [loading, setLoading] = useState(false);
+    const { permissions } = useUser();
 
     const handleFormSubmit = async (data: any) => {
         setLoading(true);
@@ -25,7 +27,14 @@ const AddSourceDialog: React.FC<AddSourceDialogProps> = ({ open, onClose, onSubm
 
     return (
         <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
-            <DialogTitle>{mode === 'new_source' ? 'Add New Source' : 'Create New Translation'}</DialogTitle>
+            <DialogTitle>
+                {mode === 'new_source' ? 'Add New Source' : 'Create New Translation'}
+                {!permissions.hasRole('safot-write') && (
+                    <Alert severity="warning" sx={{ mt: 1 }}>
+                        {permissions.getAuthMessage("create sources", "safot-write")}
+                    </Alert>
+                )}
+            </DialogTitle>
             <DialogContent>
                 <AddSourceForm onSubmit={handleFormSubmit} mode={mode} />
             </DialogContent>
@@ -39,7 +48,8 @@ const AddSourceDialog: React.FC<AddSourceDialogProps> = ({ open, onClose, onSubm
                     form="add-source-form"
                     variant="contained"
                     color="primary"
-                    disabled={loading}
+                    disabled={loading || !permissions.hasRole('safot-write')}
+                    title={permissions.hasRole('safot-write') ? "Create source" : permissions.getAuthMessage("create sources", "safot-write")}
                 >
                     Submit
                 </Button>
