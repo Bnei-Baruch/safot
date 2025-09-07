@@ -1,12 +1,13 @@
 import { useCallback, useState } from 'react';
 
 import { translateParagraphs } from './services/translation.service';
-import { getPrompt } from './services/dictionary.service';
+import { getPrompt, postPromptDictionary } from './services/dictionary.service';
 import { buildSegment, extractParagraphs, postSegments } from './services/segment.service';
-import { postSource } from './services/source.service';
-import { Segment } from './types/frontend-types';
+import { getSource, postSource } from './services/source.service';
+import { Segment, Source } from './types/frontend-types';
 
 // import compareTwoStrings from 'string-similarity-js';
+const DEFAULT_PROMPT_KEY = 'prompt_1';
 
 const buildAndSaveSegments = async (
   paragraphs: string[],
@@ -28,10 +29,10 @@ const buildAndSaveSegments = async (
   return await postSegments(segments);
 };
 
-const initSourceFromFile = async (file: File, name: string, sourceLang: string, targetLang: string)
+const initSourceFromFile = async (file: File, name: string, originalLanguage: string, translatedLanguage: string)
   : Promise<{originalSegments: Segment[], translatedSourceId: number}> => {
   // Create original and translation sources
-  const { originalSourceId, translatedSourceId } = await createSources(name, sourceLang, targetLang);
+  const { originalSourceId, translatedSourceId } = await createSources(name, originalLanguage, translatedLanguage);
 
   // Extract paragraphs from uploaded file
   const { paragraphs, properties } = await extractParagraphs(file);
@@ -167,8 +168,8 @@ const initSourceFromFile = async (file: File, name: string, sourceLang: string, 
  
     const { promptText } = ruleService.buildPromptString({
       promptKey,
-      sourceLanguage: sources[originalSourceId!].language,
-      targetLanguage: source?.language!,
+      originalLanguageuage: sources[originalSourceId!].language,
+      translatedLanguage: source?.language!,
       examples: selectedExamples,
     });
   
@@ -188,19 +189,19 @@ const initSourceFromFile = async (file: File, name: string, sourceLang: string, 
 
 const normalizeName = (filename: string) => filename.replace(/\.docx$/i, '').trim().replace(/\s+/g, '-');
 
-const createSources = async (name: string, sourceLang: string, targetLang: string)
+const createSources = async (name: string, originalLanguage: string, translatedLanguage: string)
   : Promise<{originalSourceId: number, translatedSourceId: number}> => {
   const baseName = normalizeName(name);
 
   const originalSource = await postSource({
     name: baseName,
-    language: sourceLang,
+    language: originalLanguage,
   });
   console.log(originalSource);
 
   const translatedSource = await postSource({
-    name: `${baseName}-${targetLang}`,
-    language: targetLang,
+    name: `${baseName}-${translatedLanguage}`,
+    language: translatedLanguage,
     original_source_id: originalSource.id,
   });
   console.log(translatedSource);
@@ -214,20 +215,32 @@ const createSources = async (name: string, sourceLang: string, targetLang: strin
 export function useFlow() {
   const [loadingCount, setLoadingCount] = useState<number>(0);
 
-  const translateSegments = useCallback(async (originalSegments: Segment[], translatedSourceId: number, sourceLang: string, targetLang: string)
+  const translateSegments = useCallback(async (originalSegments: Segment[], translatedSourceId: number, originalLanguage: string, translatedLanguage: string)
     : Promise<{translatedSegments: Segment[], translatedSourceId: number}> => {
     setLoadingCount(prev => prev + 1);
     try {
-      const promptKey = "prompt_1";
-      const promptText = await getPrompt(promptKey, sourceLang, targetLang);
+			const translatedSource = await getSource(translatedSourceId);
+			const promptKey = "prompt_1";
+			let promptText = "";
+			if (translatedSource.dictionary_id) {
+				promptText = await getPrompt({dictionary_id: translatedSource.dictionary_id, dictionary_timestamp: translatedSource.dictionary_timestamp_epoch});
+			} else {
+				promptText = await getPrompt({prompt_key: promptKey, original_language: originalLanguage, translated_language: translatedLanguage});
+			}
 
       const { translated_paragraphs, properties: translationProperties } =
           await translateParagraphs(originalSegments.map((segment) => segment.text), promptText);
 
-      const properties = {
-        prompt_key: promptKey,
+      const properties: Record<string, any> = {
         translation: translationProperties,
       };
+
+			if (translatedSource.dictionary_id) {
+        properties["dictionary_id"] = translatedSource.dictionary_id;
+				properties["dictionary_timestamp"] = translatedSource.dictionary_timestamp_epoch;
+			} else {
+        properties["prompt_key"] = promptKey;
+			}
 
       // Save translated segments to database
       return {
@@ -239,21 +252,60 @@ export function useFlow() {
     }
   }, [setLoadingCount]);
 
-  const translateFile = useCallback(async (file: File, name: string, sourceLang: string, targetLang: string, stepByStep: boolean)
+  const translateFile = useCallback(async (file: File, name: string, originalLanguage: string, translatedLanguage: string, stepByStep: boolean)
     : Promise<{translatedSegments: Segment[], translatedSourceId: number}> => {
     setLoadingCount(prev => prev + 1);
     try {
-      const { originalSegments, translatedSourceId } = await initSourceFromFile(file, name, sourceLang, targetLang);
+      const { originalSegments, translatedSourceId } = await initSourceFromFile(file, name, originalLanguage, translatedLanguage);
 
       // Step-by-step translation (first 10 paragraphs only)
       const originalSegmentsChunk = stepByStep ? originalSegments.slice(0, 10) : originalSegments;
 
-      return await translateSegments(originalSegmentsChunk, translatedSourceId, sourceLang, targetLang);
+      return await translateSegments(originalSegmentsChunk, translatedSourceId, originalLanguage, translatedLanguage);
     } finally {
       setLoadingCount(prev => prev - 1);
     }
   }, [setLoadingCount, translateSegments]);
 
-  return { translateSegments, translateFile, loadingCount };
+	// Consider spliting this method into two, one with source and other without.
+	const createDefaultDict = useCallback(async (source?: Source): Promise<Source | undefined> => {
+		setLoadingCount(prev => prev + 1);
+		try {
+			let name = "New dictionary";
+			let originalLanguage = undefined;
+			const translatedLanguage = (source && source.language) || undefined;
+			if (source && source.original_source_id) {
+				const originalSource = await getSource(source.original_source_id);
+				originalLanguage = originalSource && originalSource.language;
+				name = source && source.name ? `Dictionary for "${source.name}"` : "New dictionary";
+			}
+			const dictionary = await postPromptDictionary({
+				name,
+				// Set default dictionary content.
+				prompt_key: DEFAULT_PROMPT_KEY,
+				original_language: originalLanguage,
+				translated_language: translatedLanguage,
+			 });
+			// Update source with dictionary
+			if (source) {
+				const sourceToUpdate = {
+					...source,
+					dictionary_id: dictionary.id,
+					dictionary_timestamp: dictionary.timestamp,
+				}
+				return postSource(sourceToUpdate);
+			}
+			return;
+		} finally {
+      setLoadingCount(prev => prev - 1);
+		}
+	}, [setLoadingCount]);
+
+  return {
+		createDefaultDict,
+		loadingCount,
+		translateFile,
+		translateSegments,
+  };
 }
 
