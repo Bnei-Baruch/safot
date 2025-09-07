@@ -1,40 +1,37 @@
 from datetime import datetime
-from io import BytesIO
 from docx import Document
+from io import BytesIO
 from peewee import fn
-import logging
-from models import Segment
 from playhouse.shortcuts import model_to_dict
+import logging
+
+from models import Segments
+from services.source_service import create_or_update_sources
 
 # Get logger for this module
 logger = logging.getLogger(__name__)
 
 def get_latest_segments(source_id):
-
     max_timestamp_subquery = (
-        Segment
-        .select(Segment.order, fn.MAX(Segment.timestamp).alias('max_timestamp'))
-        .where(Segment.source_id == source_id)
-        .group_by(Segment.order)
+        Segments
+        .select(Segments.order, fn.MAX(Segments.timestamp).alias('max_timestamp'))
+        .where(Segments.source_id == source_id)
+        .group_by(Segments.order)
     )
 
     latest_segments_query = (
-        Segment
+        Segments
         .select()
         .join(max_timestamp_subquery, on=(
-            (Segment.order == max_timestamp_subquery.c.order) &
-            (Segment.timestamp == max_timestamp_subquery.c.max_timestamp)
+            (Segments.order == max_timestamp_subquery.c.order) &
+            (Segments.timestamp == max_timestamp_subquery.c.max_timestamp)
         ))
-        .where(Segment.source_id == source_id)
+        .where(Segments.source_id == source_id)
     )
 
-    latest_segments = list(latest_segments_query.dicts())
-
-
-    return latest_segments
+    return list(latest_segments_query.dicts())
     
 def get_paragraphs_from_file(file) -> list[str]:
-    
     try:
         content = file.file.read()
         document = Document(BytesIO(content))
@@ -54,15 +51,25 @@ def store_segments(segments: list[dict]) -> list[dict]:
     required_fields = ["text", "source_id", "order", "timestamp", "username", "properties"]
     saved_segments = []
 
+    sources_to_update = {}
     for segment_data in segments:
         missing = [key for key in required_fields if key not in segment_data]
         if missing:
             raise ValueError(f"Segment is missing required fields: {', '.join(missing)}")
 
-        insert_query = Segment.insert(segment_data).returning(Segment)
+        source_id = segment_data["source_id"]
+        timestamp = segment_data["timestamp"]
+        logger.info("%s", sources_to_update)
+        logger.info("%s", source_id)
+        if source_id not in sources_to_update or timestamp > sources_to_update[source_id]["modified_at"]:
+            sources_to_update[source_id] = {"id": source_id, "modified_by": segment_data["username"], "modified_at": timestamp}
+
+        insert_query = Segments.insert(segment_data).returning(Segments)
         inserted = insert_query.execute()
         segment = inserted[0]
         segment_dict = model_to_dict(segment)
         saved_segments.append(segment_dict)
+
+    create_or_update_sources(list(sources_to_update.values()))
 
     return saved_segments

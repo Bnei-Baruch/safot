@@ -1,14 +1,12 @@
 import { configureStore } from '@reduxjs/toolkit';
 import { TypedUseSelectorHook, useDispatch, useSelector } from 'react-redux';
 import dictionaryReducer from './DictionarySlice';
-import ruleReducer from './RuleSlice';
 import segmentReducer from './SegmentSlice';
 import sourceReducer from './SourceSlice';
 
 const store = configureStore({
   reducer: {
     dictionaries: dictionaryReducer,
-    rules: ruleReducer,
     sources: sourceReducer,
     segments: segmentReducer,
   },

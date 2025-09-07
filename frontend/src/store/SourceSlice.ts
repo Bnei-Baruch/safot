@@ -42,7 +42,7 @@ export const addOrUpdateSource = createAsyncThunk<
     try {
       return await postSource(sourceData);
     } catch (err: any) {
-      return rejectWithValue(err.message || 'Failed to add source');
+      return rejectWithValue(err.message || 'Failed to add or update source');
     }
   }
 );
