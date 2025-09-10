@@ -56,29 +56,37 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, [initialized, keycloak?.authenticated]);
 
-  // Role-based permissions (matching backend logic)
   const permissions: UserPermissions = {
-    // Check if user has a specific role or higher
-    hasRole: (requiredRole: string) => {
-      const roleHierarchy = { 'safot-admin': 3, 'safot-write': 2, 'safot-read': 1 };
-      const requiredLevel = roleHierarchy[requiredRole as keyof typeof roleHierarchy] || 0;
+    // Role checking with hierarchy: admin > write > read
+    hasRole: (role: string) => {
+      if (!currentUser?.roles) return false;
       
-      // Check if user has any role with equal or higher level
-      for (const [role, level] of Object.entries(roleHierarchy)) {
-        if (currentUser?.roles?.includes(role) && level >= requiredLevel) {
-          return true;
-        }
-      }
+      // Admin can do everything
+      if (currentUser.roles.includes('safot-admin')) return true;
+      
+      // Check specific role
+      if (role === 'safot-write') return currentUser.roles.includes('safot-write');
+      if (role === 'safot-read') return currentUser.roles.includes('safot-read') || currentUser.roles.includes('safot-write');
+      
       return false;
     },
     
-    // Generate authorization message
-    getAuthMessage: (action: string, requiredRole: string) => {
+    hasAnyRole: (roles: string[]) => {
+      return roles.some(role => permissions.hasRole(role));
+    },
+    
+    // Helper for authorization messages (backward compatible)
+    getAuthMessage: (action: string, requiredRole: string | string[]) => {
       const userRole = currentUser?.roles?.includes('safot-admin') ? 'safot-admin' :
                       currentUser?.roles?.includes('safot-write') ? 'safot-write' :
                       currentUser?.roles?.includes('safot-read') ? 'safot-read' : 'none';
       
-      return `You need '${requiredRole}' role or higher to ${action}. Current role: ${userRole}`;
+      if (Array.isArray(requiredRole)) {
+        const rolesStr = requiredRole.join(' or ');
+        return `You need ${rolesStr} role to ${action}. Current role: ${userRole}`;
+      } else {
+        return `You need '${requiredRole}' role to ${action}. Current role: ${userRole}`;
+      }
     }
   };
 

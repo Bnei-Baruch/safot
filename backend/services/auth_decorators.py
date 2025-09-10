@@ -1,67 +1,43 @@
 from functools import wraps
 from fastapi import HTTPException, status
-from typing import Callable, Any
-import logging
+from typing import Callable, List
 
-# Control what gets imported with 'from services.auth_decorators import *'
-__all__ = [
-    'require_admin',
-    'require_write',
-    'require_read'
-]
-
-logger = logging.getLogger(__name__)
-
-# Role hierarchy: admin > write > read
-REQUIRED_ROLE_HIERARCHY = {
-    'safot-admin': 3,
-    'safot-write': 2,
-    'safot-read': 1
-}
-
-def get_user_role_level(user_info: dict):
-    """Extract user role level from user_info"""
-    user_roles = user_info.get('roles', [])
-    for role in REQUIRED_ROLE_HIERARCHY:
-        if role in user_roles:
-            return REQUIRED_ROLE_HIERARCHY[role]
-    return 0
-
-def require_role(required_role: str):
-    """Decorator to require specific role for endpoint access"""
+def require_roles(*roles: str):
+    """Decorator to require ANY of the specified roles"""
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         async def wrapper(*args, user_info: dict = None, **kwargs):
             if not user_info:
                 raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="User info not available"
-                )           
-            
-            user_level = get_user_role_level(user_info)
-            required_level = REQUIRED_ROLE_HIERARCHY.get(required_role, 0)
-            if user_level < required_level:
-                raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail=f"Insufficient permissions. Required role: {required_role}"
+                    detail="User info not available"
                 )
             
-            # Check if the function is async and await it accordingly
+            user_roles = user_info.get('roles', [])
+            if not any(role in user_roles for role in roles):
+                roles_str = " or ".join(roles)
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Access denied. Required roles: {roles_str}"
+                )
+            
             result = func(*args, user_info=user_info, **kwargs)
-            if hasattr(result, '__await__'):  # Check if it's a coroutine
+            if hasattr(result, '__await__'):
                 return await result
             return result
         return wrapper
     return decorator
 
+# Convenience decorators for common role combinations
+# Note: Admin role is included by default in all decorators
 def require_admin(func: Callable) -> Callable:
-    """Decorator to require admin role"""
-    return require_role('safot-admin')(func)
+    """Require admin role only"""
+    return require_roles('safot-admin')(func)
 
 def require_write(func: Callable) -> Callable:
-    """Decorator to require write role or higher"""
-    return require_role('safot-write')(func)
+    """Require write or admin role"""
+    return require_roles('safot-write', 'safot-admin')(func)
 
 def require_read(func: Callable) -> Callable:
-    """Decorator to require read role or higher"""
-    return require_role('safot-read')(func)
+    """Require read, write, or admin role (basically any authenticated user)"""
+    return require_roles('safot-read', 'safot-write', 'safot-admin')(func)

@@ -115,8 +115,10 @@ export interface CurrentUser {
 }
 
 export interface UserPermissions {
-  // Direct role checking - no individual action permissions
-  hasRole: (requiredRole: string) => boolean;
-  // Helper for authorization messages
-  getAuthMessage: (action: string, requiredRole: string) => string;
+  // Basic role checking
+  hasRole: (role: string) => boolean;
+  hasAnyRole: (roles: string[]) => boolean;
+  
+  // Helper for messages (backward compatible)
+  getAuthMessage: (action: string, requiredRole: string | string[]) => string;
 }
