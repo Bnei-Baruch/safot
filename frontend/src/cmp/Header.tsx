@@ -1,10 +1,13 @@
 import React from 'react';
-import { AppBar, Toolbar, Typography, Button, Box, Container } from '@mui/material';
+import { AppBar, Toolbar, Typography, Button, Box, Container, Link } from '@mui/material';
+import { Link as RouterLink } from 'react-router-dom';
 import { useKeycloak } from '@react-keycloak/web';
+import { useUser } from '../contexts/UserContext';
 import logo from '../assets/img/logo.png';
 
 const Header: React.FC = () => {
   const { keycloak, initialized } = useKeycloak();
+  const { permissions } = useUser();
 
   if (!initialized) {
     return <div>Loading...</div>;
@@ -35,6 +38,19 @@ const Header: React.FC = () => {
                   </Box>
                 </Box>
 
+                {/* Navigation Links */}
+                {keycloak?.authenticated && (
+                  <Box sx={{ display: 'flex', gap: 2, mr: 2 }}>
+                    <Link component={RouterLink} to="/" sx={{ color: '#284952', textDecoration: 'none', fontFamily: 'Kanit, sans-serif' }}>
+                      Sources
+                    </Link>
+                    {permissions.hasRole('safot-admin') && (
+                      <Link component={RouterLink} to="/user-management" sx={{ color: '#284952', textDecoration: 'none', fontFamily: 'Kanit, sans-serif' }}>
+                        User Management
+                      </Link>
+                    )}
+                  </Box>
+                )}
               
                 {keycloak?.authenticated ? (
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 ,fontFamily: 'Kanit, sans-serif'}}>

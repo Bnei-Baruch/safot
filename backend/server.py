@@ -5,7 +5,7 @@ import logging
 from peewee import DoesNotExist, fn
 from dotenv import load_dotenv
 from docx import Document
-from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile, File, Form
+from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile, File, Form, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from keycloak import KeycloakOpenID
@@ -17,6 +17,7 @@ from services.segment_service import get_paragraphs_from_file, get_latest_segmen
 from services.rule_service import store_rules, get_rules_by_dictionary, get_rules_by_dictionary_all
 from services.dictionary_service import create_new_dictionary, create_new_dictionary_version, create_source_dictionary_link
 from services.source_service import create_or_update_source
+from services.user_service import UserManagementService
 from services.auth_decorators import *
 from models import Source, Segment, ParagraphsTranslateRequest, TranslationServiceOptions, Dictionary, Rule, SourceDictionaryLink
 from db import db
@@ -444,5 +445,82 @@ async def save_rules(request: Request, user_info: dict = Depends(get_user_info))
         logger.error("Error in /rules: %s", e)
         raise HTTPException(status_code=500, detail="Failed to store rules")
 
+
+####### USER MANAGEMENT
+# Initialize user management service
+user_service = UserManagementService()
+
+@app.get('/users', response_model=list[dict])
+@require_admin
+def get_all_users(search: str = None, user_info: dict = Depends(get_user_info)):
+    """Get all users with their roles - Admin only"""
+    try:
+        logger.info(f"Search parameter received: '{search}'")
+        users = user_service.get_all_users(search)
+        logger.info(f"Found {len(users)} users")
+        return users
+    except Exception as e:
+        logger.error(f"Error fetching users: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch users")
+
+@app.get('/roles', response_model=list[str])
+@require_admin
+def get_available_roles(user_info: dict = Depends(get_user_info)):
+    """Get all available roles - Admin only"""
+    try:
+        roles = user_service.get_available_roles()
+        return roles
+    except Exception as e:
+        logger.error(f"Error fetching roles: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch roles")
+
+@app.put('/users/{user_id}/roles', response_model=dict)
+@require_admin
+async def update_user_roles(user_id: str, request: Request, user_info: dict = Depends(get_user_info)):
+    """Update user roles - Admin only"""
+    try:
+        # Get the raw request body
+        body = await request.body()
+        logger.info(f"Raw request body: {body}")
+        
+        # Try to parse as JSON
+        import json
+        try:
+            data = json.loads(body)
+            logger.info(f"Parsed JSON data: {data}")
+            roles = data.get('roles', [])
+            logger.info(f"Extracted roles: {roles}")
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON decode error: {e}")
+            raise HTTPException(status_code=400, detail="Invalid JSON in request body")
+        
+        # Check if user is trying to remove their own admin role
+        current_user_id = user_info.get('sub')
+        if current_user_id == user_id:
+            # Get current user's roles
+            current_user_roles = user_service.get_user_roles(current_user_id)
+            current_role_names = [role['name'] for role in current_user_roles]
+            
+            # Check if user currently has admin role
+            has_admin_role = any('admin' in role_name.lower() for role_name in current_role_names)
+            
+            if has_admin_role:
+                # Check if they're trying to remove admin role
+                new_role_names = [role['name'] for role in roles if isinstance(role, dict)] + [role for role in roles if isinstance(role, str)]
+                will_have_admin_role = any('admin' in role_name.lower() for role_name in new_role_names)
+                
+                if not will_have_admin_role:
+                    raise HTTPException(status_code=403, detail="You cannot remove your own admin role")
+        
+        success = user_service.update_user_roles(user_id, roles)
+        if success:
+            return {"message": "User roles updated successfully", "user_id": user_id, "roles": roles}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to update user roles")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating user roles for {user_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update user roles: {str(e)}")
 
 

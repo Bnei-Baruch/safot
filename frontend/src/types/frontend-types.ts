@@ -122,3 +122,11 @@ export interface UserPermissions {
   // Helper for messages (backward compatible)
   getAuthMessage: (action: string, requiredRole: string | string[]) => string;
 }
+
+// User Management Types
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  roles: string[];
+}
