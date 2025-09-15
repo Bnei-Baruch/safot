@@ -1,51 +1,28 @@
 from datetime import datetime
-from db import db
-from docx import Document
-from dotenv import load_dotenv
-from keycloak import KeycloakOpenID
-import logging
 import os
+import logging
 
-from peewee import (
-	SQL,
-    DoesNotExist,
-    JOIN,
-    fn,
-)
-from peewee_migrate import Router
-from playhouse.shortcuts import model_to_dict
-from starlette.status import HTTP_401_UNAUTHORIZED
-
-from fastapi import (
-    Depends,
-    FastAPI,
-    File,
-    Form,
-    HTTPException,
-    Query,
-    Request,
-    UploadFile,
-)
+from peewee import DoesNotExist, fn
+from dotenv import load_dotenv
+from docx import Document
+from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile, File, Form, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from keycloak import KeycloakOpenID
+from playhouse.shortcuts import model_to_dict
+from starlette.status import HTTP_401_UNAUTHORIZED
 
 from services.translation_service import TranslationService
 from services.segment_service import get_paragraphs_from_file, get_latest_segments, store_segments
 from services.rule_service import store_rules, get_rules_by_dictionary, get_rules_by_dictionary_all
 from services.dictionary_service import create_new_dictionary, create_new_dictionary_version, create_source_dictionary_link
 from services.source_service import create_or_update_source
-from services.prompt import build_custom_prompt
+from services.user_service import UserManagementService
+from services.auth_decorators import *
+from models import Source, Segment, ParagraphsTranslateRequest, TranslationServiceOptions, Dictionary, Rule, SourceDictionaryLink
+from db import db
+from peewee_migrate import Router
 
-from models import (
-    Dictionary,
-    ParagraphsTranslateRequest,
-    PromptRequest,
-    Rule,
-    Segment,
-    Source,
-    SourceDictionaryLink,
-    TranslationServiceOptions,
-)
 
 def configure_logging():
     """Configure logging for the entire application"""
@@ -126,43 +103,13 @@ def shutdown():
 
 ####### SOURCES
 @app.get('/sources', response_model=list[dict])
-def read_sources(metadata: bool = Query(False), user_info: dict = Depends(get_user_info)):
-    if not metadata:
-        sources = list(Source.select().dicts())
-        return sources
-
-    max_timestamp_subquery = (
-        Segment
-        .select(Segment.order, Segment.source_id, fn.MAX(Segment.timestamp).alias('max_timestamp'))
-        .group_by(Segment.order, Segment.source_id)
-    )
-
-    segments_count = (
-        Segment
-        .select(
-            Segment.source_id.alias("source_id"),
-            fn.COUNT(Segment.id).alias("count"),
-			fn.EXTRACT(SQL("EPOCH FROM MAX(timestamp)")).alias("last_modified"),
-        )
-        .join(max_timestamp_subquery, on=(
-            (Segment.order == max_timestamp_subquery.c.order) &
-            (Segment.timestamp == max_timestamp_subquery.c.max_timestamp)
-        ))
-        .group_by(Segment.source_id)
-        .alias("S")
-    )
-    query = (
-        Source
-        .select(
-            Source,
-            segments_count.c.count,
-            segments_count.c.last_modified,
-        )
-        .join(segments_count, JOIN.LEFT_OUTER, on=(segments_count.c.source_id == Source.id))
-    )
-    return list(query.dicts())
+@require_read
+def read_sources(user_info: dict = Depends(get_user_info)):
+    sources = list(Source.select().dicts())
+    return sources
 
 @app.get('/sources/{source_id}', response_model=dict)
+@require_read
 def read_source(source_id: int, user_info: dict = Depends(get_user_info)):
     try:
         source = Source.get(Source.id == source_id)
@@ -171,11 +118,30 @@ def read_source(source_id: int, user_info: dict = Depends(get_user_info)):
         raise HTTPException(status_code=404, detail='Source not found')
 
 @app.post('/sources', response_model=dict)
-def create_or_update_source_handler(source: dict, user_info: dict = Depends(get_user_info)):
-    return create_or_update_source(source, user_info['preferred_username'])
+@require_write
+def create_source_handler(source: dict, user_info: dict = Depends(get_user_info)):
+    return create_source(source, user_info['preferred_username'])
+
+""" Not used in frontend.
+@app.put('/sources/{source_id}', response_model=dict)
+def update_source(source_id: int, source: dict, user_info: dict = Depends(get_user_info)):
+    try:
+        # Update fields dynamically
+        query = Source.update(
+            **source, timestamp=datetime.utcnow()).where(Source.id == source_id)
+        updated_rows = query.execute()
+
+        if updated_rows == 0:
+            raise HTTPException(status_code=404, detail='Source not found')
+        db_source = Source.get(Source.id == source_id)
+        return model_to_dict(db_source)
+    except DoesNotExist:
+        raise HTTPException(status_code=404, detail='Source not found')
+"""
 
 @app.delete('/sources/{translation_source_id}', response_model=list)
-def delete_source(translation_source_id: int, _: dict = Depends(get_user_info)):
+@require_write
+def delete_source(translation_source_id: int, user_info: dict = Depends(get_user_info)):
     try:
         source = Source.get(Source.id == translation_source_id)
     except Exception as e:
@@ -198,6 +164,7 @@ def delete_source(translation_source_id: int, _: dict = Depends(get_user_info)):
 
 ####### SEGMENTS 
 @app.get('/segments/{source_id}', response_model=list)
+@require_read
 def read_segments(source_id: int, user_info: dict = Depends(get_user_info)):
     try:
         # Sub query to get latest segments.
@@ -221,6 +188,7 @@ def read_segments(source_id: int, user_info: dict = Depends(get_user_info)):
             status_code=500, detail=f"Failed to fetch segments: {str(e)}")
 
 @app.post('/segments', response_model=list[dict])
+@require_write
 async def save_segments(request: Request, user_info: dict = Depends(get_user_info)):
     try:
         data = await request.json()
@@ -244,6 +212,7 @@ async def save_segments(request: Request, user_info: dict = Depends(get_user_inf
 
 ####### TRANSLATION
 @app.post("/translate", response_model=dict)
+@require_write
 def translate_paragraphs_handler(
     request: ParagraphsTranslateRequest,
     user_info: dict = Depends(get_user_info)
@@ -257,13 +226,24 @@ def translate_paragraphs_handler(
         if not request.prompt_text or not request.prompt_text.strip():
             raise HTTPException(status_code=400, detail="Missing prompt_text in request.")
 
+        options = TranslationServiceOptions(
+            source_language=request.source_language,
+            target_language=request.target_language,
+        )
+
         translation_service = TranslationService(
             api_key=OPENAI_API_KEY,
-            options=TranslationServiceOptions(),  # Allow setting options via request.
+            options=options,
+            examples=request.examples,
             prompt_text=request.prompt_text
         )
 
-        translated_paragraphs, properties = translation_service.translate_paragraphs(request.paragraphs)
+        translated_paragraphs, properties = translation_service.translate_paragraphs(
+            paragraphs=request.paragraphs,
+            dictionary_id=request.dictionary_id,
+            dictionary_timestamp=request.dictionary_timestamp
+        )
+
         end_time = datetime.utcnow()
         total_duration = (end_time - start_time).total_seconds()
         logger.info("Total translation time: %.2f seconds for %d paragraphs", total_duration, len(request.paragraphs))
@@ -281,7 +261,11 @@ def translate_paragraphs_handler(
     
 ####### IMPORT/EXPORT
 @app.post('/docx2text')
-def extract_segments_handler(file: UploadFile = File(...)):
+@require_write
+def extract_segments_handler(
+    file: UploadFile = File(...),
+    user_info: dict = Depends(get_user_info)
+):
     if not file.filename.lower().endswith('.docx'):
         raise HTTPException(status_code=400, detail="Only .docx files are supported.")
     try:
@@ -297,7 +281,8 @@ def extract_segments_handler(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail="Failed to extract segments")
     
 @app.get("/export/{source_id}", response_class=FileResponse)
-def export_translation(source_id: int):
+@require_read
+def export_translation(source_id: int, user_info: dict = Depends(get_user_info)):
 
     try:
         segments = get_latest_segments(source_id)
@@ -328,24 +313,8 @@ def export_translation(source_id: int):
 
 
 ####### DICTIONARY
-@app.post("/prompt", response_model=str)
-async def get_prompt(request: PromptRequest, dict = Depends(get_user_info)):
-    if request.dictionary_id is None and not request.custom_key:
-        raise HTTPException(status_code=400, detail=f"Either dictionary_id or custom_key should be set.")
-    try:
-        if request.custom_key:
-            return build_custom_prompt(
-                request.custom_key,
-                request.source_language,
-                request.target_language)
-        else:
-            # build prompt from dictionary_id 
-            raise HTTPException(status_code=500, detail=f"Unimplemented")
-    except Exception as e:
-        logger.error("Error getting prompt: %s", e)
-        raise HTTPException(status_code=500, detail=f"Failed to get prompt: {str(e)}")
-
 @app.post("/dictionary/new/{source_id}", response_model=dict)
+@require_write
 async def create_new_dictionary_handler(source_id: int, request: Request, user_info: dict = Depends(get_user_info)):
     try:
         data = await request.json()
@@ -379,6 +348,7 @@ async def create_new_dictionary_handler(source_id: int, request: Request, user_i
 
 
 @app.post("/dictionary/version/{source_id}", response_model=dict)
+@require_write
 def create_dictionary_version_handler(source_id: int, user_info: dict = Depends(get_user_info)):
     try:
         # find latest link by timestamp
@@ -437,6 +407,7 @@ def create_dictionary_version_handler(source_id: int, user_info: dict = Depends(
 
 ####### RULES
 @app.get("/rules/by-dictionary", response_model=list[dict])
+@require_read
 def fetch_rules_by_dictionary(dictionary_id: int, dictionary_timestamp: datetime, user_info: dict = Depends(get_user_info)):
     try:
         rules = get_rules_by_dictionary(dictionary_id, dictionary_timestamp)
@@ -447,6 +418,7 @@ def fetch_rules_by_dictionary(dictionary_id: int, dictionary_timestamp: datetime
 
 
 @app.get("/rules/by-dictionary-all", response_model=list[dict])
+@require_read
 def fetch_rules_by_dictionary_all(dictionary_id: int, user_info: dict = Depends(get_user_info)):
     try:
         rules = get_rules_by_dictionary_all(dictionary_id)
@@ -457,6 +429,7 @@ def fetch_rules_by_dictionary_all(dictionary_id: int, user_info: dict = Depends(
 
 
 @app.post("/rules", response_model=list[dict])
+@require_write
 async def save_rules(request: Request, user_info: dict = Depends(get_user_info)):
     try:
         data = await request.json()
@@ -472,5 +445,82 @@ async def save_rules(request: Request, user_info: dict = Depends(get_user_info))
         logger.error("Error in /rules: %s", e)
         raise HTTPException(status_code=500, detail="Failed to store rules")
 
+
+####### USER MANAGEMENT
+# Initialize user management service
+user_service = UserManagementService()
+
+@app.get('/users', response_model=list[dict])
+@require_admin
+def get_all_users(search: str = None, user_info: dict = Depends(get_user_info)):
+    """Get all users with their roles - Admin only"""
+    try:
+        logger.info(f"Search parameter received: '{search}'")
+        users = user_service.get_all_users(search)
+        logger.info(f"Found {len(users)} users")
+        return users
+    except Exception as e:
+        logger.error(f"Error fetching users: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch users")
+
+@app.get('/roles', response_model=list[str])
+@require_admin
+def get_available_roles(user_info: dict = Depends(get_user_info)):
+    """Get all available roles - Admin only"""
+    try:
+        roles = user_service.get_available_roles()
+        return roles
+    except Exception as e:
+        logger.error(f"Error fetching roles: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch roles")
+
+@app.put('/users/{user_id}/roles', response_model=dict)
+@require_admin
+async def update_user_roles(user_id: str, request: Request, user_info: dict = Depends(get_user_info)):
+    """Update user roles - Admin only"""
+    try:
+        # Get the raw request body
+        body = await request.body()
+        logger.info(f"Raw request body: {body}")
+        
+        # Try to parse as JSON
+        import json
+        try:
+            data = json.loads(body)
+            logger.info(f"Parsed JSON data: {data}")
+            roles = data.get('roles', [])
+            logger.info(f"Extracted roles: {roles}")
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON decode error: {e}")
+            raise HTTPException(status_code=400, detail="Invalid JSON in request body")
+        
+        # Check if user is trying to remove their own admin role
+        current_user_id = user_info.get('sub')
+        if current_user_id == user_id:
+            # Get current user's roles
+            current_user_roles = user_service.get_user_roles(current_user_id)
+            current_role_names = [role['name'] for role in current_user_roles]
+            
+            # Check if user currently has admin role
+            has_admin_role = any('admin' in role_name.lower() for role_name in current_role_names)
+            
+            if has_admin_role:
+                # Check if they're trying to remove admin role
+                new_role_names = [role['name'] for role in roles if isinstance(role, dict)] + [role for role in roles if isinstance(role, str)]
+                will_have_admin_role = any('admin' in role_name.lower() for role_name in new_role_names)
+                
+                if not will_have_admin_role:
+                    raise HTTPException(status_code=403, detail="You cannot remove your own admin role")
+        
+        success = user_service.update_user_roles(user_id, roles)
+        if success:
+            return {"message": "User roles updated successfully", "user_id": user_id, "roles": roles}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to update user roles")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating user roles for {user_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update user roles: {str(e)}")
 
 

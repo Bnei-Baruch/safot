@@ -1,60 +1,56 @@
 export interface Segment {
-  id?: number;
-  text: string;
-  source_id: number;
-  order: number;
-  username?: string;
-  timestamp?: string;
-  original_segment_id?: number;
-  original_segment_timestamp?: string;
-  properties?: {
-    segment_type?: "user_translation" | "provider_translation" | "edited" | "file";
-    [key: string]: any;
-  };
+    id?: number;
+    text: string;
+    source_id: number;
+    order: number;
+    username?: string;
+    timestamp?: string;
+    original_segment_id?: number;
+    original_segment_timestamp?: string;
+    properties?: {
+        segment_type?: "user_translation" | "provider_translation" | "edited" | "file";
+        [key: string]: any;
+    };
 }
 
 export interface BuildSegmentParams {
-  text: string;
-  source_id: number;
-  order: number;
-  properties: {
-    segment_type?: "user_translation" | "provider_translation" | "edited" | "file";
-    [key: string]: any;
-  };
-  id?: number;
-  original_segment_id?: number;
-  original_segment_timestamp?: string;
+    text: string;
+    source_id: number;
+    order: number;
+    properties: {
+        segment_type?: "user_translation" | "provider_translation" | "edited" | "file";
+        [key: string]: any;
+    };
+    id?: number;
+    original_segment_id?: number;
+    original_segment_timestamp?: string;
 }
 
 export interface Source {
-  id: number;
-  name: string;
-  language: string;
-  username: string;
-  original_source_id?: number | null;
-  type?: string;
-  order?: number | null;
-  labels?: string[];
-  parent_source_id?: number | null;
-  properties?: Record<string, any>;
-
-  // Metadata
-  count?: number;
-  last_modified?: number;
+    id: number;
+    name: string;
+    language: string;
+    username: string;
+    original_source_id?: number | null;
+    type?: string;
+    order?: number | null;
+    labels?: string[];
+    parent_source_id?: number | null;
+    properties?: Record<string, any>;
 }
 
 export interface SourcePair {
-  original: Source;
-  translated: Source;
+    original: Source;
+    translated: Source;
 }
 
 export enum Language {
-  ENGLISH = "English",
-  HEBREW = "Hebrew",
-  SPANISH = "Spanish",
-  RUSSIAN = "Russian",
-  FRENCH = "French",
-  ARABIC = "Arabic"
+    ENGLISH = "English",
+    HEBREW = "Hebrew",
+    SPANISH = "Spanish",
+    RUSSIAN = "Russian",
+    FRENCH = "French",
+    ARABIC = "Arabic"
 } 
 
 export type FilterType = 'mine' | 'none' | 'file' | 'language' | 'from_language';
@@ -71,9 +67,9 @@ export interface SourceFilterProps {
 }
 
 export interface LanguageOption {
-  code: string;
-  label: string;
-  direction: 'ltr' | 'rtl';
+    code: string;
+    label: string;
+    direction: 'ltr' | 'rtl';
 }
 
 export interface Example {
@@ -108,3 +104,29 @@ export interface Dictionary {
   total_count: number;
   has_more: boolean;
 }*/
+
+// User Management Types
+export interface CurrentUser {
+  sub: string;  // Keycloak user ID
+  preferred_username?: string;
+  email?: string;
+  name?: string;
+  roles: string[];  // Keycloak roles (safot-admin, safot-write, safot-read)
+}
+
+export interface UserPermissions {
+  // Basic role checking
+  hasRole: (role: string) => boolean;
+  hasAnyRole: (roles: string[]) => boolean;
+  
+  // Helper for messages (backward compatible)
+  getAuthMessage: (action: string, requiredRole: string | string[]) => string;
+}
+
+// User Management Types
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  roles: string[];
+}
