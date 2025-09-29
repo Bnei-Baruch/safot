@@ -22,3 +22,35 @@ code {
 .App {
   text-align: center;
 } 
+
+/* make the split container a flex row */
+.split {
+  display: flex;
+  flex-direction: row;
+  height: calc(100vh - 100px);
+}
+
+.edit-virtuoso-height {
+  height: calc(100vh - 230px);
+}
+
+/* optional: make children scroll instead of overflowing */
+.split > * {
+  min-width: 0;          /* prevents flex items from forcing wrap */
+  overflow: auto;
+}
+
+/* gutters look/behave correctly */
+.gutter.gutter-horizontal {
+      cursor: col-resize;
+      height: 100%;
+      background-color: grey;
+}
+
+.split.close .gutter.gutter-horizontal {
+  display: none;
+}
+
+.split.close .right-side-pane {
+  display: none;
+}

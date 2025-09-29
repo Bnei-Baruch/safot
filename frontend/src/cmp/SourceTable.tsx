@@ -24,6 +24,7 @@ import { deleteSource } from '../store/SourceSlice';
 import { SourcePair } from '../types/frontend-types';
 import { LANGUAGES } from '../constants/languages';
 import { exportTranslationDocx } from '../services/segment.service';
+import { extractUsername, formatShortDateTime } from './Utils';
 
 const renderLang = (code: string) => {
   const lang = LANGUAGES.find(l => l.code === code);
@@ -42,9 +43,11 @@ type SortField =
   'translatedName' |
   'originalName' |
   'username' |
+  'created_at' |
+  'modified_by' |
+  'modified_at' |
   'originalLanguage' |
   'translatedLanguage' |
-  'lastModified' |
   'progress';
 
 const docx = async (sourceId: number, name: string, language: string) => {
@@ -66,35 +69,14 @@ const docx = async (sourceId: number, name: string, language: string) => {
   }
 };
 
-const formatShortDateTime = (timestamp: number): string => {
-  if (!timestamp) {
-    return '';
-  }
-
-  const date = new Date(timestamp*1000);
-
-  const day = String(date.getDate()).padStart(2, '0');
-  const month = String(date.getMonth() + 1).padStart(2, '0'); // months are 0-based
-  const year = String(date.getFullYear());
-
-  const hours = String(date.getHours()).padStart(2, '0');
-  const minutes = String(date.getMinutes()).padStart(2, '0');
-
-  return `${day}/${month}/${year} ${hours}:${minutes}`;
-};
-
 const PREFERRED_ORDER = 'preffered_order';
 const PREFERRED_DIRECTION = 'preffered_direction';
 
 const SourceTable: React.FC<SourceTableProps> = ({ pairs }) => {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
-  const [sortField, setSortField] = useState<SortField>(localStorage.getItem(PREFERRED_ORDER) as SortField || 'lastModified');
+  const [sortField, setSortField] = useState<SortField>(localStorage.getItem(PREFERRED_ORDER) as SortField || 'modified_at');
   const [sortDirection, setSortDirection] = useState<SortDirection>(localStorage.getItem(PREFERRED_DIRECTION) as SortDirection || 'asc');
-
-  const extractUsername = (email: string) => {
-    return email.split('@')[0];
-  };
 
   const handleSort = (field: SortField) => {
     if (field === sortField) {
@@ -119,6 +101,8 @@ const SourceTable: React.FC<SourceTableProps> = ({ pairs }) => {
         return direction * a.original.name.localeCompare(b.original.name);
       case 'username':
         return direction * extractUsername(a.original.username).localeCompare(extractUsername(b.original.username));
+      case 'modified_by':
+        return direction * extractUsername(a.original.modified_by).localeCompare(extractUsername(b.original.modified_by));
       case 'originalLanguage':
         return direction * a.original.language.localeCompare(b.original.language);
       case 'translatedLanguage':
@@ -126,8 +110,10 @@ const SourceTable: React.FC<SourceTableProps> = ({ pairs }) => {
         if (!a.translated) return 1;
         if (!b.translated) return -1;
         return direction * a.translated.language.localeCompare(b.translated.language);
-      case 'lastModified':
-        return direction * ((a.translated.last_modified || 0) - (b.translated.last_modified || 0));
+      case 'created_at':
+        return direction * ((a.translated.created_at_epoch || 0) - (b.translated.created_at_epoch || 0));
+      case 'modified_at':
+        return direction * ((a.translated.modified_at_epoch || 0) - (b.translated.modified_at_epoch || 0));
       case 'progress':
         return direction * ((a.translated.count || 0) / (a.original.count || 1) - (b.translated.count || 0) / (b.original.count || 1));
       default:
@@ -171,23 +157,29 @@ const SourceTable: React.FC<SourceTableProps> = ({ pairs }) => {
       <Table size="small">
         <TableHead>
           <TableRow>
-            <TableCell sx={{ maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <TableCell sx={{ maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               <SortableHeader field="originalName" label="Source" />
             </TableCell>
             <TableCell>
               <SortableHeader field="originalLanguage" label="From" />
             </TableCell>
-            <TableCell sx={{ maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <TableCell sx={{ maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               <SortableHeader field="translatedName" label="Trnslation" />
             </TableCell>
             <TableCell>
               <SortableHeader field="translatedLanguage" label="To" />
             </TableCell>
             <TableCell>
-              <SortableHeader field="username" label="Upload By" />
+              <SortableHeader field="username" label="Created By" />
             </TableCell>
             <TableCell>
-              <SortableHeader field="lastModified" label="Last Modified" />
+              <SortableHeader field="created_at" label="Created At" />
+            </TableCell>
+            <TableCell>
+              <SortableHeader field="modified_by" label="Last Modified By" />
+            </TableCell>
+            <TableCell>
+              <SortableHeader field="modified_at" label="Last Modified At" />
             </TableCell>
             <TableCell>
               <SortableHeader field="progress" label="Progress" />
@@ -198,18 +190,20 @@ const SourceTable: React.FC<SourceTableProps> = ({ pairs }) => {
         <TableBody>
           {sortedPairs.map(({ original, translated }) => (
             <TableRow key={translated.id}>
-              <TableCell sx={{ maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <TableCell sx={{ maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {original.name}
               </TableCell>
               <TableCell>{renderLang(original.language)}</TableCell>
-              <TableCell sx={{ maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <TableCell sx={{ maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {translated.name}
                </TableCell>
               <TableCell>{translated ? renderLang(translated.language) : '-'}</TableCell>
               <TableCell>{extractUsername(translated.username)}</TableCell>
-              <TableCell>{formatShortDateTime(translated.last_modified || 0)}</TableCell>
+              <TableCell>{formatShortDateTime(translated.created_at_epoch || 0)}</TableCell>
+              <TableCell>{extractUsername(translated.modified_by)}</TableCell>
+              <TableCell>{formatShortDateTime(translated.modified_at_epoch || 0)}</TableCell>
               <TableCell>{translated.count || 0} / {original.count}</TableCell>
-              <TableCell>
+              <TableCell sx={{ whiteSpace: 'nowrap' }}>
                 {translated && (
                   <IconButton color="primary" onClick={() => navigate(`/source-edit/${translated.id}`)}>
                     <EditIcon />

@@ -3,35 +3,41 @@ import { useParams, useNavigate } from "react-router-dom";
 
 import debounce from "lodash.debounce";
 import { TableVirtuoso } from "react-virtuoso";
+import Split from "react-split";
 
 import {
   Box,
   Button,
   Container,
-	IconButton,
+  IconButton,
   Paper,
   Table,
   TableCell,
   TableContainer,
   TableRow,
   TextField,
+  Tooltip,
   Typography,
 } from "@mui/material";
 
 import {
-  Add as AddIcon,
-  ArrowBackIosNew as ArrowBackIosNewIcon,
 	ArrowForward as ArrowForwardIcon,
 	Check as CheckIcon,
 	Close as CloseIcon,
 	Edit as EditIcon,
+  ArrowBackIosNew as ArrowBackIosNewIcon,
+  ChevronLeft as ChevronLeftIcon,
+  ChevronRight as ChevronRightIcon,
+  MenuBook as MenuBookIcon,
   Save as SaveIcon,
+  Translate as TranslateIcon,
 } from '@mui/icons-material';
 
 import { buildSegment, exportTranslationDocx } from '../services/segment.service';
 import { useAppDispatch, useAppSelector, RootState } from '../store/store';
 import { fetchSegments, saveSegments } from '../store/SegmentSlice';
 import { fetchSource, addOrUpdateSource } from '../store/SourceSlice';
+import Dictionary from '../cmp/Dictionary';
 
 import { useFlow } from '../useFlow';
 import { useToast } from '../cmp/Toast';
@@ -39,6 +45,9 @@ import { Segment, Source } from '../types/frontend-types';
 import { LANGUAGES, LANG_DIRS } from '../constants/languages';
 
 const getSource = (sources: Record<number, Source>, id: number | undefined): Source | undefined => (sources && id && (id in sources) && sources[id]) || undefined;
+
+const DICTIONARY_OPEN = 'dictionary-open';
+const RIGHT_PANE_SIZE = 'right-pane-size';
 
 const SourceEdit: React.FC = () => {
   const navigate = useNavigate();
@@ -63,19 +72,21 @@ const SourceEdit: React.FC = () => {
     acc[s.order] = s;
     return acc;
   }, {}), [segments, translatedSourceId]);
-  console.log('translatedSegmentsByOrder', translatedSegmentsByOrder);
 
   // Maps translated segments order to text area value.
   const [translations, setTranslations] = useState<Record<number, string>>({});
 	const [titleEditing, setTitleEditing] = useState<{original: string, translated: string} | null>(null);
 
+  const [dictionaryOpen, setDictionaryOpen] = useState<boolean>(
+              localStorage.getItem(DICTIONARY_OPEN) === "true" || false);
+  const [rightPaneSize, setRightPaneSize] = useState<number>(
+              Number(localStorage.getItem(RIGHT_PANE_SIZE) || "0") || 40);
+
   useEffect(() => {
     if (translatedSourceId && !(translatedSourceId in sources)) {
-      console.log('fetch source');
       dispatch(fetchSource({ id: translatedSourceId }));
     }
     if (originalSourceId && !(originalSourceId in sources)) {
-      console.log('fetch original source');
       dispatch(fetchSource({ id: originalSourceId }));
     }
   }, [dispatch, translatedSourceId, originalSourceId, sources]);
@@ -90,7 +101,6 @@ const SourceEdit: React.FC = () => {
 
   useEffect(() => {
     if (translatedSourceId && segments[translatedSourceId]) {
-      console.log('setTranslations...');
       setTranslations(segments[translatedSourceId].reduce((acc: Record<number, string>, s: Segment): Record<number, string> => {
         acc[s.order] = s.text;
         return acc;
@@ -198,170 +208,221 @@ const SourceEdit: React.FC = () => {
 		return `${translatedLength}/${originalLength}`;
 	}
   
-  console.log('render');
-
   return (
     <Box sx={{ backgroundColor: '#f5f5f5', width: '100vw', display: 'flex', flexDirection: 'column' }}>
-      <Container maxWidth="lg" >
-        <Box display="flex" justifyContent="space-between" alignItems="center" sx={{ mt: 2 }}>
-          <Button
-            onClick={() => navigate('/')}
-            startIcon={<ArrowBackIosNewIcon />}
-            sx={{ color: '#1976d2', textTransform: 'none', fontWeight: 'bold' }}
-          >
+      <Split
+        sizes={[
+          !dictionaryOpen ? 100 : rightPaneSize,
+          !dictionaryOpen ? 0 : 100-rightPaneSize,
+        ]}
+        minSize={200}
+        gutterSize={6}
+        direction="horizontal"
+        className={`split ${dictionaryOpen ? "open" : "close"}`}
+        onDrag={(next: number[]) => {
+          setRightPaneSize(next[0]);
+        }}
+        onDragEnd={(final: number[]) => {
+          setRightPaneSize(final[0]);
+          localStorage.setItem(RIGHT_PANE_SIZE, final[0].toString());
+        }}
+      >
+        <Container maxWidth="lg" sx={{ minWidth: '450px'}}>
+          <Box display="flex" justifyContent="space-between" alignItems="center" sx={{ mt: 2 }}>
+            <Button
+              onClick={() => navigate('/')}
+              startIcon={<ArrowBackIosNewIcon />}
+              sx={{ color: '#1976d2', textTransform: 'none', fontWeight: 'bold', whiteSpace: 'nowrap' }}
+            >
               Back to sources
-          </Button>
-          <Box display="flex" gap={2}>
-            <Button
-                variant="contained"
-                color="primary"
-                onClick={handleExportDocx}
-            >
-                Export to DOCX
             </Button>
-            <Button
-                color="primary"
-                variant="contained"
-                onClick={handleTranslateMore}
-                disabled={!!loadingCount}
-                size="medium"
-                sx={{ boxShadow: 'none', height: 40 }}
-            >
-                <AddIcon sx={{ mr: 1 }} /> 
-                {loadingCount ? 'Translating...' : 'Translate More'}
-            </Button>
+            <Box display="flex" gap={2}>
+              <Tooltip title="Download docx" arrow>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={handleExportDocx}
+                >
+                  DOCX
+                </Button>
+              </Tooltip>
+              <Tooltip title="Translate more" arrow>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={handleTranslateMore}
+                  disabled={!!loadingCount}
+                >
+                  <TranslateIcon />
+                </Button>
+              </Tooltip>
+              <Tooltip title={`${dictionaryOpen ? "Close" : "Open"} dictionary pane`} arrow>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={() => {
+                    localStorage.setItem(DICTIONARY_OPEN, !dictionaryOpen ? "true" : "false");
+                    setDictionaryOpen(!dictionaryOpen);
+                  }}
+                >
+                <MenuBookIcon />
+                  {!dictionaryOpen && <ChevronLeftIcon />}
+                  {dictionaryOpen && <ChevronRightIcon />}
+                </Button>
+              </Tooltip>
+            </Box>
           </Box>
-        </Box>
-        <Box>
-          <Typography variant="h5" sx={{ fontWeight: 'bold', fontFamily: 'inherit', my: 2 }}>
-              {titleEditing === null && <>
-								{originalSource?.name}
-								<ArrowForwardIcon fontSize="large" sx={{ verticalAlign: 'bottom', mx: 2 }} />
-								{translatedSource?.name}
-								<IconButton onClick={() => setTitleEditing({translated: translatedSource?.name || '', original: originalSource?.name || ''})} size="small">
-									<EditIcon fontSize="small" />
-								</IconButton>
-							</>}
-              {titleEditing !== null && <>
-								<TextField
-									variant="standard"
-									InputProps={{ sx: (theme) => ({ ...theme.typography.h6, fontWeight: 'bold', minWidth: '350px' }) }}
-									value={titleEditing.original}
-									onChange={(e) => setTitleEditing({original: e.target.value, translated: titleEditing.translated})}
-									autoFocus
-									error={titleEditing.original.trim() === ""}
-									helperText={titleEditing.original.trim() === "" ? "Title is required" : ""}
-								/>
-								<ArrowForwardIcon fontSize="large" sx={{ verticalAlign: 'bottom', mx: 2 }} />
-								<TextField
-									variant="standard"
-									InputProps={{ sx: (theme) => ({ ...theme.typography.h6, fontWeight: 'bold', minWidth: '350px' }) }}
-									value={titleEditing.translated}
-									onChange={(e) => setTitleEditing({original: titleEditing.original, translated: e.target.value})}
-									autoFocus
-									error={titleEditing.translated.trim() === ""}
-									helperText={titleEditing.translated.trim() === "" ? "Title is required" : ""}
-								/>
-								<IconButton
-									disabled={titleEditing.original.trim() === "" || titleEditing.translated.trim() === ""}
-									onClick={async () => {
-										if (translatedSource && translatedSource.id && translatedSource.name !== titleEditing.translated) {
-											await dispatch(addOrUpdateSource({ ...translatedSource, name: titleEditing.translated }));
-										}
-										if (originalSource && originalSource.id && originalSource.name !== titleEditing.original) {
-											await dispatch(addOrUpdateSource({ ...originalSource, name: titleEditing.original }));
-										}
-										setTitleEditing(null);
-									}} size="small">
-									<CheckIcon fontSize="small" />
-								</IconButton>
-								<IconButton onClick={() => setTitleEditing(null)} size="small">
-									<CloseIcon fontSize="small" />
-								</IconButton>
-							</>}
-							&nbsp;&nbsp;&nbsp;&nbsp;
-							{countSegments()}
-          </Typography>
-        </Box>
-  
-        {/* Scrollable table */}
-        <Box>
-          <TableContainer component={Paper} sx={{ height: 'calc(100vh - 230px)' }}>
-            <TableVirtuoso
-              data={(originalSourceId && segments[originalSourceId]) || []}
-              fixedHeaderContent={() => (
-                <TableRow sx={{ backgroundColor: 'white' }}>
-                  <TableCell>Order</TableCell>
-                  <TableCell style={{ width: '40%' }}>
-                  Source ({(originalSource && getLanguageName(originalLanguage)) || 'Unknown'})
-                  </TableCell>
-                  <TableCell style={{ width: '50%' }}>
-                  Translation ({getLanguageName(translatedLanguage)})
-                  </TableCell>
-                  <TableCell style={{ width: '10%' }}>Actions</TableCell>
-                </TableRow>
-              )}
-              itemContent={(index, originalSegment: Segment) => {
-                // TODO: Original segment might not match by timestamp with 
-                // translatedSegment.original_segment_timestamp, in that case we should notify
-                // user that the origin has a new version to allow rebasing translation to a newer source.
-                const translatedSegment = translatedSegmentsByOrder[originalSegment.order];
+          <Box>
+            <Typography
+              variant="h5"
+              sx={{
+                fontWeight: 'bold',
+                fontFamily: 'inherit',
+                my: 2,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+                {titleEditing === null && <>
+                  {originalSource?.name}
+                  <ArrowForwardIcon fontSize="large" sx={{ verticalAlign: 'bottom', mx: 2 }} />
+                  {translatedSource?.name}
+                  <IconButton onClick={() => setTitleEditing({translated: translatedSource?.name || '', original: originalSource?.name || ''})} size="small">
+                    <EditIcon fontSize="small" />
+                  </IconButton>
+                </>}
+                {titleEditing !== null && <>
+                  <TextField
+                    variant="standard"
+                    InputProps={{ sx: (theme) => ({ ...theme.typography.h6, fontWeight: 'bold', minWidth: '350px' }) }}
+                    value={titleEditing.original}
+                    onChange={(e) => setTitleEditing({original: e.target.value, translated: titleEditing.translated})}
+                    autoFocus
+                    error={titleEditing.original.trim() === ""}
+                    helperText={titleEditing.original.trim() === "" ? "Title is required" : ""}
+                  />
+                  <ArrowForwardIcon fontSize="large" sx={{ verticalAlign: 'bottom', mx: 2 }} />
+                  <TextField
+                    variant="standard"
+                    InputProps={{ sx: (theme) => ({ ...theme.typography.h6, fontWeight: 'bold', minWidth: '350px' }) }}
+                    value={titleEditing.translated}
+                    onChange={(e) => setTitleEditing({original: titleEditing.original, translated: e.target.value})}
+                    autoFocus
+                    error={titleEditing.translated.trim() === ""}
+                    helperText={titleEditing.translated.trim() === "" ? "Title is required" : ""}
+                  />
+                  <IconButton
+                    disabled={titleEditing.original.trim() === "" || titleEditing.translated.trim() === ""}
+                    onClick={async () => {
+                      if (translatedSource && translatedSource.id && translatedSource.name !== titleEditing.translated) {
+                        await dispatch(addOrUpdateSource({ ...translatedSource, name: titleEditing.translated }));
+                      }
+                      if (originalSource && originalSource.id && originalSource.name !== titleEditing.original) {
+                        await dispatch(addOrUpdateSource({ ...originalSource, name: titleEditing.original }));
+                      }
+                      setTitleEditing(null);
+                    }} size="small">
+                    <CheckIcon fontSize="small" />
+                  </IconButton>
+                  <IconButton onClick={() => setTitleEditing(null)} size="small">
+                    <CloseIcon fontSize="small" />
+                  </IconButton>
+                </>}
+                &nbsp;&nbsp;&nbsp;&nbsp;
+                {countSegments()}
+            </Typography>
+          </Box>
+    
+          {/* Scrollable table */}
+          <Box>
+            <TableContainer component={Paper} className="edit-virtuoso-height">
+              <TableVirtuoso
+                data={(originalSourceId && segments[originalSourceId]) || []}
+                fixedHeaderContent={() => (
+                  <TableRow sx={{ backgroundColor: 'white' }}>
+                    <TableCell>Order</TableCell>
+                    <TableCell style={{ width: '40%' }}>
+                    Source ({(originalSource && getLanguageName(originalLanguage)) || 'Unknown'})
+                    </TableCell>
+                    <TableCell style={{ width: '50%' }}>
+                    Translation ({getLanguageName(translatedLanguage)})
+                    </TableCell>
+                    <TableCell style={{ width: '10%' }}>Actions</TableCell>
+                  </TableRow>
+                )}
+                itemContent={(index, originalSegment: Segment) => {
+                  // TODO: Original segment might not match by timestamp with 
+                  // translatedSegment.original_segment_timestamp, in that case we should notify
+                  // user that the origin has a new version to allow rebasing translation to a newer source.
+                  const translatedSegment = translatedSegmentsByOrder[originalSegment.order];
 
-                return (
-                  <>
-                    <TableCell>{originalSegment.order}</TableCell>
-                    <TableCell style={{
-                      wordBreak: 'break-word',
-                      whiteSpace: 'pre-wrap',
-                      verticalAlign: 'top',
-                      direction: LANG_DIRS[originalLanguage],
-                      textAlign: LANG_DIRS[originalLanguage] === 'rtl' ? 'right' : 'left'
-                    }}>
-                      {originalSegment.text}
-                    </TableCell>
-                    <TableCell style={{
-                      wordBreak: 'break-word',
-                      whiteSpace: 'pre-wrap',
-                      verticalAlign: 'top',
-                      direction: LANG_DIRS[translatedLanguage],
-                      textAlign: LANG_DIRS[translatedLanguage] === 'rtl' ? 'right' : 'left'
-                    }}>
-                      <TextField
-                        fullWidth
-                        multiline
-                        minRows={1}
-                        maxRows={30}
-                        defaultValue={translations[originalSegment.order]}
-                        onChange={(e) => updateTranslations(originalSegment.order, e.target.value)}
-                        placeholder="Enter translation"
-                        inputProps={{
-                          style: {
-                            direction: LANG_DIRS[translatedLanguage],
-                            textAlign: LANG_DIRS[translatedLanguage] === 'rtl' ? 'right' : 'left'
-                          }
-                        }}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        variant="contained"
-                        color="primary"
-                        onClick={() => handleSaveTranslation(translatedSegment, originalSegment, translations[originalSegment.order])}
-                        disabled={translatedSegment && translations[originalSegment.order] === translatedSegment.text}
-                      >
-                        <SaveIcon />
-                      </Button>
-                    </TableCell>
-                  </>
-                );
-              }}
-              components={{
-                Table: (props) => <Table stickyHeader {...props} />,
-              }}
-            />
-          </TableContainer>
-        </Box>
-      </Container>
+                  return (
+                    <>
+                      <TableCell>{originalSegment.order}</TableCell>
+                      <TableCell style={{
+                        wordBreak: 'break-word',
+                        whiteSpace: 'pre-wrap',
+                        verticalAlign: 'top',
+                        direction: LANG_DIRS[originalLanguage],
+                        textAlign: LANG_DIRS[originalLanguage] === 'rtl' ? 'right' : 'left'
+                      }}>
+                        {originalSegment.text}
+                      </TableCell>
+                      <TableCell style={{
+                        wordBreak: 'break-word',
+                        whiteSpace: 'pre-wrap',
+                        verticalAlign: 'top',
+                        direction: LANG_DIRS[translatedLanguage],
+                        textAlign: LANG_DIRS[translatedLanguage] === 'rtl' ? 'right' : 'left'
+                      }}>
+                        <TextField
+                          fullWidth
+                          multiline
+                          minRows={1}
+                          maxRows={30}
+                          defaultValue={translations[originalSegment.order]}
+                          onChange={(e) => updateTranslations(originalSegment.order, e.target.value)}
+                          placeholder="Enter translation"
+                          inputProps={{
+                            style: {
+                              direction: LANG_DIRS[translatedLanguage],
+                              textAlign: LANG_DIRS[translatedLanguage] === 'rtl' ? 'right' : 'left'
+                            }
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="contained"
+                          color="primary"
+                          onClick={() => handleSaveTranslation(translatedSegment, originalSegment, translations[originalSegment.order])}
+                          disabled={translatedSegment && translations[originalSegment.order] === translatedSegment.text}
+                        >
+                          <SaveIcon />
+                        </Button>
+                      </TableCell>
+                    </>
+                  );
+                }}
+                components={{
+                  Table: (props) => <Table stickyHeader {...props} />,
+                }}
+              />
+            </TableContainer>
+          </Box>
+        </Container>
+        <Container maxWidth="lg"  sx={{ minWidth: '350px' }} className="right-side-pane">
+          {translatedSource && <Dictionary
+						source={translatedSource}
+						sourceUpdated={() => {
+							if (translatedSourceId) {
+								dispatch(fetchSource({ id: translatedSourceId }));
+							}
+						}}
+					/>}
+        </Container>
+      </Split>
     </Box>
   );
 };

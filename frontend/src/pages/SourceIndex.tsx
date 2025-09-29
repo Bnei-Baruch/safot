@@ -56,7 +56,7 @@ const SourceIndex: React.FC = () => {
   }, [sourcePairs, filterType, fileNameFilter, languageFilter, fromLanguageFilter, keycloak.tokenParsed]);
 
   return (
-    <Container maxWidth="lg" sx={{ position: 'relative' }}>
+    <Container maxWidth="xl" sx={{ position: 'relative' }}>
       <Box sx={{ position: 'absolute', top: -30, right: 30 }}>
         <SourceFilter
           filterType={filterType}

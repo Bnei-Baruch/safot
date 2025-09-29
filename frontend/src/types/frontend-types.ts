@@ -1,3 +1,5 @@
+// TODO: Refactor Segment to be like Rule/Dictionary with _epoch fields
+// also changing backend code...
 export interface Segment {
   id?: number;
   text: string;
@@ -30,17 +32,28 @@ export interface Source {
   id: number;
   name: string;
   language: string;
-  username: string;
-  original_source_id?: number | null;
-  type?: string;
-  order?: number | null;
   labels?: string[];
-  parent_source_id?: number | null;
+  type?: string;
+  order?: number;
+
+  original_source_id?: number;
+  parent_source_id?: number;
+
   properties?: Record<string, any>;
 
-  // Metadata
+  username: string;
+  created_at: string;
+  modified_by?: string;
+  modified_at?: string;
+
+	dictionary_id: number;
+	dictionary_timestamp: string | number;
+
+  // Metadata, output fields only.
   count?: number;
-  last_modified?: number;
+  created_at_epoch: number;
+  modified_at_epoch: number;
+	dictionary_timestamp_epoch: number;
 }
 
 export interface SourcePair {
@@ -90,21 +103,36 @@ export interface Rule {
   username?: string;
   type: string;
   dictionary_id: number;
-  dictionary_timestamp?: string;
   properties: Record<string, any>;
+	order: number;
+
+	// Output only field.
+  created_at_epoch: number;
+  created_by: string;
+  modified_at_epoch: number;
+  modified_by: string;
+}
+
+export interface GetPromptParams {
+  dictionary_id?: number,
+  dictionary_timestamp?: number,
+
+  prompt_key?: string,
+  source_language?: string,
+  target_language?: string,
 }
 
 export interface Dictionary {
-  id: number;
-  timestamp: number;
+  id?: number;
+  timestamp?: string | number;
   name: string;
-  username: string;
+  username?: string;
   labels: string[];
+
+	// Output only fields.
+  created_at_epoch: number;
+  created_by: string;
+  modified_at_epoch: number;
+  modified_by: string;
 }
 
-/*export interface PaginationInfo {
-  offset: number;
-  limit: number;
-  total_count: number;
-  has_more: boolean;
-}*/

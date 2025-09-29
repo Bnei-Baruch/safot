@@ -7,8 +7,7 @@ import logging
 import os
 
 from peewee import (
-	SQL,
-    DoesNotExist,
+    SQL,
     JOIN,
     fn,
 )
@@ -31,19 +30,34 @@ from fastapi.responses import FileResponse
 
 from services.translation_service import TranslationService
 from services.segment_service import get_paragraphs_from_file, get_latest_segments, store_segments
-from services.rule_service import store_rules, get_rules_by_dictionary, get_rules_by_dictionary_all
-from services.dictionary_service import create_new_dictionary, create_new_dictionary_version, create_source_dictionary_link
-from services.source_service import create_or_update_source
-from services.prompt import build_custom_prompt
+from services.source_service import (
+    create_or_update_sources,
+    get_sources,
+)
+from services.dictionary import (
+	get_dictionaries,
+	get_rules,
+)
+from services.prompt import (
+    build_custom_prompt,
+    build_prompt,
+    SEGMENTS_SUFFIX,
+    RULE_TYPE_TEXT,
+    RULE_TYPE_SEGMENTS_SUFFIX,
+)
+from services.utils import (
+    apply_dict,
+	epoch_microseconds,
+    microseconds,
+)
 
 from models import (
-    Dictionary,
+    Dictionaries,
     ParagraphsTranslateRequest,
     PromptRequest,
-    Rule,
-    Segment,
-    Source,
-    SourceDictionaryLink,
+    Rules,
+    Segments,
+    Sources,
     TranslationServiceOptions,
 )
 
@@ -55,7 +69,7 @@ def configure_logging():
     )
     # Configure peewee logger
     peewee_logger = logging.getLogger('peewee')
-    peewee_logger.setLevel(logging.INFO)
+    peewee_logger.setLevel(logging.DEBUG)
 
 # Configure logging at startup
 configure_logging()
@@ -113,7 +127,7 @@ def startup():
     if db.is_closed():
         db.connect()
     
-    router = Router(db, migrate_dir='migrations/versions')
+    router = Router(db, migrate_dir='migrations')
     router.run()
 
     logger.info('Database connected and migrations applied')
@@ -127,99 +141,72 @@ def shutdown():
 ####### SOURCES
 @app.get('/sources', response_model=list[dict])
 def read_sources(metadata: bool = Query(False), user_info: dict = Depends(get_user_info)):
-    if not metadata:
-        sources = list(Source.select().dicts())
-        return sources
-
-    max_timestamp_subquery = (
-        Segment
-        .select(Segment.order, Segment.source_id, fn.MAX(Segment.timestamp).alias('max_timestamp'))
-        .group_by(Segment.order, Segment.source_id)
-    )
-
-    segments_count = (
-        Segment
-        .select(
-            Segment.source_id.alias("source_id"),
-            fn.COUNT(Segment.id).alias("count"),
-			fn.EXTRACT(SQL("EPOCH FROM MAX(timestamp)")).alias("last_modified"),
-        )
-        .join(max_timestamp_subquery, on=(
-            (Segment.order == max_timestamp_subquery.c.order) &
-            (Segment.timestamp == max_timestamp_subquery.c.max_timestamp)
-        ))
-        .group_by(Segment.source_id)
-        .alias("S")
-    )
-    query = (
-        Source
-        .select(
-            Source,
-            segments_count.c.count,
-            segments_count.c.last_modified,
-        )
-        .join(segments_count, JOIN.LEFT_OUTER, on=(segments_count.c.source_id == Source.id))
-    )
-    return list(query.dicts())
+    return get_sources(metadata)
 
 @app.get('/sources/{source_id}', response_model=dict)
-def read_source(source_id: int, user_info: dict = Depends(get_user_info)):
-    try:
-        source = Source.get(Source.id == source_id)
-        return model_to_dict(source)
-    except DoesNotExist:
+def read_source(source_id: int, metadata: bool = Query(False), user_info: dict = Depends(get_user_info)):
+    sources = get_sources(metadata, source_id)
+    if not len(sources):
         raise HTTPException(status_code=404, detail='Source not found')
+    if len(sources) > 1:
+        raise HTTPException(status_code=500, detail='Expected only one source for source_id: ' + str(source_id))
+    return sources[0]
 
 @app.post('/sources', response_model=dict)
 def create_or_update_source_handler(source: dict, user_info: dict = Depends(get_user_info)):
-    return create_or_update_source(source, user_info['preferred_username'])
+    return create_or_update_sources([source], user_info['preferred_username'])
 
 @app.delete('/sources/{translation_source_id}', response_model=list)
 def delete_source(translation_source_id: int, _: dict = Depends(get_user_info)):
     try:
-        source = Source.get(Source.id == translation_source_id)
+        source = Sources.get(Sources.id == translation_source_id)
     except Exception as e:
         logger.error(f"Deletion - Source not found: {e}")
         raise HTTPException(status_code=404, detail='Source not found')
 
     # Get all translations of the original source
-    translations = list(Source.select().where(Source.original_source_id == source.original_source_id))
+    translations = list(Sources.select().where(Sources.original_source_id == source.original_source_id))
     source_ids_to_delete = [translation_source_id]
     if len(translations) == 1:
         # This is the last translation, allow deletion of both translation and original
         source_ids_to_delete.append(source.original_source_id)
 
     # Delete all segments for these sources
-    Segment.delete().where(Segment.source_id.in_(source_ids_to_delete)).execute()
+    Segments.delete().where(Segments.source_id.in_(source_ids_to_delete)).execute()
     # Delete the sources themselves
-    Source.delete().where(Source.id.in_(source_ids_to_delete)).execute()
+    Sources.delete().where(Sources.id.in_(source_ids_to_delete)).execute()
     return source_ids_to_delete
-
 
 ####### SEGMENTS 
 @app.get('/segments/{source_id}', response_model=list)
 def read_segments(source_id: int, user_info: dict = Depends(get_user_info)):
     try:
         # Sub query to get latest segments.
-        subquery = (Segment
-                .select(Segment.id, fn.MAX(Segment.timestamp).alias('latest_timestamp'))
-                .where(Segment.source_id == source_id)
-                .group_by(Segment.id))
+        subquery = (Segments
+            .select(Segments.id, fn.MAX(Segments.timestamp).alias('latest_timestamp'))
+            .where(Segments.source_id == source_id)
+            .group_by(Segments.id))
         # Get all latest segments
-        return list(Segment.select()
-                       .where(Segment.source_id == source_id)
-                       .join(subquery, on=(
-                           (Segment.id == subquery.c.id) &
-                           (Segment.timestamp == subquery.c.latest_timestamp)
-                       ))
-                       .order_by(Segment.order)
-                       .dicts())
+        query = (Segments
+            .select(
+                Segments,
+                microseconds(Segments.timestamp, 'timestamp_epoch'),
+            )
+            .where(Segments.source_id == source_id)
+            .join(subquery, on=(
+                (Segments.id == subquery.c.id) &
+                (Segments.timestamp == subquery.c.latest_timestamp)
+            ))
+            .order_by(Segments.order))
+
+        return list(query.dicts())
         
     except Exception as e:
         logger.error("Error fetching segments: %s", e)
         raise HTTPException(
             status_code=500, detail=f"Failed to fetch segments: {str(e)}")
 
+# TODO: Refactor segments to have _epoch fields and created_/modified_ fields..
 @app.post('/segments', response_model=list[dict])
 async def save_segments(request: Request, user_info: dict = Depends(get_user_info)):
     try:
@@ -237,7 +224,6 @@ async def save_segments(request: Request, user_info: dict = Depends(get_user_inf
 
         saved_segments = store_segments(segments)
         return saved_segments
-
     except Exception as e:
         logger.error("Error in /segments: %s", e)
         raise HTTPException(status_code=500, detail="Failed to store segments")
@@ -298,10 +284,8 @@ def extract_segments_handler(file: UploadFile = File(...)):
     
 @app.get("/export/{source_id}", response_class=FileResponse)
 def export_translation(source_id: int):
-
     try:
         segments = get_latest_segments(source_id)
-
         if not segments:
             raise HTTPException(
                 status_code=404, detail="No translated segments found.")
@@ -319,7 +303,6 @@ def export_translation(source_id: int):
 
         return FileResponse(file_path, filename=f"translated_{source_id}.docx",
                             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-
     except HTTPException as e:
         raise e
     except Exception as e:
@@ -327,150 +310,151 @@ def export_translation(source_id: int):
             status_code=500, detail=f"Error generating DOCX: {str(e)}")
 
 
-####### DICTIONARY
+####### DICTIONARY, RULES, PROMPT.
 @app.post("/prompt", response_model=str)
 async def get_prompt(request: PromptRequest, dict = Depends(get_user_info)):
-    if request.dictionary_id is None and not request.custom_key:
-        raise HTTPException(status_code=400, detail=f"Either dictionary_id or custom_key should be set.")
+    if request.dictionary_id is None and not request.prompt_key:
+        raise HTTPException(status_code=400, detail=f"Either dictionary_id or prompt_key should be set.")
     try:
-        if request.custom_key:
+        if request.prompt_key:
             return build_custom_prompt(
-                request.custom_key,
-                request.source_language,
-                request.target_language)
+                request.prompt_key,
+                request.original_language,
+                request.translated_language)
         else:
-            # build prompt from dictionary_id 
-            raise HTTPException(status_code=500, detail=f"Unimplemented")
+            return build_prompt(request.dictionary_id, request.dictionary_timestamp)
     except Exception as e:
         logger.error("Error getting prompt: %s", e)
         raise HTTPException(status_code=500, detail=f"Failed to get prompt: {str(e)}")
 
-@app.post("/dictionary/new/{source_id}", response_model=dict)
-async def create_new_dictionary_handler(source_id: int, request: Request, user_info: dict = Depends(get_user_info)):
+@app.get("/dictionaries", response_model=list[dict])
+async def read_dictionaries(dictionary_id: int | None = None, dictionary_timestamp: int | None = None, user_info: dict = Depends(get_user_info)):
+	return get_dictionaries(dictionary_id, dictionary_timestamp)
+
+@app.post("/dictionaries", response_model=dict)
+async def post_dictionary(dictionary: dict, user_info: dict = Depends(get_user_info)):
+	username = user_info["preferred_username"]
+	now = datetime.utcnow()
+	if not "id" in dictionary or not dictionary["id"]:
+		cursor = db.execute_sql("SELECT nextval('dictionary_id_seq')")
+		dictionary_id = cursor.fetchone()[0]
+
+		updated_dictionary = Dictionaries.create(
+			id=dictionary_id,
+			username=username,
+			timestamp=now,
+			**dictionary,
+		) 
+	else:
+		updated_dictionary = (Dictionaries
+			.select()
+			.where(Dictionaries.id == dictionary["id"])
+			.order_by(Dictionaries.timestamp.desc())
+			.limit(1)
+			.get_or_none())
+		if updated_dictionary is None:
+			raise HTTPException(status_code=404, detail="Dictionary not found")
+		updated_dictionary.username = username
+		updated_dictionary.timestamp = now
+		logger.info('dictionary timestamp %s %s', dictionary["timestamp"], type(dictionary["timestamp"])) 
+		apply_dict(updated_dictionary, dictionary)
+		logger.info('d %s %s', dictionary, type(dictionary)) 
+		logger.info('before %s %s', updated_dictionary, type(updated_dictionary)) 
+		apply_dict(updated_dictionary, dictionary, logger)
+		logger.info('after %s %s', updated_dictionary, type(updated_dictionary)) 
+		updated_dictionary.save(force_insert=True)
+
+	return get_dictionaries(updated_dictionary.id, epoch_microseconds(updated_dictionary.timestamp))[0]
+
+@app.post("/dictionaries/prompt", response_model=dict)
+async def create_prompt_dictionary(request: dict, user_info: dict = Depends(get_user_info)):
     try:
-        data = await request.json()
-        dictionary_name = data["name"]
-        
-        now = datetime.utcnow()
-        
-        # Create new dictionary
-        dictionary = create_new_dictionary(
-            source_id,
-            user_info["preferred_username"],
-            now,
-            dictionary_name
-        )
-        
-        # Create source dictionary link
-        create_source_dictionary_link(
-            source_id,
-            dictionary.id,
-            dictionary.timestamp
-        )
-        
-        return {
-            "dictionary_id": dictionary.id,
-            "dictionary_timestamp": dictionary.timestamp.isoformat()
-        }
-        
-    except Exception as e:
-        logger.error("Error creating new dictionary: %s", e)
-        raise HTTPException(status_code=500, detail=f"Failed to create new dictionary: {str(e)}")
+        name = request.get("name", None)
+        prompt_key = request.get("prompt_key", None)
+        original_language = request.get("original_language", None)
+        translated_language = request.get("translated_language", None)
 
+        timestamp=datetime.utcnow()
 
-@app.post("/dictionary/version/{source_id}", response_model=dict)
-def create_dictionary_version_handler(source_id: int, user_info: dict = Depends(get_user_info)):
-    try:
-        # find latest link by timestamp
-        existing_link = (
-            SourceDictionaryLink
-            .select()
-            .where(SourceDictionaryLink.source_id == source_id)
-            .order_by(SourceDictionaryLink.dictionary_timestamp.desc())
-            .first()
+        cursor = db.execute_sql("SELECT nextval('dictionary_id_seq')")
+        dictionary_id = cursor.fetchone()[0]
+
+        created_dictionary = Dictionaries.create(
+            id=dictionary_id,
+            timestamp=timestamp,
+            username=user_info['preferred_username'],
+            name=name,
         )
-        if not existing_link:
-            raise HTTPException(status_code=404, detail="No existing dictionary found for this source")
 
-        # fetch original dictionary to get its name (if exists)
-        try:
-            original_dict = (
-                Dictionary
-                .select()
-                .where(
-                    (Dictionary.id == existing_link.dictionary_id) &
-                    (Dictionary.timestamp == existing_link.dictionary_timestamp)
-                )
-                .first()
+        if prompt_key:
+            if not original_language or not translated_language:
+                raise HTTPException(status_code=404, detail='When prompt_key set, original_language and translated_language must be set')
+                
+            cursor = db.execute_sql("SELECT nextval('rule_id_seq')")
+            rule_id = cursor.fetchone()[0]
+
+            prompt_rule = Rules.create(
+                id=rule_id,
+                timestamp=timestamp,
+                name="Default prompt " + prompt_key,
+                username=user_info['preferred_username'],
+                dictionary_id=dictionary_id,
+                order=0,
+                type=RULE_TYPE_TEXT,
+                properties={"text": build_custom_prompt(prompt_key, original_language, translated_language, with_segments_suffix=False)},
             )
-            original_name = getattr(original_dict, "name", "") if original_dict else f"dictionary-{existing_link.dictionary_id}"
-        except Dictionary.DoesNotExist:
-            original_name = f"dictionary-{existing_link.dictionary_id}"
 
-        now = datetime.utcnow()
+            cursor = db.execute_sql("SELECT nextval('rule_id_seq')")
+            rule_id = cursor.fetchone()[0]
 
-        # create new version (same id, new timestamp)
-        dictionary_data = create_new_dictionary_version(
-            original_dictionary_id=existing_link.dictionary_id,
-            source_id=source_id,
-            username=user_info["preferred_username"],
-            timestamp=now,
-            original_name=original_name
-        )
+            segments_rule = Rules.create(
+                id=rule_id,
+                timestamp=timestamp,
+                name="Segments suffix rule.",
+                username=user_info['preferred_username'],
+                dictionary_id=dictionary_id,
+                order=1,
+                type=RULE_TYPE_SEGMENTS_SUFFIX,
+                properties={"text": SEGMENTS_SUFFIX},
+            )
 
-        # create link between source and new version
-        create_source_dictionary_link(
-            source_id=source_id,
-            dictionary_id=dictionary_data["dictionary_id"],
-            dictionary_timestamp=datetime.fromisoformat(dictionary_data["dictionary_timestamp"])
-        )
-
-        # return id and timestamp of the new version
-        return dictionary_data
-
-    except HTTPException:
-        raise
+        return model_to_dict(created_dictionary) 
     except Exception as e:
-        logger.error("Error creating dictionary version: %s", e)
-        raise HTTPException(status_code=500, detail=f"Failed to create dictionary version: {str(e)}")
+        logger.error("Error adding or creating new dictionary: %s", e)
+        raise HTTPException(status_code=500, detail=f"Failed adding or creating new dictionary: {str(e)}")
 
 
-####### RULES
-@app.get("/rules/by-dictionary", response_model=list[dict])
-def fetch_rules_by_dictionary(dictionary_id: int, dictionary_timestamp: datetime, user_info: dict = Depends(get_user_info)):
-    try:
-        rules = get_rules_by_dictionary(dictionary_id, dictionary_timestamp)
-        return rules
-    except Exception as e:
-        logger.error("Error fetching rules by dictionary: %s", e)
-        raise HTTPException(status_code=500, detail="Failed to fetch rules")
+@app.get("/rules", response_model=list[dict])
+def fetch_rules(dictionary_id: int | None = None, dictionary_timestamp: int | None = None, user_info: dict = Depends(get_user_info)):
+	return get_rules(dictionary_id, dictionary_timestamp)
 
 
-@app.get("/rules/by-dictionary-all", response_model=list[dict])
-def fetch_rules_by_dictionary_all(dictionary_id: int, user_info: dict = Depends(get_user_info)):
-    try:
-        rules = get_rules_by_dictionary_all(dictionary_id)
-        return rules
-    except Exception as e:
-        logger.error("Error fetching rules by dictionary (all): %s", e)
-        raise HTTPException(status_code=500, detail="Failed to fetch rules")
+@app.post("/rules", response_model=dict)
+async def post_rules(rule: dict, user_info: dict = Depends(get_user_info)):
+	username = user_info["preferred_username"]
+	now = datetime.utcnow()
+	if not "id" in rule or not rule["id"]:
+		cursor = db.execute_sql("SELECT nextval('rule_id_seq')")
+		rule_id = cursor.fetchone()[0]
 
+		updated_rule = Rules.create(
+			id=rule_id,
+			username=username,
+			timestamp=now,
+			**rule,
+		) 
+	else:
+		updated_rule = (Rules
+			.select()
+			.where(Rules.id == rule["id"])
+			.order_by(Rules.timestamp.desc())
+			.limit(1)
+			.get_or_none())
+		if updated_rule is None:
+			raise HTTPException(status_code=404, detail="Rule not found")
+		updated_rule.username = username
+		updated_rule.timestamp = now
+		apply_dict(updated_rule, rule)
+		updated_rule.save(force_insert=True)
 
-@app.post("/rules", response_model=list[dict])
-async def save_rules(request: Request, user_info: dict = Depends(get_user_info)):
-    try:
-        data = await request.json()
-
-        rules = data.get("rules", [])
-        if not isinstance(rules, list):
-            raise HTTPException(status_code=400, detail="Invalid request format - 'rules' must be a list")
-
-        saved_rules = store_rules(rules, user_info["preferred_username"])
-        return saved_rules
-
-    except Exception as e:
-        logger.error("Error in /rules: %s", e)
-        raise HTTPException(status_code=500, detail="Failed to store rules")
-
-
-
+	return get_rules(rule_id=updated_rule.id)[0]
