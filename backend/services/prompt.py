@@ -68,6 +68,9 @@ LANGUAGES = {
     "ar": "Arabic",
     "es": "Spanish",
     "ru": "Russian",
+    "tr": "Turkish",
+    "de": "German",
+    "it": "Italian",
 
     # Special language to output template.
     ORIGINAL_LANGUAGE: ORIGINAL_LANGUAGE,
