@@ -9,6 +9,7 @@ declare module 'keycloak-js' {
     tokenParsed?: {
       preferred_username?: string;
     }
+    clientId: string;
   }
 
   export interface AuthClientTokens {

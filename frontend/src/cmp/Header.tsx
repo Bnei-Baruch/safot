@@ -1,5 +1,12 @@
 import React from 'react';
-import { AppBar, Toolbar, Typography, Button, Box, Container } from '@mui/material';
+import {
+  AppBar,
+  Box,
+  Button,
+  Container,
+  Toolbar,
+  Typography,
+} from '@mui/material';
 import { useKeycloak } from '@react-keycloak/web';
 import logo from '../assets/img/logo.png';
 
@@ -35,7 +42,6 @@ const Header: React.FC = () => {
                   </Box>
                 </Box>
 
-              
                 {keycloak?.authenticated ? (
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 ,fontFamily: 'Kanit, sans-serif'}}>
                     <Typography variant="body1"sx={{ fontFamily: 'inherit' }}>

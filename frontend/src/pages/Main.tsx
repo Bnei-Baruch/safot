@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 
 import SourceIndex from './SourceIndex';
 import Dictionaries from '../cmp/Dictionaries';
+import UserManagement from '../cmp/UserManagement';
 import TranslateForm from '../cmp/TranslateForm';
 
 import { Box, Button, Collapse, Container, Tabs, Tab } from '@mui/material';
@@ -36,10 +37,12 @@ const Main: React.FC = () => {
           }} >
           <Tab label="Sources" />
           <Tab label="Dictionaries" />
+          <Tab label="Users" />
         </Tabs>
 
         {selected === 0 && <SourceIndex />}
         {selected === 1 && <Dictionaries />}
+        {selected === 2 && <UserManagement />}
       </Box>
     </>
   );

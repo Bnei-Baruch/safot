@@ -2,7 +2,6 @@ from datetime import datetime
 from db import db
 from docx import Document
 from dotenv import load_dotenv
-from keycloak import KeycloakOpenID
 import logging
 import os
 
@@ -35,8 +34,8 @@ from services.source_service import (
     get_sources,
 )
 from services.dictionary import (
-	get_dictionaries,
-	get_rules,
+    get_dictionaries,
+    get_rules,
 )
 from services.prompt import (
     build_custom_prompt,
@@ -47,8 +46,15 @@ from services.prompt import (
 )
 from services.utils import (
     apply_dict,
-	epoch_microseconds,
+    epoch_microseconds,
     microseconds,
+)
+from services.user_service import UserManagementService
+from services.auth import (
+    get_user_info,
+    require_admin,
+    require_read,
+    require_write,
 )
 
 from models import (
@@ -90,38 +96,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize Keycloak
-logger.info('Initializing keycloak with URL: %s, Client ID: %s, Realm: %s', 
-            os.getenv('KEYCLOAK_SERVER_URL'),
-            os.getenv('KEYCLOAK_CLIENT_ID'), 
-            os.getenv('KEYCLOAK_REALM_NAME'))
-keycloak_openid = KeycloakOpenID(
-    server_url=os.getenv('KEYCLOAK_SERVER_URL'),
-    client_id=os.getenv('KEYCLOAK_CLIENT_ID'),
-    realm_name=os.getenv('KEYCLOAK_REALM_NAME'),
-)
-
-# User info middlware
-
-async def get_user_info(request: Request):
-    # Extract token from Authorization header
-    auth_header = request.headers.get('Authorization')
-    if not auth_header or not auth_header.startswith('Bearer '):
-        logger.error('Missing authorization header')
-        raise HTTPException(status_code=HTTP_401_UNAUTHORIZED,
-                            detail='Missing or invalid token')
-
-    token = auth_header[len('Bearer '):].strip()
-    try:
-        # Validate token and get user info
-        user_info = keycloak_openid.userinfo(token)
-        return user_info
-    except Exception as e:
-        logger.error('Invalid or expired token: %s', e)
-        raise HTTPException(status_code=HTTP_401_UNAUTHORIZED,
-                            detail='Invalid or expired token')
-
-
 @app.on_event('startup')
 def startup():
     if db.is_closed():
@@ -140,10 +114,12 @@ def shutdown():
 
 ####### SOURCES
 @app.get('/sources', response_model=list[dict])
+@require_read
 def read_sources(metadata: bool = Query(False), user_info: dict = Depends(get_user_info)):
     return get_sources(metadata)
 
 @app.get('/sources/{source_id}', response_model=dict)
+@require_read
 def read_source(source_id: int, metadata: bool = Query(False), user_info: dict = Depends(get_user_info)):
     sources = get_sources(metadata, source_id)
     if not len(sources):
@@ -153,10 +129,12 @@ def read_source(source_id: int, metadata: bool = Query(False), user_info: dict =
     return sources[0]
 
 @app.post('/sources', response_model=dict)
+@require_write
 def create_or_update_source_handler(source: dict, user_info: dict = Depends(get_user_info)):
     return create_or_update_sources([source], user_info['preferred_username'])
 
 @app.delete('/sources/{translation_source_id}', response_model=list)
+@require_write
 def delete_source(translation_source_id: int, _: dict = Depends(get_user_info)):
     try:
         source = Sources.get(Sources.id == translation_source_id)
@@ -179,6 +157,7 @@ def delete_source(translation_source_id: int, _: dict = Depends(get_user_info)):
 
 ####### SEGMENTS 
 @app.get('/segments/{source_id}', response_model=list)
+@require_read
 def read_segments(source_id: int, user_info: dict = Depends(get_user_info)):
     try:
         # Sub query to get latest segments.
@@ -208,6 +187,7 @@ def read_segments(source_id: int, user_info: dict = Depends(get_user_info)):
 
 # TODO: Refactor segments to have _epoch fields and created_/modified_ fields..
 @app.post('/segments', response_model=list[dict])
+@require_write
 async def save_segments(request: Request, user_info: dict = Depends(get_user_info)):
     try:
         data = await request.json()
@@ -230,6 +210,7 @@ async def save_segments(request: Request, user_info: dict = Depends(get_user_inf
 
 ####### TRANSLATION
 @app.post("/translate", response_model=dict)
+@require_write
 def translate_paragraphs_handler(
     request: ParagraphsTranslateRequest,
     user_info: dict = Depends(get_user_info)
@@ -267,6 +248,7 @@ def translate_paragraphs_handler(
     
 ####### IMPORT/EXPORT
 @app.post('/docx2text')
+@require_read
 def extract_segments_handler(file: UploadFile = File(...)):
     if not file.filename.lower().endswith('.docx'):
         raise HTTPException(status_code=400, detail="Only .docx files are supported.")
@@ -283,6 +265,7 @@ def extract_segments_handler(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail="Failed to extract segments")
     
 @app.get("/export/{source_id}", response_class=FileResponse)
+@require_read
 def export_translation(source_id: int):
     try:
         segments = get_latest_segments(source_id)
@@ -312,6 +295,7 @@ def export_translation(source_id: int):
 
 ####### DICTIONARY, RULES, PROMPT.
 @app.post("/prompt", response_model=str)
+@require_read
 async def get_prompt(request: PromptRequest, dict = Depends(get_user_info)):
     if request.dictionary_id is None and not request.prompt_key:
         raise HTTPException(status_code=400, detail=f"Either dictionary_id or prompt_key should be set.")
@@ -328,45 +312,48 @@ async def get_prompt(request: PromptRequest, dict = Depends(get_user_info)):
         raise HTTPException(status_code=500, detail=f"Failed to get prompt: {str(e)}")
 
 @app.get("/dictionaries", response_model=list[dict])
+@require_read
 async def read_dictionaries(dictionary_id: int | None = None, dictionary_timestamp: int | None = None, user_info: dict = Depends(get_user_info)):
-	return get_dictionaries(dictionary_id, dictionary_timestamp)
+    return get_dictionaries(dictionary_id, dictionary_timestamp)
 
 @app.post("/dictionaries", response_model=dict)
+@require_write
 async def post_dictionary(dictionary: dict, user_info: dict = Depends(get_user_info)):
-	username = user_info["preferred_username"]
-	now = datetime.utcnow()
-	if not "id" in dictionary or not dictionary["id"]:
-		cursor = db.execute_sql("SELECT nextval('dictionary_id_seq')")
-		dictionary_id = cursor.fetchone()[0]
+    username = user_info["preferred_username"]
+    now = datetime.utcnow()
+    if not "id" in dictionary or not dictionary["id"]:
+        cursor = db.execute_sql("SELECT nextval('dictionary_id_seq')")
+        dictionary_id = cursor.fetchone()[0]
 
-		updated_dictionary = Dictionaries.create(
-			id=dictionary_id,
-			username=username,
-			timestamp=now,
-			**dictionary,
-		) 
-	else:
-		updated_dictionary = (Dictionaries
-			.select()
-			.where(Dictionaries.id == dictionary["id"])
-			.order_by(Dictionaries.timestamp.desc())
-			.limit(1)
-			.get_or_none())
-		if updated_dictionary is None:
-			raise HTTPException(status_code=404, detail="Dictionary not found")
-		updated_dictionary.username = username
-		updated_dictionary.timestamp = now
-		logger.info('dictionary timestamp %s %s', dictionary["timestamp"], type(dictionary["timestamp"])) 
-		apply_dict(updated_dictionary, dictionary)
-		logger.info('d %s %s', dictionary, type(dictionary)) 
-		logger.info('before %s %s', updated_dictionary, type(updated_dictionary)) 
-		apply_dict(updated_dictionary, dictionary, logger)
-		logger.info('after %s %s', updated_dictionary, type(updated_dictionary)) 
-		updated_dictionary.save(force_insert=True)
+        updated_dictionary = Dictionaries.create(
+            id=dictionary_id,
+            username=username,
+            timestamp=now,
+            **dictionary,
+        ) 
+    else:
+        updated_dictionary = (Dictionaries
+            .select()
+            .where(Dictionaries.id == dictionary["id"])
+            .order_by(Dictionaries.timestamp.desc())
+            .limit(1)
+            .get_or_none())
+        if updated_dictionary is None:
+            raise HTTPException(status_code=404, detail="Dictionary not found")
+        updated_dictionary.username = username
+        updated_dictionary.timestamp = now
+        logger.info('dictionary timestamp %s %s', dictionary["timestamp"], type(dictionary["timestamp"])) 
+        apply_dict(updated_dictionary, dictionary)
+        logger.info('d %s %s', dictionary, type(dictionary)) 
+        logger.info('before %s %s', updated_dictionary, type(updated_dictionary)) 
+        apply_dict(updated_dictionary, dictionary, logger)
+        logger.info('after %s %s', updated_dictionary, type(updated_dictionary)) 
+        updated_dictionary.save(force_insert=True)
 
-	return get_dictionaries(updated_dictionary.id, epoch_microseconds(updated_dictionary.timestamp))[0]
+    return get_dictionaries(updated_dictionary.id, epoch_microseconds(updated_dictionary.timestamp))[0]
 
 @app.post("/dictionaries/prompt", response_model=dict)
+@require_write
 async def create_prompt_dictionary(request: dict, user_info: dict = Depends(get_user_info)):
     try:
         name = request.get("name", None)
@@ -425,36 +412,116 @@ async def create_prompt_dictionary(request: dict, user_info: dict = Depends(get_
 
 
 @app.get("/rules", response_model=list[dict])
+@require_read
 def fetch_rules(dictionary_id: int | None = None, dictionary_timestamp: int | None = None, user_info: dict = Depends(get_user_info)):
-	return get_rules(dictionary_id, dictionary_timestamp)
+    return get_rules(dictionary_id, dictionary_timestamp)
 
 
 @app.post("/rules", response_model=dict)
+@require_write
 async def post_rules(rule: dict, user_info: dict = Depends(get_user_info)):
-	username = user_info["preferred_username"]
-	now = datetime.utcnow()
-	if not "id" in rule or not rule["id"]:
-		cursor = db.execute_sql("SELECT nextval('rule_id_seq')")
-		rule_id = cursor.fetchone()[0]
+    username = user_info["preferred_username"]
+    now = datetime.utcnow()
+    if not "id" in rule or not rule["id"]:
+        cursor = db.execute_sql("SELECT nextval('rule_id_seq')")
+        rule_id = cursor.fetchone()[0]
 
-		updated_rule = Rules.create(
-			id=rule_id,
-			username=username,
-			timestamp=now,
-			**rule,
-		) 
-	else:
-		updated_rule = (Rules
-			.select()
-			.where(Rules.id == rule["id"])
-			.order_by(Rules.timestamp.desc())
-			.limit(1)
-			.get_or_none())
-		if updated_rule is None:
-			raise HTTPException(status_code=404, detail="Rule not found")
-		updated_rule.username = username
-		updated_rule.timestamp = now
-		apply_dict(updated_rule, rule)
-		updated_rule.save(force_insert=True)
+        updated_rule = Rules.create(
+            id=rule_id,
+            username=username,
+            timestamp=now,
+            **rule,
+        ) 
+    else:
+        updated_rule = (Rules
+            .select()
+            .where(Rules.id == rule["id"])
+            .order_by(Rules.timestamp.desc())
+            .limit(1)
+            .get_or_none())
+        if updated_rule is None:
+            raise HTTPException(status_code=404, detail="Rule not found")
+        updated_rule.username = username
+        updated_rule.timestamp = now
+        apply_dict(updated_rule, rule)
+        updated_rule.save(force_insert=True)
 
-	return get_rules(rule_id=updated_rule.id)[0]
+    return get_rules(rule_id=updated_rule.id)[0]
+
+####### USER MANAGEMENT
+# Initialize user management service
+user_service = UserManagementService()
+
+@app.get('/users', response_model=list[dict])
+@require_admin
+def get_all_users(search: str = None, user_info: dict = Depends(get_user_info)):
+    """Get all users with their roles - Admin only"""
+    try:
+        logger.info(f"Search parameter received: '{search}'")
+        users = user_service.get_all_users(search)
+        logger.info(f"Found {len(users)} users")
+        return users
+    except Exception as e:
+        logger.error(f"Error fetching users: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch users")
+
+@app.get('/roles', response_model=list[str])
+@require_admin
+def get_available_roles(user_info: dict = Depends(get_user_info)):
+    """Get all available roles - Admin only"""
+    try:
+        roles = user_service.get_available_roles()
+        return roles
+    except Exception as e:
+        logger.error(f"Error fetching roles: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch roles")
+
+@app.put('/users/{user_id}/roles', response_model=dict)
+@require_admin
+async def update_user_roles(user_id: str, request: Request, user_info: dict = Depends(get_user_info)):
+    """Update user roles - Admin only"""
+    try:
+        # Get the raw request body
+        body = await request.body()
+        logger.info(f"Raw request body: {body}")
+
+        # Try to parse as JSON
+        import json
+        try:
+            data = json.loads(body)
+            logger.info(f"Parsed JSON data: {data}")
+            roles = data.get('roles', [])
+            logger.info(f"Extracted roles: {roles}")
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON decode error: {e}")
+            raise HTTPException(status_code=400, detail="Invalid JSON in request body")
+
+        # Check if user is trying to remove their own admin role
+        current_user_id = user_info.get('sub')
+        if current_user_id == user_id:
+            # Get current user's roles
+            current_user_roles = user_service.get_user_roles(current_user_id)
+            current_role_names = [role['name'] for role in current_user_roles]
+
+            # Check if user currently has admin role
+            has_admin_role = any('admin' in role_name.lower() for role_name in current_role_names)
+
+            if has_admin_role:
+                # Check if they're trying to remove admin role
+                new_role_names = [role['name'] for role in roles if isinstance(role, dict)] + [role for role in roles if isinstance(role, str)]
+                will_have_admin_role = any('admin' in role_name.lower() for role_name in new_role_names)
+
+                if not will_have_admin_role:
+                    raise HTTPException(status_code=403, detail="You cannot remove your own admin role")
+
+        success = user_service.update_user_roles(user_id, roles)
+        if success:
+            return {"message": "User roles updated successfully", "user_id": user_id, "roles": roles}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to update user roles")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating user roles for {user_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update user roles: {str(e)}")
+
