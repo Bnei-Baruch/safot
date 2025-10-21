@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from "react-router-dom";
 
-import debounce from "lodash.debounce";
 import { TableVirtuoso } from "react-virtuoso";
 import Split from "react-split";
 
@@ -21,10 +20,10 @@ import {
 } from "@mui/material";
 
 import {
-	ArrowForward as ArrowForwardIcon,
-	Check as CheckIcon,
-	Close as CloseIcon,
-	Edit as EditIcon,
+  ArrowForward as ArrowForwardIcon,
+  Check as CheckIcon,
+  Close as CloseIcon,
+  Edit as EditIcon,
   ArrowBackIosNew as ArrowBackIosNewIcon,
   ChevronLeft as ChevronLeftIcon,
   ChevronRight as ChevronRightIcon,
@@ -48,6 +47,79 @@ const getSource = (sources: Record<number, Source>, id: number | undefined): Sou
 
 const DICTIONARY_OPEN = 'dictionary-open';
 const RIGHT_PANE_SIZE = 'right-pane-size';
+
+const Row = React.memo(({
+  originalSegment,
+  translatedSegment,
+  translationText,
+  originalLanguage,
+  translatedLanguage,
+  updateTranslations,
+  handleSaveTranslation,
+}: any) => {
+
+  const inputStyle = useMemo(() => ({
+    direction: LANG_DIRS[translatedLanguage],
+    textAlign: LANG_DIRS[translatedLanguage] === 'rtl' ? 'right' : 'left'
+  }), [translatedLanguage]);
+
+  const inputProps = useMemo(() => ({ sx: inputStyle }), [inputStyle]);
+
+  const handleChange = useCallback((e: any) => {
+    updateTranslations(originalSegment.order, e.target.value);
+  }, [updateTranslations, originalSegment.order]);
+
+  const handleSave = useCallback(() => {
+    handleSaveTranslation(translatedSegment, originalSegment, translationText);
+  }, [handleSaveTranslation, translatedSegment, originalSegment, translationText]);
+  
+  const originalCellStyle = useMemo(() => ({
+    wordBreak: 'break-word',
+    whiteSpace: 'pre-wrap',
+    verticalAlign: 'top',
+    direction: LANG_DIRS[originalLanguage],
+    textAlign: LANG_DIRS[originalLanguage] === 'rtl' ? 'right' : 'left'
+  }), [originalLanguage]);
+  
+  const translatedCellStyle = useMemo(() => ({
+    wordBreak: 'break-word',
+    whiteSpace: 'pre-wrap',
+    verticalAlign: 'top',
+    direction: LANG_DIRS[translatedLanguage],
+    textAlign: LANG_DIRS[translatedLanguage] === 'rtl' ? 'right' : 'left'
+  }), [translatedLanguage]);
+
+  return (
+    <>
+      <TableCell>{originalSegment.order}</TableCell>
+      <TableCell sx={originalCellStyle}>
+        {originalSegment.text}
+      </TableCell>
+      <TableCell sx={translatedCellStyle}>
+        <TextField
+          fullWidth
+          multiline
+          minRows={1}
+          maxRows={30}
+          value={translationText || ''}
+          onChange={handleChange}
+          placeholder="Enter translation"
+          inputProps={inputProps}
+        />
+      </TableCell>
+      <TableCell>
+        <Button
+          variant="contained"
+          color="primary"
+          onClick={handleSave}
+          disabled={translatedSegment && translationText === translatedSegment.text}
+        >
+          <SaveIcon />
+        </Button>
+      </TableCell>
+    </>
+  );
+});
 
 const SourceEdit: React.FC = () => {
   const navigate = useNavigate();
@@ -75,7 +147,7 @@ const SourceEdit: React.FC = () => {
 
   // Maps translated segments order to text area value.
   const [translations, setTranslations] = useState<Record<number, string>>({});
-	const [titleEditing, setTitleEditing] = useState<{original: string, translated: string} | null>(null);
+  const [titleEditing, setTitleEditing] = useState<{original: string, translated: string} | null>(null);
 
   const [dictionaryOpen, setDictionaryOpen] = useState<boolean>(
               localStorage.getItem(DICTIONARY_OPEN) === "true" || false);
@@ -192,21 +264,85 @@ const SourceEdit: React.FC = () => {
   };
 
   // Use debounce to update translations only after user stops typing.
-  const updateTranslations = useMemo(() => debounce((order: number, value: string) => {
+  const updateTranslations = useMemo(() => (order: number, value: string) => {
     setTranslations(prev => ({
       ...prev,
       [order]: value,
     }));
-  }, 500), [setTranslations]);
+  }, [setTranslations]);
 
-	const countSegments = () => {
-		const translatedLength = (translatedSourceId && segments[translatedSourceId] && segments[translatedSourceId].length) || 0;
-		const originalLength = originalSourceId && segments[originalSourceId] && segments[originalSourceId].length;
-		if (!originalLength) {
-			return null;
-		}
-		return `${translatedLength}/${originalLength}`;
-	}
+  const countSegments = () => {
+    const translatedLength = (translatedSourceId && segments[translatedSourceId] && segments[translatedSourceId].length) || 0;
+    const originalLength = originalSourceId && segments[originalSourceId] && segments[originalSourceId].length;
+    if (!originalLength) {
+      return null;
+    }
+    return `${translatedLength}/${originalLength}`;
+  }
+
+  const data = useMemo(
+    () => (originalSourceId && segments[originalSourceId]) || [],
+    [originalSourceId, segments]
+  );
+
+  const fixedHeaderContent = useCallback(() => (
+    <TableRow sx={{ backgroundColor: 'white' }}>
+      <TableCell>Order</TableCell>
+      <TableCell style={{ width: '40%' }}>
+        Source ({(originalSource && getLanguageName(originalLanguage)) || 'Unknown'})
+      </TableCell>
+      <TableCell style={{ width: '50%' }}>
+        Translation ({getLanguageName(translatedLanguage)})
+      </TableCell>
+      <TableCell style={{ width: '10%' }}>Actions</TableCell>
+    </TableRow>
+  ), [originalSource, originalLanguage, translatedLanguage]);
+
+  const context = {
+    translations,
+    translatedSegmentsByOrder,
+    originalLanguage,
+    translatedLanguage,
+    updateTranslations,
+    handleSaveTranslation,
+  };
+
+  const itemContent = useCallback((index: number, originalSegment: Segment, context: any) => {
+    const {
+      translations,
+      translatedSegmentsByOrder,
+      originalLanguage,
+      translatedLanguage,
+      updateTranslations,
+      handleSaveTranslation,
+    } = context;
+
+    // TODO: Original segment might not match by timestamp with 
+    // translatedSegment.original_segment_timestamp, in that case we should notify
+    // user that the origin has a new version to allow rebasing translation to a newer source.
+    const translatedSegment = translatedSegmentsByOrder[originalSegment.order];
+    const translationText = translations[originalSegment.order];
+    
+    return (
+      <Row
+        originalSegment={originalSegment}
+        translatedSegment={translatedSegment}
+        translationText={translationText}
+        originalLanguage={originalLanguage}
+        translatedLanguage={translatedLanguage}
+        updateTranslations={updateTranslations}
+        handleSaveTranslation={handleSaveTranslation}
+      />
+    );
+  }, []);
+
+  const VirtuosoTableComponent = useCallback((props: any) => (
+    <Table stickyHeader {...props} />
+  ), []);
+
+  const virtuosoComponents = useMemo(() => ({
+    Table: VirtuosoTableComponent
+  }), [VirtuosoTableComponent]);
   
   return (
     <Box sx={{ backgroundColor: '#f5f5f5', width: '100vw', display: 'flex', flexDirection: 'column' }}>
@@ -335,92 +471,28 @@ const SourceEdit: React.FC = () => {
           </Box>
     
           {/* Scrollable table */}
+
           <Box>
             <TableContainer component={Paper} className="edit-virtuoso-height">
               <TableVirtuoso
-                data={(originalSourceId && segments[originalSourceId]) || []}
-                fixedHeaderContent={() => (
-                  <TableRow sx={{ backgroundColor: 'white' }}>
-                    <TableCell>Order</TableCell>
-                    <TableCell style={{ width: '40%' }}>
-                    Source ({(originalSource && getLanguageName(originalLanguage)) || 'Unknown'})
-                    </TableCell>
-                    <TableCell style={{ width: '50%' }}>
-                    Translation ({getLanguageName(translatedLanguage)})
-                    </TableCell>
-                    <TableCell style={{ width: '10%' }}>Actions</TableCell>
-                  </TableRow>
-                )}
-                itemContent={(index, originalSegment: Segment) => {
-                  // TODO: Original segment might not match by timestamp with 
-                  // translatedSegment.original_segment_timestamp, in that case we should notify
-                  // user that the origin has a new version to allow rebasing translation to a newer source.
-                  const translatedSegment = translatedSegmentsByOrder[originalSegment.order];
-
-                  return (
-                    <>
-                      <TableCell>{originalSegment.order}</TableCell>
-                      <TableCell style={{
-                        wordBreak: 'break-word',
-                        whiteSpace: 'pre-wrap',
-                        verticalAlign: 'top',
-                        direction: LANG_DIRS[originalLanguage],
-                        textAlign: LANG_DIRS[originalLanguage] === 'rtl' ? 'right' : 'left'
-                      }}>
-                        {originalSegment.text}
-                      </TableCell>
-                      <TableCell style={{
-                        wordBreak: 'break-word',
-                        whiteSpace: 'pre-wrap',
-                        verticalAlign: 'top',
-                        direction: LANG_DIRS[translatedLanguage],
-                        textAlign: LANG_DIRS[translatedLanguage] === 'rtl' ? 'right' : 'left'
-                      }}>
-                        <TextField
-                          fullWidth
-                          multiline
-                          minRows={1}
-                          maxRows={30}
-                          defaultValue={translations[originalSegment.order]}
-                          onChange={(e) => updateTranslations(originalSegment.order, e.target.value)}
-                          placeholder="Enter translation"
-                          inputProps={{
-                            style: {
-                              direction: LANG_DIRS[translatedLanguage],
-                              textAlign: LANG_DIRS[translatedLanguage] === 'rtl' ? 'right' : 'left'
-                            }
-                          }}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          variant="contained"
-                          color="primary"
-                          onClick={() => handleSaveTranslation(translatedSegment, originalSegment, translations[originalSegment.order])}
-                          disabled={translatedSegment && translations[originalSegment.order] === translatedSegment.text}
-                        >
-                          <SaveIcon />
-                        </Button>
-                      </TableCell>
-                    </>
-                  );
-                }}
-                components={{
-                  Table: (props) => <Table stickyHeader {...props} />,
-                }}
+                data={data}
+                fixedHeaderContent={fixedHeaderContent}
+                itemContent={itemContent}
+                context={context}
+                components={virtuosoComponents}
               />
             </TableContainer>
           </Box>
         </Container>
         <Container maxWidth="lg"  sx={{ minWidth: '350px' }} className="right-side-pane">
           {translatedSource && <Dictionary
-						source={translatedSource}
-						sourceUpdated={() => {
-							if (translatedSourceId) {
-								dispatch(fetchSource({ id: translatedSourceId }));
-							}
-						}}
-					/>}
+            source={translatedSource}
+            sourceUpdated={() => {
+              if (translatedSourceId) {
+                dispatch(fetchSource({ id: translatedSourceId }));
+              }
+            }}
+          />}
         </Container>
       </Split>
     </Box>
