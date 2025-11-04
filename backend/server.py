@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from keycloak import KeycloakOpenID
 import logging
 import os
+from typing import List
 
 from peewee import (
     SQL,
@@ -34,6 +35,11 @@ from services.source_service import (
     create_or_update_sources,
     get_sources,
 )
+from services.multi_source_service import (
+    initialize_multi_source_translation,
+    process_translation_batch,
+    update_database_after_batch,
+)
 from services.dictionary import (
 	get_dictionaries,
 	get_rules,
@@ -53,6 +59,8 @@ from services.utils import (
 
 from models import (
     Dictionaries,
+    MultiSourceInitializeRequest,
+    MultiSourceTranslateBatchRequest,
     ParagraphsTranslateRequest,
     PromptRequest,
     Rules,
@@ -223,6 +231,52 @@ async def save_segments(request: Request, user_info: dict = Depends(get_user_inf
             segment["timestamp"] = now
 
         saved_segments = store_segments(segments)
+        
+        # Create translation links for manually saved segments that are part of multi-source translation
+        from services.multi_source_service import _create_segment_links
+        from models import Segments as SegmentsModel, SourceTranslationLinks
+        
+        for saved_seg in saved_segments:
+            if saved_seg.get('original_segment_id') and saved_seg.get('source_id'):
+                translated_source_id = saved_seg.get('source_id')
+                
+                links_exist = SourceTranslationLinks.select().where(
+                    SourceTranslationLinks.translated_source_id == translated_source_id
+                ).exists()
+                
+                if links_exist:
+                    origin_seg_id = saved_seg.get('original_segment_id')
+                    origin_seg_ts = saved_seg.get('original_segment_timestamp')
+                    
+                    try:
+                        from peewee import fn
+                        origin_segment_query = SegmentsModel.select().where(
+                            SegmentsModel.id == origin_seg_id
+                        ).order_by(SegmentsModel.timestamp.desc()).limit(1)
+                        
+                        origin_segment = origin_segment_query.get()
+                        origin_segment_dict = {
+                            'id': origin_segment.id,
+                            'order': origin_segment.order,
+                            'timestamp': origin_segment.timestamp.isoformat() if hasattr(origin_segment.timestamp, 'isoformat') else str(origin_segment.timestamp)
+                        }
+                        
+                        saved_seg_for_link = saved_seg.copy()
+                        if saved_seg_for_link.get('timestamp'):
+                            ts = saved_seg_for_link['timestamp']
+                            if hasattr(ts, 'isoformat'):
+                                saved_seg_for_link['timestamp'] = ts.isoformat()
+                            elif isinstance(ts, str):
+                                pass
+                            else:
+                                saved_seg_for_link['timestamp'] = str(ts)
+                        
+                        _create_segment_links([saved_seg_for_link], [origin_segment_dict], translated_source_id)
+                    except SegmentsModel.DoesNotExist:
+                        logger.warning("Origin segment %d not found for saved segment %d", origin_seg_id, saved_seg.get('id'))
+                    except Exception as e:
+                        logger.error("Error creating translation link for manually saved segment: %s", str(e), exc_info=True)
+        
         return saved_segments
     except Exception as e:
         logger.error("Error in /segments: %s", e)
@@ -264,6 +318,134 @@ def translate_paragraphs_handler(
     except Exception as e:
         logger.error("Error in translation handler: %s", e)
         raise HTTPException(status_code=500, detail=f"Translation failed: {str(e)}")
+
+####### MULTI-SOURCE TRANSLATION
+@app.post("/multi-source/initialize", response_model=dict)
+async def initialize_multi_source(
+    request: MultiSourceInitializeRequest,
+    user_info: dict = Depends(get_user_info)
+):
+    try:
+        result = initialize_multi_source_translation(
+            non_origin_files=[],
+            origin_source_id=request.origin_source_id,
+            non_origin_source_ids=request.non_origin_source_ids,
+            translated_source_id=request.translated_source_id,
+            username=user_info.get('preferred_username', '')
+        )
+        
+        return {
+            "status": "success",
+            "origin_segments_count": len(result['origin_segments']),
+            "non_origin_sources_count": len(result['non_origin_texts']),
+            "non_origin_texts": result['non_origin_texts']
+        }
+    except Exception as e:
+        logger.error("Error initializing multi-source: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/multi-source/translate-batch", response_model=dict)
+async def translate_multi_source_batch(
+    request: MultiSourceTranslateBatchRequest,
+    user_info: dict = Depends(get_user_info)
+):
+    try:
+        options = TranslationServiceOptions()
+        translation_service = TranslationService(
+            api_key=OPENAI_API_KEY,
+            options=options,
+            prompt_text=request.prompt_text
+        )
+        
+        result = process_translation_batch(
+            origin_segment_batch=request.origin_segment_batch,
+            non_origin_texts=request.non_origin_texts,
+            prompt_text=request.prompt_text,
+            source_language=request.source_language,
+            target_language=request.target_language,
+            translation_service=translation_service,
+            translated_source_id=request.translated_source_id
+        )
+        
+        update_result = update_database_after_batch(
+            translated_segments=result['translated_segments'],
+            split_indexes=result['split_indexes'],
+            non_origin_portions=result['non_origin_portions'],
+            translated_source_id=request.translated_source_id,
+            origin_segment_batch=request.origin_segment_batch,
+            non_origin_texts=result['updated_non_origin_texts'],
+            username=user_info.get('preferred_username', '')
+        )
+        
+        return {
+            "status": "success",
+            "translated_segments": update_result['translated_segments'],
+            "updated_non_origin_texts": update_result['updated_non_origin_texts']
+        }
+    except Exception as e:
+        logger.error("Error in multi-source batch translation: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/multi-source/info/{translated_source_id}", response_model=dict)
+async def get_multi_source_info(
+    translated_source_id: int,
+    user_info: dict = Depends(get_user_info)
+):
+    """Get multi-source translation information for a translated source."""
+    try:
+        from models import SourceTranslationLinks, Sources, Segments
+        
+        # Check if there are any source translation links for this translated source
+        links = SourceTranslationLinks.select().where(
+            SourceTranslationLinks.translated_source_id == translated_source_id
+        )
+        
+        if not links.exists():
+            return {
+                "is_multi_source": False,
+                "sources": []
+            }
+        
+        # Get all source IDs linked to this translation
+        source_ids = [link.origin_source_id for link in links]
+        
+        # If there are multiple source links (more than just the origin), it's multi-source
+        # Also check if any segments have multi_source flag as a fallback
+        is_multi_source = len(source_ids) > 1  # More than just the origin source
+        
+        if not is_multi_source:
+            # Check if any segments have multi_source flag
+            segments = Segments.select().where(
+                Segments.source_id == translated_source_id
+            ).limit(100)  # Check first 100 segments
+            
+            for seg in segments:
+                if seg.properties and seg.properties.get('multi_source'):
+                    is_multi_source = True
+                    break
+        
+        # Get source information including languages
+        sources_info = []
+        for source_id in source_ids:
+            try:
+                source = Sources.get(Sources.id == source_id)
+                sources_info.append({
+                    "id": source.id,
+                    "name": source.name,
+                    "language": source.language,
+                    "is_origin": source.properties.get('is_origin', False) if source.properties else False
+                })
+            except Sources.DoesNotExist:
+                logger.warning(f"Source {source_id} not found")
+                continue
+        
+        return {
+            "is_multi_source": is_multi_source,
+            "sources": sources_info
+        }
+    except Exception as e:
+        logger.error("Error getting multi-source info: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
     
 ####### IMPORT/EXPORT
 @app.post('/docx2text')

@@ -43,11 +43,8 @@ def get_paragraphs_from_file(file) -> list[str]:
         logger.error("Failed to create segment previews: %s", str(e))
         raise Exception(f"Failed to create segment previews: {str(e)}")
 
-def store_segments(segments: list[dict]) -> list[dict]:
-    """
-    Save a list of segments to the database.
-    Assumes each segment has all necessary fields (including timestamp, username, etc.).
-    """
+def store_segments(segments: list[dict], update_existing: bool = False) -> list[dict]:
+    """Save a list of segments to the database."""
     required_fields = ["text", "source_id", "order", "timestamp", "username", "properties"]
     saved_segments = []
 
@@ -58,9 +55,16 @@ def store_segments(segments: list[dict]) -> list[dict]:
             raise ValueError(f"Segment is missing required fields: {', '.join(missing)}")
 
         source_id = segment_data["source_id"]
+        order = segment_data["order"]
         timestamp = segment_data["timestamp"]
-        logger.info("%s", sources_to_update)
-        logger.info("%s", source_id)
+        
+        # If update_existing is True, delete existing segments with same source_id and order
+        if update_existing:
+            Segments.delete().where(
+                (Segments.source_id == source_id) & (Segments.order == order)
+            ).execute()
+            logger.debug("Deleted existing segments for source_id=%d, order=%d before update", source_id, order)
+        
         if source_id not in sources_to_update or timestamp > sources_to_update[source_id]["modified_at"]:
             sources_to_update[source_id] = {"id": source_id, "modified_by": segment_data["username"], "modified_at": timestamp}
 

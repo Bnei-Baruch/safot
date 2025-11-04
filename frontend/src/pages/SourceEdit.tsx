@@ -7,6 +7,7 @@ import Split from "react-split";
 import {
   Box,
   Button,
+  Chip,
   Container,
   IconButton,
   Paper,
@@ -37,6 +38,7 @@ import { useAppDispatch, useAppSelector, RootState } from '../store/store';
 import { fetchSegments, saveSegments } from '../store/SegmentSlice';
 import { fetchSource, addOrUpdateSource } from '../store/SourceSlice';
 import Dictionary from '../cmp/Dictionary';
+import { getMultiSourceInfo, MultiSourceInfo } from '../services/multi-source.service';
 
 import { useFlow } from '../useFlow';
 import { useToast } from '../cmp/Toast';
@@ -148,6 +150,7 @@ const SourceEdit: React.FC = () => {
   // Maps translated segments order to text area value.
   const [translations, setTranslations] = useState<Record<number, string>>({});
   const [titleEditing, setTitleEditing] = useState<{original: string, translated: string} | null>(null);
+  const [multiSourceInfo, setMultiSourceInfo] = useState<MultiSourceInfo | null>(null);
 
   const [dictionaryOpen, setDictionaryOpen] = useState<boolean>(
               localStorage.getItem(DICTIONARY_OPEN) === "true" || false);
@@ -170,6 +173,24 @@ const SourceEdit: React.FC = () => {
       dispatch(fetchSegments({ source_id: translatedSourceId }));
     }
   }, [dispatch, originalSourceId, translatedSourceId]);
+
+  const fetchMultiSourceInfo = useCallback(() => {
+    if (translatedSourceId) {
+      getMultiSourceInfo(translatedSourceId)
+        .then(info => setMultiSourceInfo(info))
+        .catch(error => {
+          console.error('Error fetching multi-source info:', error);
+          setMultiSourceInfo(null);
+        });
+    } else {
+      setMultiSourceInfo(null);
+    }
+  }, [translatedSourceId]);
+
+  // Fetch multi-source info when translated source is available
+  useEffect(() => {
+    fetchMultiSourceInfo();
+  }, [fetchMultiSourceInfo]);
 
   useEffect(() => {
     if (translatedSourceId && segments[translatedSourceId]) {
@@ -285,18 +306,43 @@ const SourceEdit: React.FC = () => {
     [originalSourceId, segments]
   );
 
-  const fixedHeaderContent = useCallback(() => (
-    <TableRow sx={{ backgroundColor: 'white' }}>
-      <TableCell>Order</TableCell>
-      <TableCell style={{ width: '40%' }}>
-        Source ({(originalSource && getLanguageName(originalLanguage)) || 'Unknown'})
-      </TableCell>
-      <TableCell style={{ width: '50%' }}>
-        Translation ({getLanguageName(translatedLanguage)})
-      </TableCell>
-      <TableCell style={{ width: '10%' }}>Actions</TableCell>
-    </TableRow>
-  ), [originalSource, originalLanguage, translatedLanguage]);
+  const fixedHeaderContent = useCallback(() => {
+    const multiSourceLanguages = multiSourceInfo?.is_multi_source 
+      ? multiSourceInfo.sources
+          .map(s => getLanguageName(s.language))
+          .filter((lang, index, self) => self.indexOf(lang) === index) // Remove duplicates
+          .join(', ')
+      : null;
+
+    return (
+      <TableRow sx={{ backgroundColor: 'white' }}>
+        <TableCell>Order</TableCell>
+        <TableCell style={{ width: '40%' }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+            <Box component="span">Source ({(originalSource && getLanguageName(originalLanguage)) || 'Unknown'})</Box>
+            {multiSourceInfo?.is_multi_source && multiSourceLanguages && (
+              <Chip
+                label={`Multi-source: ${multiSourceLanguages}`}
+                size="small"
+                color="primary"
+                variant="outlined"
+                sx={{ 
+                  fontSize: '0.7rem',
+                  height: '20px',
+                  alignSelf: 'flex-start'
+                }}
+                title={`Multi-source translation using languages: ${multiSourceLanguages}`}
+              />
+            )}
+          </Box>
+        </TableCell>
+        <TableCell style={{ width: '50%' }}>
+          Translation ({getLanguageName(translatedLanguage)})
+        </TableCell>
+        <TableCell style={{ width: '10%' }}>Actions</TableCell>
+      </TableRow>
+    );
+  }, [originalSource, originalLanguage, translatedLanguage, multiSourceInfo]);
 
   const context = {
     translations,

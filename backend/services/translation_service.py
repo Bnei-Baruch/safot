@@ -2,11 +2,11 @@ import os
 import tiktoken
 import logging
 from openai import OpenAI
-from openai import OpenAIError, Timeout
+from openai import OpenAIError, APITimeoutError
 from datetime import datetime
 from models import TranslationServiceOptions, TranslationExample
 from dotenv import load_dotenv
-from typing import List
+from typing import List, Dict
 import re
 
 
@@ -102,7 +102,7 @@ class TranslationService:
 
             return response.choices[0].message.content
 
-        except Timeout:
+        except APITimeoutError:
             logger.error("Request to OpenAI timed out")
             return "Translation failed due to timeout."
 
@@ -136,4 +136,38 @@ class TranslationService:
 
         logger.info("Translation completed successfully. Translated %d paragraphs", len(translated_paragraphs))
         return translated_paragraphs, properties
+    
+    def translate_with_multi_source_alignment(
+        self,
+        origin_segments: List[str],
+        non_origin_portions: Dict[int, str],
+        prompt: str
+    ) -> tuple[List[str], Dict[int, List[int]]]:
+        """Translate origin segments using non-origin texts as reference for alignment."""
+        
+        # Build enhanced prompt with multi-source context
+        enhanced_prompt_parts = [prompt]
+        if non_origin_portions:
+            enhanced_prompt_parts.append("\n\nAdditional reference sources:")
+            for source_id, text_portion in non_origin_portions.items():
+                if text_portion:
+                    enhanced_prompt_parts.append(f"\nSource {source_id}: {text_portion}...")
+        
+        enhanced_prompt = "\n".join(enhanced_prompt_parts)
+        
+        # Prepare chunk
+        chunk_text = " ||| ".join(origin_segments)
+        
+        # Send to AI
+        translated_text = self.send_chunk_for_translation(chunk_text, enhanced_prompt)
+        
+        if not translated_text or "Translation failed" in translated_text:
+            logger.error("AI translation failed in multi-source alignment")
+            raise Exception(f"Translation failed: {translated_text}")
+        
+        # Parse translated segments
+        translated_segments = re.split(r'\s*\|\|\|\s*', translated_text.strip())
+        
+        split_indexes: Dict[int, List[int]] = {}
+        return translated_segments, split_indexes
 
