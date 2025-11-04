@@ -4,7 +4,7 @@ from playhouse.postgres_ext import ArrayField, JSONField
 from pydantic import BaseModel, validator
 from enum import Enum
 from db import db
-from typing import List, TypedDict
+from typing import List, TypedDict, Dict
 
 
 class Sources(pw.Model):
@@ -83,6 +83,36 @@ class Rules(pw.Model):
         )
 
 
+class SourceTranslationLinks(pw.Model):
+    id = pw.AutoField()
+    origin_source_id = pw.IntegerField()
+    translated_source_id = pw.IntegerField()
+    
+    class Meta:
+        database = db
+        table_name = 'source_translation_links'
+        indexes = (
+            (('origin_source_id',), False),
+            (('translated_source_id',), False),
+        )
+
+
+class SegmentTranslationLinks(pw.Model):
+    id = pw.AutoField()
+    origin_segment_id = pw.IntegerField()
+    origin_segment_timestamp = pw.DateTimeField()
+    translated_segment_id = pw.IntegerField()
+    translated_segment_timestamp = pw.DateTimeField()
+
+    class Meta:
+        database = db
+        table_name = 'segment_translation_links'
+        indexes = (
+            (('origin_segment_id', 'origin_segment_timestamp'), False),
+            (('translated_segment_id', 'translated_segment_timestamp'), False),
+        )
+
+
 # Server/HTTP API level definitions (not including database objects)
 # BaseModels used to define some requests responses which
 # are not regular Models - simple dicts are used for Models.
@@ -117,6 +147,19 @@ class TranslationExample(TypedDict):
     sourceText: str
     firstTranslation: str
     lastTranslation: str
+
+class MultiSourceInitializeRequest(BaseModel):
+    origin_source_id: int
+    non_origin_source_ids: List[int]
+    translated_source_id: int
+
+class MultiSourceTranslateBatchRequest(BaseModel):
+    origin_segment_batch: List[dict]  # List of segment dicts from frontend
+    non_origin_texts: Dict[int, str]  # source_id -> remaining text
+    translated_source_id: int
+    prompt_text: str
+    source_language: str
+    target_language: str
 
 """
 class Example(BaseModel):

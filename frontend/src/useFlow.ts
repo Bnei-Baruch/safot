@@ -2,8 +2,9 @@ import { useCallback, useState } from 'react';
 
 import { translateParagraphs } from './services/translation.service';
 import { getPrompt, postPromptDictionary } from './services/dictionary.service';
-import { buildSegment, extractParagraphs, postSegments } from './services/segment.service';
+import { buildSegment, extractParagraphs, postSegments, getSegments } from './services/segment.service';
 import { getSource, postSource } from './services/source.service';
+import { initializeMultiSource, translateMultiSourceBatch } from './services/multi-source.service';
 import { Segment, Source } from './types/frontend-types';
 
 // import compareTwoStrings from 'string-similarity-js';
@@ -267,6 +268,89 @@ export function useFlow() {
     }
   }, [setLoadingCount, translateSegments]);
 
+  const translateMultiSource = useCallback(async (
+    originSourceId: number,
+    nonOriginSourceIds: number[],
+    translatedSourceId: number,
+    sourceLang: string,
+    targetLang: string,
+    stepByStep: boolean
+  ): Promise<{translatedSegments: Segment[], translatedSourceId: number}> => {
+    setLoadingCount(prev => prev + 1);
+    try {
+      // Get origin segments
+      const originSegments = await getSegments(originSourceId);
+      
+      // Get prompt
+      const translatedSource = await getSource(translatedSourceId);
+      const promptKey = "prompt_1";
+      let promptText = "";
+      if (translatedSource.dictionary_id) {
+        promptText = await getPrompt({dictionary_id: translatedSource.dictionary_id, dictionary_timestamp: translatedSource.dictionary_timestamp_epoch});
+      } else {
+        promptText = await getPrompt({prompt_key: promptKey, original_language: sourceLang, translated_language: targetLang});
+      }
+      
+      // Initialize multi-source translation
+      const initResult = await initializeMultiSource({
+        origin_source_id: originSourceId,
+        non_origin_source_ids: nonOriginSourceIds,
+        translated_source_id: translatedSourceId
+      });
+      
+      // Get non-origin texts from initialization response, or empty dict if not provided
+      let nonOriginTexts: Record<number, string> = initResult.non_origin_texts || {};
+      
+      // Process segments in batches
+      if (stepByStep) {
+        // Step-by-step mode: Process first 10 segments only
+        const batch = originSegments.slice(0, 10);
+        
+        const result = await translateMultiSourceBatch({
+          origin_segment_batch: batch,
+          non_origin_texts: nonOriginTexts,
+          translated_source_id: translatedSourceId,
+          prompt_text: promptText,
+          source_language: sourceLang,
+          target_language: targetLang
+        });
+        
+        return {
+          translatedSegments: result.translated_segments,
+          translatedSourceId
+        };
+      } else {
+        // Translate-all mode: Process all segments in batches of 10
+        const batchSize = 10;
+        const allTranslatedSegments: Segment[] = [];
+        
+        for (let i = 0; i < originSegments.length; i += batchSize) {
+          const batch = originSegments.slice(i, i + batchSize);
+          
+          const result = await translateMultiSourceBatch({
+            origin_segment_batch: batch,
+            non_origin_texts: nonOriginTexts,
+            translated_source_id: translatedSourceId,
+            prompt_text: promptText,
+            source_language: sourceLang,
+            target_language: targetLang
+          });
+          
+          allTranslatedSegments.push(...result.translated_segments);
+          // Update non-origin texts for next batch
+          nonOriginTexts = result.updated_non_origin_texts;
+        }
+        
+        return {
+          translatedSegments: allTranslatedSegments,
+          translatedSourceId
+        };
+      }
+    } finally {
+      setLoadingCount(prev => prev - 1);
+    }
+  }, [setLoadingCount]);
+
 	// Consider spliting this method into two, one with source and other without.
 	const createDefaultDict = useCallback(async (source?: Source): Promise<Source | undefined> => {
 		setLoadingCount(prev => prev + 1);
@@ -306,6 +390,7 @@ export function useFlow() {
 		loadingCount,
 		translateFile,
 		translateSegments,
+		translateMultiSource,
   };
 }
 
