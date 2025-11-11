@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from "react-router-dom";
 
 import {
+  Select,
   Box,
   Button,
   CircularProgress,
@@ -20,6 +21,8 @@ import {
 import { LANGUAGES } from '../constants/languages'
 import { useToast } from './Toast';
 import { useFlow } from '../useFlow';
+import { useAppDispatch, useAppSelector, RootState } from '../store/store';
+import { fetchDictionaries } from '../store/DictionarySlice';
 
 const LANG_STYLE = {
   width: 150,
@@ -28,14 +31,22 @@ const LANG_STYLE = {
 
 const TranslateForm: React.FC = () => {
   const navigate = useNavigate();
+  const dispatch = useAppDispatch();
 
   const [file, setFile] = useState<File | null>(null);
   const [sourceLang, setSourceLang] = useState<string>('');
   const [targetLang, setTargetLang] = useState<string>('');
   const [submitAttempted, setSubmitAttempted] = useState<boolean>(false);
-  const { showToast } = useToast();
+  const {showToast} = useToast();
   const [stepByStep, setStepByStep] = useState<boolean>(true);
-  const { translateFile, loadingCount } = useFlow();
+  const {translateFile, loadingCount} = useFlow();
+  const {dictionaries, loading, error} = useAppSelector((state: RootState) => state.dictionaries);
+  const [selectedDictionary, setSelectedDictionary] = useState<{id: null|number, timestamp: null|string}>({id: null, timestamp: null});
+  const anythingLoading = !!loadingCount || loading;
+
+  useEffect(() => {
+    dispatch(fetchDictionaries());
+  }, [dispatch]);
 
   const handleFileClick = () => {
     document.getElementById('fileInput')?.click();
@@ -71,7 +82,9 @@ const TranslateForm: React.FC = () => {
         name, 
         /*source_language*/ sourceLang, 
         /*target_language*/ targetLang,
-        /*step_by_step*/ !all
+        /*step_by_step*/ !all,
+        selectedDictionary.id,
+        selectedDictionary.timestamp,
       );
       showToast('Translation completed', 'success');
       navigate(`/source-edit/${translatedSourceId}`);
@@ -83,6 +96,10 @@ const TranslateForm: React.FC = () => {
       }
     }
   };
+
+  if (error) {
+    showToast(`Error loading dictionaries: ${error}`, 'error');
+  }
 
   return (
     <Paper sx={{ p: 3, backgroundColor: '#ffffff', borderRadius: 2, fontFamily: 'Kanit, sans-serif' }}>
@@ -98,7 +115,7 @@ const TranslateForm: React.FC = () => {
               variant="outlined"
               error={submitAttempted && !sourceLang}
               helperText={submitAttempted && !sourceLang ? 'Required' : ' '}
-              disabled={!!loadingCount}
+              disabled={!!anythingLoading}
               sx={LANG_STYLE}
               InputLabelProps={{ sx: { fontFamily: 'Kanit, sans-serif' } }}
               size="small"
@@ -120,7 +137,7 @@ const TranslateForm: React.FC = () => {
               variant="outlined"
               error={submitAttempted && !targetLang}
               helperText={submitAttempted && !targetLang ? 'Required' : ' '}
-              disabled={!!loadingCount}
+              disabled={!!anythingLoading}
               sx={LANG_STYLE}
               InputLabelProps={{ sx: { fontFamily: 'Kanit, sans-serif' } }}
               size="small"
@@ -135,26 +152,26 @@ const TranslateForm: React.FC = () => {
 
           {/* Upload Area */}
           <Box
-            onClick={!!loadingCount ? undefined : handleFileClick}
-            onDrop={!!loadingCount ? undefined : handleDrop}
+            onClick={!!anythingLoading ? undefined : handleFileClick}
+            onDrop={!!anythingLoading ? undefined : handleDrop}
             onDragOver={(e) => e.preventDefault()}
             sx={{
               width: '100%',
               height: 120,
               border: '2px dashed #bbb',
               borderRadius: 2,
-              backgroundColor: !!loadingCount ? '#f0f0f0' : '#f5f5f5',
+              backgroundColor: !!anythingLoading ? '#f0f0f0' : '#f5f5f5',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
-              cursor: !!loadingCount ? 'not-allowed' : 'pointer',
-              opacity: !!loadingCount ? 0.6 : 1,
+              cursor: !!anythingLoading ? 'not-allowed' : 'pointer',
+              opacity: !!anythingLoading ? 0.6 : 1,
             }}
           >
             <InsertDriveFileOutlined sx={{ mb: 1, fontSize: 36, color: '#777' }} />
             <Typography sx={{ fontFamily: 'inherit' }}>
-              {!!loadingCount ? 'Translation in progress...' : 'Click to Upload or Drag File'}
+              {!!anythingLoading ? 'Translation in progress...' : 'Click to Upload or Drag File'}
             </Typography>
           </Box>
 
@@ -179,32 +196,47 @@ const TranslateForm: React.FC = () => {
         <Divider orientation="vertical" flexItem sx={{ borderColor: '#ccc', mx: 1 }} />
 
         <Box gap={2}>
-          {!loadingCount ? (
-              <Box gap={2}>
-                <Button
-                  variant={stepByStep ? "contained" : "outlined"}
-                  onClick={() => handleSubmit(!stepByStep)}
-                  sx={{ width: 200, height: 40, fontFamily: 'inherit' }}
-                >
-                  <Typography sx={{ flexGrow: 1, textAlign: "center" }}>
-                    {stepByStep ? "Translate" : "Translate ALL!"}
-                  </Typography>
-                  <ArrowDropDown
-                    sx={{ ml: "auto" }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setStepByStep(!stepByStep);
-                    }}
-                  />
-                </Button>
-              </Box>
-            ) : (
-              <>
-                <CircularProgress size={20} />
-                <Typography sx={{ fontFamily: 'inherit', color: '#444', mt: 1 }}>
-                  Translating your file, please wait...
+          {!anythingLoading ? (
+            <Box gap={2} display="flex" flexDirection="column" alignItems="center">
+              <Select
+                id="simple-select"
+                value={selectedDictionary.id || 0}
+                onChange={(e) => {
+                  const id = Number(e.target.value);
+                  setSelectedDictionary({id: id || null, timestamp: dictionaries[id].timestamp || null});
+                }}
+                sx={{ minWidth: 200, maxWidth: 400 }}
+              >
+                <MenuItem value={0}>Default</MenuItem>
+                {Object.entries(dictionaries).map(([id, dictionary]) =>
+                  <MenuItem key={id} value={id}>{dictionary.name}</MenuItem>
+                )}
+              </Select>
+
+              <Button
+                variant={stepByStep ? "contained" : "outlined"}
+                onClick={() => handleSubmit(!stepByStep)}
+                sx={{ width: 200, height: '4em', fontFamily: 'inherit' }}
+              >
+                <Typography sx={{ flexGrow: 1, textAlign: "center" }}>
+                  {stepByStep ? "Translate" : "Translate ALL!"}
                 </Typography>
-              </>
+                <ArrowDropDown
+                  sx={{ ml: "auto" }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setStepByStep(!stepByStep);
+                  }}
+                />
+              </Button>
+            </Box>
+          ) : (
+            <>
+              <CircularProgress size={20} />
+              <Typography sx={{ fontFamily: 'inherit', color: '#444', mt: 1 }}>
+                Translating your file, please wait...
+              </Typography>
+            </>
           )}
         </Box>
       </Box>

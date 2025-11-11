@@ -1,14 +1,14 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import { 
-	GetPromptRequest,
-	PostDictionaryRequest,
-	getDictionaries,
-	getDictionaryBySource,
-	getPrompt,
-	getRules,
-	postDictionary,
-	postPromptDictionary,
-	postRule,
+  GetPromptRequest,
+  PostDictionaryRequest,
+  getDictionaries,
+  getDictionaryBySource,
+  getPrompt,
+  getRules,
+  postDictionary,
+  postPromptDictionary,
+  postRule,
 } from '../services/dictionary.service';
 import { Dictionary, Rule } from '../types/frontend-types';
 
@@ -66,8 +66,9 @@ export const addOrUpdateRule = createAsyncThunk<
 );
 
 type FetchDicationariesParams = {
-	dictionary_id?: number,
-	dictionary_timestamp?: number,
+  dictionary_id?: number,
+  dictionary_timestamp?: number,
+  skip_redux?: boolean,
 };
 
 const _fetchDictionaries = createAsyncThunk<
@@ -150,31 +151,42 @@ const dictionarySlice = createSlice({
       state.error = null;
     })
     .addCase(_fetchDictionaries.fulfilled, (state, action) => {
+      const params = action.meta.arg;
+      state.loading = false;
+      if (params.skip_redux) {
+        return;
+      }
       const dictionaries = action.payload;
       dictionaries.forEach((dictionary) => {
-				if (dictionary.id) {
-					state.dictionaries[dictionary.id] = dictionary;
-				} else {
-					state.error = 'Expected id for dictionary.';
-				}
+        if (dictionary.id) {
+          state.dictionaries[dictionary.id] = dictionary;
+        } else {
+          state.error = 'Expected id for dictionary.';
+        }
       });
-      state.loading = false;
     })
     .addCase(_fetchDictionaries.rejected, (state, action) => {
       state.loading = false;
       state.error = action.payload || 'Unknown error';
     })
-		.addCase(fetchRules.pending, (state, action) => {
+    .addCase(fetchRules.pending, (state, action) => {
       state.loading = true;
       state.error = null;
     })
     .addCase(fetchRules.fulfilled, (state, action) => {
       const rules = action.payload;
       rules.forEach((rule) => {
-				if (!(rule.dictionary_id in state.rules)) {
-					state.rules[rule.dictionary_id] = [];
-				}
-        state.rules[rule.dictionary_id].push(rule);
+        if (!(rule.dictionary_id in state.rules)) {
+          state.rules[rule.dictionary_id] = [];
+        }
+        // Rules should be unique per rule id (usually the latest)
+        const dictionaryRules = state.rules[rule.dictionary_id];
+        const existingIndex = dictionaryRules.findIndex(r => r.id === rule.id);
+        if (existingIndex !== -1) {
+          dictionaryRules[existingIndex] = rule;
+        } else {
+          dictionaryRules.push(rule);
+        }
       });
       state.loading = false;
     })
@@ -182,21 +194,21 @@ const dictionarySlice = createSlice({
       state.loading = false;
       state.error = action.payload || 'Unknown error';
     })
-		.addCase(addOrUpdateRule.pending, (state, action) => {
+    .addCase(addOrUpdateRule.pending, (state, action) => {
       state.loading = true;
       state.error = null;
     })
     .addCase(addOrUpdateRule.fulfilled, (state, action) => {
       const rule = action.payload;
-			if (!(rule.dictionary_id in state.rules)) {
-				state.rules[rule.dictionary_id] = [];
-			}
-			const index = state.rules[rule.dictionary_id].findIndex((r) => r.id === rule.id);
-			if (index !== -1) {
-				state.rules[rule.dictionary_id].splice(index, 1, rule);
-			} else {
-				state.rules[rule.dictionary_id].push(rule);
-			}
+      if (!(rule.dictionary_id in state.rules)) {
+        state.rules[rule.dictionary_id] = [];
+      }
+      const index = state.rules[rule.dictionary_id].findIndex((r) => r.id === rule.id);
+      if (index !== -1) {
+        state.rules[rule.dictionary_id].splice(index, 1, rule);
+      } else {
+        state.rules[rule.dictionary_id].push(rule);
+      }
       state.loading = false;
     })
     .addCase(addOrUpdateRule.rejected, (state, action) => {
@@ -209,11 +221,11 @@ const dictionarySlice = createSlice({
     })
     .addCase(fetchDictionaryBySource.fulfilled, (state, action) => {
       const dictionary = action.payload;
-			if (dictionary.id) {
-				state.dictionaries[dictionary.id] = dictionary;
-			} else {
-				state.error = 'Expected id for dictionary.';
-			}
+      if (dictionary.id) {
+        state.dictionaries[dictionary.id] = dictionary;
+      } else {
+        state.error = 'Expected id for dictionary.';
+      }
       state.loading = false;
     })
     .addCase(fetchDictionaryBySource.rejected, (state, action) => {
@@ -225,49 +237,49 @@ const dictionarySlice = createSlice({
       state.error = null;
     })
     .addCase(fetchPrompt.fulfilled, (state, action) => {
-			const { dictionary_id } = action.meta.arg;
-			if (dictionary_id) {
-				const prompt = action.payload;
-				state.prompts[dictionary_id] = prompt;
-				state.loading = false;
-			}
+      const { dictionary_id } = action.meta.arg;
+      if (dictionary_id) {
+        const prompt = action.payload;
+        state.prompts[dictionary_id] = prompt;
+        state.loading = false;
+      }
     })
     .addCase(fetchPrompt.rejected, (state, action) => {
       state.loading = false;
       state.error = action.payload || 'Unknown error';
     })
-		.addCase(createPromptDictionary.pending, (state) => {
-			state.loading = true;
-			state.error = null;
-		})
-		.addCase(createPromptDictionary.fulfilled, (state, action: PayloadAction<Dictionary>) => {
-			state.loading = false;
-			if (action.payload.id) {
-				state.dictionaries[action.payload.id] = action.payload;
-			} else {
-				state.error = 'Expecting dictionary with id.';
-			}
-		})
-		.addCase(createPromptDictionary.rejected, (state, action: PayloadAction<string | undefined>) => {
-			state.loading = false;
-			state.error = action.payload || 'Failed to create prompt dictionary';
-		})
-		.addCase(addOrUpdateDictionary.pending, (state) => {
-			state.loading = true;
-			state.error = null;
-		})
-		.addCase(addOrUpdateDictionary.fulfilled, (state, action: PayloadAction<Dictionary>) => {
-			state.loading = false;
-			if (action.payload.id) {
-				state.dictionaries[action.payload.id] = action.payload;
-			} else {
-				state.error = 'Expecting dictionary with id.';
-			}
-		})
-		.addCase(addOrUpdateDictionary.rejected, (state, action: PayloadAction<string | undefined>) => {
-			state.loading = false;
-			state.error = action.payload || 'Failed to add or update dictionary';
-		})
+    .addCase(createPromptDictionary.pending, (state) => {
+      state.loading = true;
+      state.error = null;
+    })
+    .addCase(createPromptDictionary.fulfilled, (state, action: PayloadAction<Dictionary>) => {
+      state.loading = false;
+      if (action.payload.id) {
+        state.dictionaries[action.payload.id] = action.payload;
+      } else {
+        state.error = 'Expecting dictionary with id.';
+      }
+    })
+    .addCase(createPromptDictionary.rejected, (state, action: PayloadAction<string | undefined>) => {
+      state.loading = false;
+      state.error = action.payload || 'Failed to create prompt dictionary';
+    })
+    .addCase(addOrUpdateDictionary.pending, (state) => {
+      state.loading = true;
+      state.error = null;
+    })
+    .addCase(addOrUpdateDictionary.fulfilled, (state, action: PayloadAction<Dictionary>) => {
+      state.loading = false;
+      if (action.payload.id) {
+        state.dictionaries[action.payload.id] = action.payload;
+      } else {
+        state.error = 'Expecting dictionary with id.';
+      }
+    })
+    .addCase(addOrUpdateDictionary.rejected, (state, action: PayloadAction<string | undefined>) => {
+      state.loading = false;
+      state.error = action.payload || 'Failed to add or update dictionary';
+    })
   },
 });
 
