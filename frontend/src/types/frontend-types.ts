@@ -46,14 +46,14 @@ export interface Source {
   modified_by?: string;
   modified_at?: string;
 
-	dictionary_id: number;
-	dictionary_timestamp: string | number;
+  dictionary_id: number;
+  dictionary_timestamp: string | undefined;
 
   // Metadata, output fields only.
   count?: number;
   created_at_epoch: number;
   modified_at_epoch: number;
-	dictionary_timestamp_epoch: number;
+  dictionary_timestamp_epoch: number;
 }
 
 export interface SourcePair {
@@ -104,9 +104,9 @@ export interface Rule {
   type: string;
   dictionary_id: number;
   properties: Record<string, any>;
-	order: number;
+  order: number;
 
-	// Output only field.
+  // Output only field.
   created_at_epoch: number;
   created_by: string;
   modified_at_epoch: number;
@@ -124,12 +124,13 @@ export interface GetPromptParams {
 
 export interface Dictionary {
   id?: number;
-  timestamp?: string | number;
+  timestamp?: string;
+  timestamp_epoch?: number;
   name: string;
   username?: string;
   labels: string[];
 
-	// Output only fields.
+  // Output only fields.
   created_at_epoch: number;
   created_by: string;
   modified_at_epoch: number;

@@ -24,7 +24,12 @@ def microseconds(field, alias = ''):
     return epoch
 
 def epoch_microseconds(dt: datetime) -> int:
-    # treat naive datetimes as UTC; adjust if you want localtime instead
+    if isinstance(dt, str):
+        try:
+            dt = datetime.fromisoformat(dt) 
+        except ValueError:
+            raise ValueError(f"Invalid datetime string format: {dt}")
+    # Treat naive datetimes as UTC; adjust if you want localtime instead
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     else:

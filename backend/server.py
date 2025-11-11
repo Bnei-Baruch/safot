@@ -356,8 +356,6 @@ async def post_dictionary(dictionary: dict, user_info: dict = Depends(get_user_i
 			raise HTTPException(status_code=404, detail="Dictionary not found")
 		updated_dictionary.username = username
 		updated_dictionary.timestamp = now
-		logger.info('dictionary timestamp %s %s', dictionary["timestamp"], type(dictionary["timestamp"])) 
-		apply_dict(updated_dictionary, dictionary)
 		logger.info('d %s %s', dictionary, type(dictionary)) 
 		logger.info('before %s %s', updated_dictionary, type(updated_dictionary)) 
 		apply_dict(updated_dictionary, dictionary, logger)

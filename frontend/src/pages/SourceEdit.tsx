@@ -36,8 +36,10 @@ import { buildSegment, exportTranslationDocx } from '../services/segment.service
 import { useAppDispatch, useAppSelector, RootState } from '../store/store';
 import { fetchSegments, saveSegments } from '../store/SegmentSlice';
 import { fetchSource, addOrUpdateSource } from '../store/SourceSlice';
+import { fetchDictionaries } from '../store/DictionarySlice';
 import Dictionary from '../cmp/Dictionary';
 
+import { formatShortDateTime } from '../cmp/Utils';
 import { useFlow } from '../useFlow';
 import { useToast } from '../cmp/Toast';
 import { Segment, Source } from '../types/frontend-types';
@@ -125,7 +127,7 @@ const SourceEdit: React.FC = () => {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
   const { showToast } = useToast();
-  const { translateSegments, loadingCount } = useFlow();
+  const { createDefaultDict, translateSegments, loadingCount } = useFlow();
 
   const { id } = useParams<{ id: string }>();
   const translatedSourceId = id ? parseInt(id, 10) : undefined;
@@ -153,6 +155,31 @@ const SourceEdit: React.FC = () => {
               localStorage.getItem(DICTIONARY_OPEN) === "true" || false);
   const [rightPaneSize, setRightPaneSize] = useState<number>(
               Number(localStorage.getItem(RIGHT_PANE_SIZE) || "0") || 40);
+
+  const refreshDictionary = useCallback(async (source: Source) => {
+    if (source.dictionary_id) {
+      const dicts = await dispatch(fetchDictionaries({dictionary_id: source.dictionary_id, skip_redux: true})).unwrap();
+      if (dicts.length !== 1) {
+        return false;
+      }
+      const latestDictionary = dicts[0];
+      if (latestDictionary.timestamp !== source.dictionary_timestamp) {
+        // eslint-disable-next-line no-restricted-globals
+        if (confirm(`Current dictionary version is ${formatShortDateTime(source.dictionary_timestamp_epoch || 0)},` +
+            ` later version exist ${formatShortDateTime(latestDictionary.timestamp_epoch || 0)}, update?`)) {
+          await dispatch(addOrUpdateSource({ ...source, dictionary_timestamp: latestDictionary.timestamp }));
+          return true;
+        }
+      }
+    }
+    return false;
+  }, [dispatch]);
+
+  useEffect(() => {
+    if (translatedSource) {
+      refreshDictionary(translatedSource);
+    }
+  }, [refreshDictionary, translatedSource]);
 
   useEffect(() => {
     if (translatedSourceId && !(translatedSourceId in sources)) {
@@ -484,11 +511,32 @@ const SourceEdit: React.FC = () => {
             </TableContainer>
           </Box>
         </Container>
-        <Container maxWidth="lg"  sx={{ minWidth: '350px' }} className="right-side-pane">
-          {translatedSource && <Dictionary
-            source={translatedSource}
-            sourceUpdated={() => {
-              if (translatedSourceId) {
+        <Container maxWidth="lg"  sx={{ minWidth: '350px', textAlign: 'left' }} className="right-side-pane">
+          {translatedSourceId && translatedSource && !translatedSource.dictionary_id &&
+            <Box>
+              <Typography>Default dictionary was used</Typography>
+              <Button onClick={async () => {
+                await createDefaultDict(translatedSource);
+                dispatch(fetchSource({ id: translatedSourceId }));
+              }}>Create Cutsom Dictionary</Button>
+            </Box>
+          }
+          {translatedSourceId && translatedSource && translatedSource.dictionary_id && <Dictionary
+            dictionary_id={translatedSource.dictionary_id}
+            dictionary_timestamp_epoch={translatedSource.dictionary_timestamp_epoch}
+            dictionaryUpdated={async (newDictionaryTimestamp) => {
+              const updatedSource = await dispatch(addOrUpdateSource({
+                ...translatedSource,
+                modified_by: undefined,
+                modified_at: undefined,
+                dictionary_timestamp: newDictionaryTimestamp,
+              })).unwrap();
+              console.log('Updated source', updatedSource);
+              dispatch(fetchSource({ id: translatedSourceId }));
+            }}
+            refresh={async () => {
+              const refreshed = await refreshDictionary(translatedSource);
+              if (refreshed) {
                 dispatch(fetchSource({ id: translatedSourceId }));
               }
             }}

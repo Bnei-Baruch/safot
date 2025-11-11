@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Container,
+  Dialog,
+  DialogContent,
+  DialogTitle,
   Button,
-	Container,
-	Dialog,
-	DialogTitle,
-	DialogContent,
-	DialogContentText,
   DialogActions,
+  IconButton,
   Paper,
   Table,
   TableBody,
@@ -19,9 +19,14 @@ import {
   Typography,
 } from '@mui/material';
 
+import {
+  Edit as EditIcon,
+} from '@mui/icons-material';
+
 import { useAppDispatch, useAppSelector, RootState } from '../store/store';
 import { extractUsername, formatShortDateTime } from './Utils';
 import { fetchPrompt, fetchDictionaries } from '../store/DictionarySlice';
+import Dictionary from './Dictionary';
 
 const PREFERRED_ORDER = 'dictionaries_preffered_order';
 const PREFERRED_DIRECTION = 'dictionaries_preffered_direction';
@@ -40,8 +45,10 @@ const Dictionaries: React.FC = () => {
   const dispatch = useAppDispatch();
   const [sortField, setSortField] = useState<SortField>(localStorage.getItem(PREFERRED_ORDER) as SortField || 'modified_at');
   const [sortDirection, setSortDirection] = useState<SortDirection>(localStorage.getItem(PREFERRED_DIRECTION) as SortDirection || 'asc');
-	const [promptDictionaryId, setPromptDictionaryId] = useState<number | undefined>(undefined);
+  const [promptDictionaryId, setPromptDictionaryId] = useState<number | undefined>(undefined);
+  const [editDictionaryId, setEditDictionaryId] = useState<number | undefined>(undefined);
   const {dictionaries, prompts, loading, error} = useAppSelector((state: RootState) => state.dictionaries);
+  const editDictionaryTimestamp = dictionaries && editDictionaryId && dictionaries[editDictionaryId] && dictionaries[editDictionaryId].timestamp_epoch;
 
   useEffect(() => {
     dispatch(fetchDictionaries());
@@ -83,7 +90,7 @@ const Dictionaries: React.FC = () => {
       case 'modified_at':
         return direction * ((a.modified_at_epoch || 0) - (b.modified_at_epoch || 0));
       case 'labels':
-        throw "Not Implemented";
+        throw new Error("Not Implemented");
       default:
         return 0;
     }
@@ -114,62 +121,87 @@ const Dictionaries: React.FC = () => {
 
   return (
     <Container maxWidth="xl">
-			{loading && <Typography>Loading...</Typography>}
-			{error && <Typography color="error">Error: {error}</Typography>}
-			{!loading && !error && (!sorted || !sorted.length) && <Typography variant="h6">No results</Typography>}
-			{sorted.length && !loading && !error &&
-				<TableContainer component={Paper} sx={{ margin: "auto", width: "100%" }}>
-					<Table size="small">
-						<TableHead>
-							<TableRow>
-								<TableCell>
-									<SortableHeader field="id" label="#" />
-								</TableCell>
-								<TableCell sx={{ maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-									<SortableHeader field="name" label="Dictionary" />
-								</TableCell>
-								<TableCell>
-									<SortableHeader field="created_by" label="Created By" />
-								</TableCell>
-								<TableCell>
-									<SortableHeader field="created_at" label="Created At" />
-								</TableCell>
-								<TableCell>
-									<SortableHeader field="modified_by" label="Last Modified By" />
-								</TableCell>
-								<TableCell>
-									<SortableHeader field="modified_at" label="Last Modified At" />
-								</TableCell>
-								<TableCell>
-									<SortableHeader field="labels" label="Labels" />
-								</TableCell>
-								<TableCell>Actions</TableCell>
-							</TableRow>
-						</TableHead>
-						<TableBody>
-							{sorted.map((dictionary) => (
-								<TableRow key={dictionary.id}>
-									<TableCell>{dictionary.id}</TableCell>
-									<TableCell sx={{ maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-										{dictionary.name}
-									</TableCell>
-									<TableCell>{extractUsername(dictionary.created_by)}</TableCell>
-									<TableCell>{formatShortDateTime(dictionary.created_at_epoch || 0)}</TableCell>
-									<TableCell>{extractUsername(dictionary.modified_by)}</TableCell>
-									<TableCell>{formatShortDateTime(dictionary.modified_at_epoch || 0)}</TableCell>
-									<TableCell>{(dictionary.labels || []).join(',')}</TableCell>
-									<TableCell sx={{ whiteSpace: 'nowrap' }}>
-										<Button onClick={async () => setPromptDictionaryId(dictionary.id)}>
-											PROMPT
-										</Button>
-									</TableCell>
-								</TableRow>
-							))}
-						</TableBody>
-					</Table>
-				</TableContainer>
-			}
-			<Dialog
+      {loading && <Typography>Loading...</Typography>}
+      {error && <Typography color="error">Error: {error}</Typography>}
+      {!loading && !error && (!sorted || !sorted.length) && <Typography variant="h6">No results</Typography>}
+      {sorted.length && !loading && !error &&
+        <TableContainer component={Paper} sx={{ margin: "auto", width: "100%" }}>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>
+                  <SortableHeader field="id" label="#" />
+                </TableCell>
+                <TableCell sx={{ maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <SortableHeader field="name" label="Dictionary" />
+                </TableCell>
+                <TableCell>
+                  <SortableHeader field="created_by" label="Created By" />
+                </TableCell>
+                <TableCell>
+                  <SortableHeader field="created_at" label="Created At" />
+                </TableCell>
+                <TableCell>
+                  <SortableHeader field="modified_by" label="Last Modified By" />
+                </TableCell>
+                <TableCell>
+                  <SortableHeader field="modified_at" label="Last Modified At" />
+                </TableCell>
+                <TableCell>
+                  <SortableHeader field="labels" label="Labels" />
+                </TableCell>
+                <TableCell>Actions</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {sorted.map((dictionary) => (
+                <TableRow key={dictionary.id}>
+                  <TableCell>{dictionary.id}</TableCell>
+                  <TableCell sx={{ maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {dictionary.name}
+                  </TableCell>
+                  <TableCell>{extractUsername(dictionary.created_by)}</TableCell>
+                  <TableCell>{formatShortDateTime(dictionary.created_at_epoch || 0)}</TableCell>
+                  <TableCell>{extractUsername(dictionary.modified_by)}</TableCell>
+                  <TableCell>{formatShortDateTime(dictionary.modified_at_epoch || 0)}</TableCell>
+                  <TableCell>{(dictionary.labels || []).join(',')}</TableCell>
+                  <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                    <IconButton color="primary" onClick={() => setEditDictionaryId(dictionary.id)}>
+                      <EditIcon />
+                    </IconButton>
+                    <Button onClick={async () => setPromptDictionaryId(dictionary.id)}>
+                      PROMPT
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      }
+      <Dialog
+        open={!!editDictionaryId}
+        onClose={() => setEditDictionaryId(undefined)}
+        aria-labelledby="Edit"
+      >
+        <DialogContent>
+          {editDictionaryId && editDictionaryTimestamp && <Dictionary
+            dictionary_id={editDictionaryId}
+            dictionary_timestamp_epoch={editDictionaryTimestamp}
+            dictionaryUpdated={async (newDictionaryTimestampEpoch) => {
+              dispatch(fetchPrompt({dictionary_id: editDictionaryId}));
+            }}
+          />}
+        </DialogContent>
+
+        <DialogActions>
+          <Button variant="contained" autoFocus
+            onClick={() => setEditDictionaryId(undefined)}>
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog
         open={!!promptDictionaryId}
         onClose={() => setPromptDictionaryId(undefined)}
         aria-labelledby="Prompt"
@@ -177,14 +209,14 @@ const Dictionaries: React.FC = () => {
         <DialogTitle>Prompt for {promptDictionaryId && dictionaries[promptDictionaryId].name}</DialogTitle>
 
         <DialogContent>
-					<Typography sx={{ whiteSpace: 'pre-line' }}>
-						{promptDictionaryId && prompts[promptDictionaryId]}
-					</Typography>
+          <Typography sx={{ whiteSpace: 'pre-line' }}>
+            {promptDictionaryId && prompts[promptDictionaryId]}
+          </Typography>
         </DialogContent>
 
         <DialogActions>
           <Button variant="contained" autoFocus
-						onClick={() => setPromptDictionaryId(undefined)}>
+            onClick={() => setPromptDictionaryId(undefined)}>
             Close
           </Button>
         </DialogActions>

@@ -3,7 +3,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import debounce from "lodash.debounce";
 import {
   Box,
-  Button,
   Collapse,
   IconButton,
   List,
@@ -20,11 +19,11 @@ import {
   EditOutlined as EditOutlinedIcon,
   ExpandLess as ExpandLessIcon,
   ExpandMore as ExpandMoreIcon,
+  Refresh as RefreshIcon,
 } from '@mui/icons-material';
 
 import { useAppDispatch, useAppSelector, RootState } from '../store/store';
 
-import { useFlow } from '../useFlow';
 import {
   addOrUpdateDictionary,
   addOrUpdateRule,
@@ -32,10 +31,8 @@ import {
   fetchPrompt,
   fetchRules,
 } from '../store/DictionarySlice';
-import {
-  addOrUpdateSource,
-} from '../store/SourceSlice';
-import { Rule, Source } from '../types/frontend-types';
+import { Rule } from '../types/frontend-types';
+import { formatShortDateTime } from './Utils';
 
 // We can make the right side panel to be also history for each segment...
 
@@ -57,8 +54,9 @@ function RuleNode({rule, isOpen, toggle, update}: RuleNodeProps) {
   }, 500), [setPrompt]);
 
   const updateRule = useCallback(() => {
-    const updatedRule = {...rule, properties: { ...rule.properties, ['text']: prompt.text}};
+    const updatedRule = {...rule, properties: { ...rule.properties, 'text': prompt.text}};
     update(updatedRule);
+    setEditing(false);
   }, [rule, prompt, update]);
 
   return (
@@ -109,14 +107,16 @@ function RuleNode({rule, isOpen, toggle, update}: RuleNodeProps) {
   );
 }
 
-const Dictionary: React.FC<{source: Source, sourceUpdated: (source: Source) => void}> = ({ source, sourceUpdated }) => {
-  console.log('source', source);
+const Dictionary: React.FC<{
+  dictionary_id: number,
+  dictionary_timestamp_epoch: number,
+  dictionaryUpdated: (new_dictionary_timestamp: string) => void,
+  refresh?: () => void
+}> = ({ dictionary_id, dictionary_timestamp_epoch, dictionaryUpdated, refresh }) => {
   const dispatch = useAppDispatch();
-  const {dictionary_id, dictionary_timestamp_epoch} = source;
   const {dictionaries, rules, loading, error} = useAppSelector((state: RootState) => state.dictionaries);
-  const {createDefaultDict, loadingCount} = useFlow();
   const [open, setOpen] = useState<Record<number, boolean>>({});
-  const anythingLoading = loading || !!loadingCount;
+  const [titleEditing, setTitleEditing] = useState<string>('');
 
   useEffect(() => {
     if (dictionary_id && dictionary_timestamp_epoch) {
@@ -127,13 +127,11 @@ const Dictionary: React.FC<{source: Source, sourceUpdated: (source: Source) => v
   }, [dispatch, dictionary_id, dictionary_timestamp_epoch]);
 
   const dictionary = (dictionary_id && dictionaries[dictionary_id]) || null;
-  console.log('Dictionary', dictionary);
   const dictionaryRules = (dictionary_id && rules[dictionary_id]) || null;
-  console.log('Rules', dictionaryRules);
 
   const updateRule = useCallback(async (rule: Rule) => {
     try {
-      if (!rule || !dictionary || !source) {
+      if (!rule || !dictionary) {
         return;
       }
       // Clear username, timestamp, modified_by and modified_at to
@@ -146,37 +144,69 @@ const Dictionary: React.FC<{source: Source, sourceUpdated: (source: Source) => v
       const updatedDictionary = await dispatch(addOrUpdateDictionary({
         ...dictionary,
         username: undefined,
-        timestamp: updatedRule.modified_at_epoch,
+        timestamp: updatedRule.timestamp,
       })).unwrap();
-      const updatedSource = await dispatch(addOrUpdateSource({
-        ...source,
-        modified_by: undefined,
-        modified_at: undefined,
-        dictionary_timestamp: updatedRule.modified_at_epoch,
-      })).unwrap();
-      console.log(updatedRule, updatedDictionary, updatedSource);
+      if (updatedRule.timestamp) {
+        dictionaryUpdated(updatedRule.timestamp);
+      } else {
+        console.error('Expected updated rule timestamp.');
+      }
+      console.log(updatedRule, updatedDictionary);
     } catch (err) {
       console.error('Failed updating rule.');
     }
-  }, [dispatch, dictionary, source]);
+  }, [dispatch, dictionary, dictionaryUpdated]);
 
   return (<Box>
-    {(!dictionary_id || !dictionary_timestamp_epoch) &&
-      <Box>
-        <Typography>Default dictionary was used</Typography>
-        <Button onClick={async () => {
-          const updatedSource = await createDefaultDict(source);
-          if (updatedSource) {
-            sourceUpdated(updatedSource);
-          }
-        }}>Create Cutsom Dictionary</Button>
-      </Box>
-    }
     {error && <Typography>{error}</Typography>}
-    {anythingLoading && <Typography>Loading...</Typography>}
+    {loading && <Typography>loading...</Typography>}
     {dictionary &&
       <Typography variant="h5" component="h5" gutterBottom>
-        {dictionary.name}
+        {!titleEditing && <>
+          {dictionary.name}
+          <IconButton onClick={() => setTitleEditing(dictionary.name)} size="small">
+            <EditOutlinedIcon fontSize="small" />
+          </IconButton>
+        </>}
+        {titleEditing && <>
+          <TextField
+            variant="standard"
+            InputProps={{ sx: (theme) => ({ ...theme.typography.h6, fontWeight: 'bold', minWidth: '350px' }) }}
+            value={titleEditing}
+            onChange={(e) => setTitleEditing(e.target.value)}
+            autoFocus
+            error={titleEditing.trim() === ""}
+            helperText={titleEditing.trim() === "" ? "Title is required" : ""}
+          />
+          <IconButton
+            disabled={titleEditing.trim() === ""}
+            onClick={async () => {
+              const updatedDictionary = await dispatch(addOrUpdateDictionary({
+                ...dictionary,
+                name: titleEditing,
+                // Force update username and timestamp.
+                username: undefined,
+                timestamp: undefined,
+              })).unwrap();
+              if (updatedDictionary.timestamp) {
+                dictionaryUpdated(updatedDictionary.timestamp);
+              } else {
+                console.error('Expecting timestamp after dictionary update for', updatedDictionary);
+              }
+              setTitleEditing("");
+            }} size="small">
+            <CheckOutlinedIcon fontSize="small" />
+          </IconButton>
+          <IconButton onClick={() => setTitleEditing("")} size="small">
+            <CloseOutlinedIcon fontSize="small" />
+          </IconButton>
+        </>}
+        <Typography variant="caption" component="div" sx={{ mt: 0.5 }}>
+          Version: {formatShortDateTime(dictionary.timestamp_epoch || 0)}
+          {refresh && <IconButton onClick={refresh} size="small">
+            <RefreshIcon fontSize="small" />
+          </IconButton>}
+        </Typography>
       </Typography>
     }
     {dictionaryRules &&
