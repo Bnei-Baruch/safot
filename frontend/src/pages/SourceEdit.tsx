@@ -10,6 +10,8 @@ import {
   Container,
   IconButton,
   Paper,
+  Popover,
+  Switch,
   Table,
   TableCell,
   TableContainer,
@@ -30,9 +32,11 @@ import {
   MenuBook as MenuBookIcon,
   Save as SaveIcon,
   Translate as TranslateIcon,
+  Visibility as VisibilityIcon,
 } from '@mui/icons-material';
 
 import { buildSegment, exportTranslationDocx } from '../services/segment.service';
+import type { ExtractTextResult } from '../services/segment.service';
 import { useAppDispatch, useAppSelector, RootState } from '../store/store';
 import { fetchSegments, saveSegments } from '../store/SegmentSlice';
 import { fetchSource, addOrUpdateSource } from '../store/SourceSlice';
@@ -42,10 +46,15 @@ import Dictionary from '../cmp/Dictionary';
 import { formatShortDateTime } from '../cmp/Utils';
 import { useFlow } from '../useFlow';
 import { useToast } from '../cmp/Toast';
-import { Segment, Source } from '../types/frontend-types';
+import { Segment, Source, OriginSource } from '../types/frontend-types';
 import { LANGUAGES, LANG_DIRS } from '../constants/languages';
 
 const getSource = (sources: Record<number, Source>, id: number | undefined): Source | undefined => (sources && id && (id in sources) && sources[id]) || undefined;
+
+const LANGUAGE_COLUMN_WIDTH = 260;
+const TRANSLATION_COLUMN_WIDTH = 320;
+const ORDER_COLUMN_WIDTH = 20;
+const ACTIONS_COLUMN_WIDTH = 30;
 
 const DICTIONARY_OPEN = 'dictionary-open';
 const RIGHT_PANE_SIZE = 'right-pane-size';
@@ -58,6 +67,9 @@ const Row = React.memo(({
   translatedLanguage,
   updateTranslations,
   handleSaveTranslation,
+  isOriginalSourceVisible,
+  additionalVisibleSources,
+  additionalSourceSegments,
 }: any) => {
 
   const inputStyle = useMemo(() => ({
@@ -93,11 +105,32 @@ const Row = React.memo(({
 
   return (
     <>
-      <TableCell>{originalSegment.order}</TableCell>
-      <TableCell sx={originalCellStyle}>
-        {originalSegment.text}
-      </TableCell>
-      <TableCell sx={translatedCellStyle}>
+      <TableCell sx={{ width: ORDER_COLUMN_WIDTH, minWidth: ORDER_COLUMN_WIDTH }}>{originalSegment.order}</TableCell>
+      {isOriginalSourceVisible && (
+        <TableCell sx={{ ...originalCellStyle, width: LANGUAGE_COLUMN_WIDTH, minWidth: LANGUAGE_COLUMN_WIDTH }}>
+          {originalSegment.text}
+        </TableCell>
+      )}
+      {additionalVisibleSources.map((sourceLang: { id: number; language: string }) => {
+        const sourceSegments = additionalSourceSegments[sourceLang.id] || [];
+        const segment = sourceSegments.find((s: Segment) => s.order === originalSegment.order);
+        const cellStyle = {
+          wordBreak: 'break-word',
+          whiteSpace: 'pre-wrap',
+          verticalAlign: 'top',
+          direction: LANG_DIRS[sourceLang.language],
+          textAlign: LANG_DIRS[sourceLang.language] === 'rtl' ? 'right' : 'left',
+          width: LANGUAGE_COLUMN_WIDTH,
+          minWidth: LANGUAGE_COLUMN_WIDTH,
+        };
+        
+        return (
+          <TableCell key={sourceLang.id} sx={cellStyle}>
+            {segment?.text || ''}
+          </TableCell>
+        );
+      })}
+      <TableCell sx={{ ...translatedCellStyle, width: TRANSLATION_COLUMN_WIDTH, minWidth: TRANSLATION_COLUMN_WIDTH }}>
         <TextField
           fullWidth
           multiline
@@ -109,7 +142,7 @@ const Row = React.memo(({
           inputProps={inputProps}
         />
       </TableCell>
-      <TableCell>
+      <TableCell sx={{ width: ACTIONS_COLUMN_WIDTH, minWidth: ACTIONS_COLUMN_WIDTH }}>
         <Button
           variant="contained"
           color="primary"
@@ -155,6 +188,135 @@ const SourceEdit: React.FC = () => {
               localStorage.getItem(DICTIONARY_OPEN) === "true" || false);
   const [rightPaneSize, setRightPaneSize] = useState<number>(
               Number(localStorage.getItem(RIGHT_PANE_SIZE) || "0") || 40);
+  
+  // State for visible languages popover
+  const [anchorEl, setAnchorEl] = useState<HTMLButtonElement | null>(null);
+  const [visibleSourceLanguages, setVisibleSourceLanguages] = useState<OriginSource[]>([]);
+  const [initializedVisibleLanguages, setInitializedVisibleLanguages] = useState<boolean>(false);
+  
+  // Get all available origin sources (including the main original source)
+  const availableOriginSources = useMemo(() => {
+    const sources: OriginSource[] = [];
+    
+    // Add the original source if it exists
+    if (originalSource && originalSourceId) {
+      sources.push({
+        id: originalSource.id,
+        name: originalSource.name,
+        language: originalSource.language,
+      });
+    }
+    
+    // Add all other origin sources from origin_sources (excluding duplicates)
+    if (translatedSource && Array.isArray(translatedSource.origin_sources)) {
+      const existingIds = new Set(sources.map(s => s.id));
+      translatedSource.origin_sources.forEach((origin: OriginSource) => {
+        if (!existingIds.has(origin.id)) {
+          sources.push(origin);
+        }
+      });
+    }
+    
+    return sources;
+  }, [translatedSource?.origin_sources, originalSource, originalSourceId]);
+  
+  // Initialize visible languages: original source ON by default, others OFF
+  useEffect(() => {
+    if (!initializedVisibleLanguages && originalSource && originalSourceId) {
+      const originalSourceEntry: OriginSource = {
+        id: originalSource.id,
+        name: originalSource.name,
+        language: originalSource.language,
+      };
+      setVisibleSourceLanguages([originalSourceEntry]);
+      setInitializedVisibleLanguages(true);
+    }
+  }, [originalSource, originalSourceId, initializedVisibleLanguages]);
+  
+  // Load segments for visible source languages
+  useEffect(() => {
+    visibleSourceLanguages.forEach((sourceLang: OriginSource) => {
+      if (!segments[sourceLang.id]) {
+        dispatch(fetchSegments({ source_id: sourceLang.id }));
+      }
+    });
+  }, [dispatch, visibleSourceLanguages, segments]);
+  
+  // Check if original source is visible
+  const isOriginalSourceVisible = useMemo(() => {
+    if (!originalSourceId) {
+      return false;
+    }
+    return visibleSourceLanguages.some((vsl: OriginSource) => vsl.id === originalSourceId);
+  }, [visibleSourceLanguages, originalSourceId]);
+  
+  // Get additional sources (excluding the original source)
+  const additionalVisibleSources = useMemo(() => {
+    if (!originalSourceId) return visibleSourceLanguages;
+    return visibleSourceLanguages.filter(
+      (vsl: OriginSource) => vsl.id !== originalSourceId
+    );
+  }, [visibleSourceLanguages, originalSourceId]);
+  
+  // Get segments for additional sources organized by source_id
+  const additionalSourceSegments = useMemo(() => {
+    const result: Record<number, Segment[]> = {};
+    visibleSourceLanguages.forEach((sourceLang: OriginSource) => {
+      result[sourceLang.id] = segments[sourceLang.id] || [];
+    });
+    return result;
+  }, [visibleSourceLanguages, segments]);
+
+  const additionalOriginSources = useMemo(() => {
+    if (!translatedSource?.origin_sources) {
+      return [];
+    }
+    return translatedSource.origin_sources.filter(
+      (origin: OriginSource) => origin.id !== originalSourceId
+    );
+  }, [translatedSource?.origin_sources, originalSourceId]);
+
+  const getAdditionalSourcesRemainingText = useCallback(async (): Promise<ExtractTextResult[]> => {
+    if (!additionalOriginSources.length) {
+      return [];
+    }
+
+    const remainingTexts = await Promise.all(
+      additionalOriginSources.map(async (origin: OriginSource) => {
+        try {
+          const latestSegments = await dispatch(fetchSegments({ source_id: origin.id })).unwrap();
+          const temporalSegment = latestSegments.find((segment: Segment) => segment.order === 0);
+          if (temporalSegment?.text?.trim()) {
+            return {
+              id: origin.id,
+              language: origin.language,
+              text: temporalSegment.text,
+              properties: temporalSegment.properties || {},
+            } as ExtractTextResult;
+          }
+        } catch (error) {
+          console.error(`Failed to load segments for source ${origin.id}`, error);
+          const cachedSegments = segments[origin.id];
+          const temporalSegment = cachedSegments?.find((segment: Segment) => segment.order === 0);
+          if (temporalSegment?.text?.trim()) {
+            return {
+              id: origin.id,
+              language: origin.language,
+              text: temporalSegment.text,
+              properties: temporalSegment.properties || {},
+            } as ExtractTextResult;
+          }
+        }
+        return null;
+      })
+    );
+
+    return remainingTexts.filter((item): item is ExtractTextResult => item !== null);
+  }, [additionalOriginSources, dispatch, segments]);
+
+  const languageColumnsCount = (isOriginalSourceVisible ? 1 : 0) + additionalVisibleSources.length;
+  const tableMinWidth = (languageColumnsCount * LANGUAGE_COLUMN_WIDTH) + TRANSLATION_COLUMN_WIDTH;
+  const shouldEnableHorizontalScroll = visibleSourceLanguages.length > 2;
 
   const refreshDictionary = useCallback(async (source: Source) => {
     if (source.dictionary_id) {
@@ -189,6 +351,15 @@ const SourceEdit: React.FC = () => {
       dispatch(fetchSource({ id: originalSourceId }));
     }
   }, [dispatch, translatedSourceId, originalSourceId, sources]);
+  
+  // Refresh translated source to ensure we have origin_sources
+  // This handles the case where the source was fetched before origin_sources was populated
+  useEffect(() => {
+    if (translatedSourceId && translatedSource && !Array.isArray(translatedSource.origin_sources)) {
+      // Source doesn't have origin_sources array, refresh it
+      dispatch(fetchSource({ id: translatedSourceId }));
+    }
+  }, [dispatch, translatedSourceId, translatedSource]);
 
   // Load initial segments when source IDs are available
   useEffect(() => {
@@ -213,19 +384,51 @@ const SourceEdit: React.FC = () => {
       if (!originalSourceId || !translatedSourceId) {
         return;
       }
-      // Make sure all segments are saved?!
-      const segmentsToTranslate = [];
-      for (const originalSegment of segments[originalSourceId]) {
+
+      let originalSourceSegments = segments[originalSourceId];
+      if (!originalSourceSegments || originalSourceSegments.length === 0) {
+        originalSourceSegments = await dispatch(fetchSegments({ source_id: originalSourceId })).unwrap();
+      }
+
+      if (!originalSourceSegments || originalSourceSegments.length === 0) {
+        showToast('No original segments available for translation.', 'info');
+        return;
+      }
+
+      const segmentsToTranslate: Segment[] = [];
+      for (const originalSegment of originalSourceSegments) {
         if (!translatedSegmentsByOrder[originalSegment.order] && !translations[originalSegment.order]) {
           segmentsToTranslate.push(originalSegment);
         }
         if (segmentsToTranslate.length >= 10) {
           break;
         }
-      };
-      await translateSegments(segmentsToTranslate, translatedSourceId, originalLanguage, translatedLanguage);
+      }
+
+      if (!segmentsToTranslate.length) {
+        showToast('No pending segments to translate.', 'info');
+        return;
+      }
+
+      const additionalSourcesText = await getAdditionalSourcesRemainingText();
+
+      await translateSegments(
+        segmentsToTranslate,
+        translatedSourceId,
+        originalLanguage,
+        translatedLanguage,
+        additionalSourcesText
+      );
+
       showToast('Translation completed', 'success');
-      dispatch(fetchSegments({ source_id: translatedSourceId }));
+      await dispatch(fetchSegments({ source_id: translatedSourceId })).unwrap();
+      if (additionalSourcesText.length) {
+        await Promise.all(
+          additionalSourcesText
+            .filter((source) => source.id)
+            .map((source) => dispatch(fetchSegments({ source_id: source.id! })).unwrap())
+        );
+      }
     } catch (error) {
       if (error instanceof Error) {
         showToast('Error translating more: ' + error.message, 'error');
@@ -233,7 +436,19 @@ const SourceEdit: React.FC = () => {
         showToast('Error translating more', 'error');
       }
     }
-  }, [translations, segments, translatedSegmentsByOrder, translateSegments, showToast, dispatch, translatedSourceId, translatedLanguage, originalSourceId, originalLanguage]);
+  }, [
+    translations,
+    segments,
+    translatedSegmentsByOrder,
+    translateSegments,
+    showToast,
+    dispatch,
+    translatedSourceId,
+    translatedLanguage,
+    originalSourceId,
+    originalLanguage,
+    getAdditionalSourcesRemainingText,
+  ]);
 
   const handleSaveTranslation = useCallback(async (translatedSegment: Segment, originalSegment: Segment, text: string) => {
     if (!translatedSourceId) {
@@ -314,16 +529,23 @@ const SourceEdit: React.FC = () => {
 
   const fixedHeaderContent = useCallback(() => (
     <TableRow sx={{ backgroundColor: 'white' }}>
-      <TableCell>Order</TableCell>
-      <TableCell style={{ width: '40%' }}>
-        Source ({(originalSource && getLanguageName(originalLanguage)) || 'Unknown'})
-      </TableCell>
-      <TableCell style={{ width: '50%' }}>
+      <TableCell sx={{ width: ORDER_COLUMN_WIDTH, minWidth: ORDER_COLUMN_WIDTH }}>Order</TableCell>
+      {isOriginalSourceVisible && (
+        <TableCell sx={{ width: LANGUAGE_COLUMN_WIDTH, minWidth: LANGUAGE_COLUMN_WIDTH }}>
+          Source ({(originalSource && getLanguageName(originalLanguage)) || 'Unknown'})
+        </TableCell>
+      )}
+      {additionalVisibleSources.map((sourceLang: OriginSource) => (
+        <TableCell key={sourceLang.id} sx={{ width: LANGUAGE_COLUMN_WIDTH, minWidth: LANGUAGE_COLUMN_WIDTH }}>
+          {getLanguageName(sourceLang.language)}
+        </TableCell>
+      ))}
+      <TableCell sx={{ width: TRANSLATION_COLUMN_WIDTH, minWidth: TRANSLATION_COLUMN_WIDTH }}>
         Translation ({getLanguageName(translatedLanguage)})
       </TableCell>
-      <TableCell style={{ width: '10%' }}>Actions</TableCell>
+      <TableCell sx={{ width: ACTIONS_COLUMN_WIDTH, minWidth: ACTIONS_COLUMN_WIDTH }}>Actions</TableCell>
     </TableRow>
-  ), [originalSource, originalLanguage, translatedLanguage]);
+  ), [originalSource, originalLanguage, translatedLanguage, isOriginalSourceVisible, additionalVisibleSources]);
 
   const context = {
     translations,
@@ -332,6 +554,9 @@ const SourceEdit: React.FC = () => {
     translatedLanguage,
     updateTranslations,
     handleSaveTranslation,
+    isOriginalSourceVisible,
+    additionalVisibleSources,
+    additionalSourceSegments,
   };
 
   const itemContent = useCallback((index: number, originalSegment: Segment, context: any) => {
@@ -342,6 +567,9 @@ const SourceEdit: React.FC = () => {
       translatedLanguage,
       updateTranslations,
       handleSaveTranslation,
+      isOriginalSourceVisible,
+      additionalVisibleSources,
+      additionalSourceSegments,
     } = context;
 
     // TODO: Original segment might not match by timestamp with 
@@ -359,13 +587,16 @@ const SourceEdit: React.FC = () => {
         translatedLanguage={translatedLanguage}
         updateTranslations={updateTranslations}
         handleSaveTranslation={handleSaveTranslation}
+        isOriginalSourceVisible={isOriginalSourceVisible}
+        additionalVisibleSources={additionalVisibleSources}
+        additionalSourceSegments={additionalSourceSegments}
       />
     );
   }, []);
 
   const VirtuosoTableComponent = useCallback((props: any) => (
-    <Table stickyHeader {...props} />
-  ), []);
+    <Table stickyHeader sx={{ minWidth: tableMinWidth }} {...props} />
+  ), [tableMinWidth]);
 
   const virtuosoComponents = useMemo(() => ({
     Table: VirtuosoTableComponent
@@ -400,6 +631,72 @@ const SourceEdit: React.FC = () => {
               Back to sources
             </Button>
             <Box display="flex" gap={2}>
+              <Tooltip title="Visible languages" arrow>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={(e) => setAnchorEl(e.currentTarget as HTMLButtonElement)}
+                >
+                  <VisibilityIcon />
+                </Button>
+              </Tooltip>
+              <Popover
+                open={Boolean(anchorEl)}
+                anchorEl={anchorEl}
+                onClose={() => setAnchorEl(null)}
+                anchorOrigin={{
+                  vertical: 'bottom',
+                  horizontal: 'right',
+                }}
+                transformOrigin={{
+                  vertical: 'top',
+                  horizontal: 'right',
+                }}
+              >
+                <Box sx={{ p: 2, minWidth: 200 }}>
+                  <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold' }}>
+                    Visible languages
+                  </Typography>
+                  {availableOriginSources.map((originSource: OriginSource) => {
+                    const isVisible = visibleSourceLanguages.some(
+                      (vsl: OriginSource) => vsl.id === originSource.id
+                    );
+                    return (
+                      <Box
+                        key={originSource.id}
+                        sx={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          mb: 1,
+                        }}
+                      >
+                        <Typography>{getLanguageName(originSource.language)}</Typography>
+                        <Switch
+                          checked={isVisible}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setVisibleSourceLanguages([...visibleSourceLanguages, originSource]);
+                            } else {
+                              setVisibleSourceLanguages(
+                                visibleSourceLanguages.filter(
+                                  (vsl: OriginSource) => vsl.id !== originSource.id
+                                )
+                              );
+                            }
+                          }}
+                          color="primary"
+                        />
+                      </Box>
+                    );
+                  })}
+                  {availableOriginSources.length === 0 && (
+                    <Typography variant="body2" color="text.secondary">
+                      No additional source languages available
+                    </Typography>
+                  )}
+                </Box>
+              </Popover>
               <Tooltip title="Download docx" arrow>
                 <Button
                   variant="contained"
@@ -500,7 +797,13 @@ const SourceEdit: React.FC = () => {
           {/* Scrollable table */}
 
           <Box>
-            <TableContainer component={Paper} className="edit-virtuoso-height">
+            <TableContainer 
+              component={Paper} 
+              className="edit-virtuoso-height"
+              sx={{
+                overflowX: shouldEnableHorizontalScroll ? 'auto' : 'hidden',
+              }}
+            >
               <TableVirtuoso
                 data={data}
                 fixedHeaderContent={fixedHeaderContent}

@@ -83,6 +83,38 @@ class Rules(pw.Model):
         )
 
 
+class SourcesOrigins(pw.Model):
+    id = pw.IntegerField(sequence='sources_origins_id_seq')
+    origin_source_id = pw.IntegerField()
+    translated_source_id = pw.IntegerField()
+
+    class Meta:
+        database = db
+        table_name = 'sources_origins'
+        primary_key = pw.CompositeKey('id')
+        indexes = (
+            (('origin_source_id',), False),
+            (('translated_source_id',), False),
+        )
+
+
+class SegmentsOrigins(pw.Model):
+    id = pw.IntegerField(sequence='segments_origins_id_seq')
+    origin_segment_id = pw.IntegerField()
+    origin_segment_timestamp = pw.DateTimeField()
+    translated_segment_id = pw.IntegerField()
+    translated_segment_timestamp = pw.DateTimeField()
+
+    class Meta:
+        database = db
+        table_name = 'segments_origins'
+        primary_key = pw.CompositeKey('id')
+        indexes = (
+            (('origin_segment_id', 'origin_segment_timestamp'), False),
+            (('translated_segment_id', 'translated_segment_timestamp'), False),
+        )
+
+
 # Server/HTTP API level definitions (not including database objects)
 # BaseModels used to define some requests responses which
 # are not regular Models - simple dicts are used for Models.
@@ -97,9 +129,15 @@ class TranslationServiceOptions(BaseModel):
     provider: Provider = Provider.OPENAI
     temperature: float = 0.2
 
+class AdditionalSource(BaseModel):
+    text: str
+    language: str
+    source_id: int
+
 class ParagraphsTranslateRequest(BaseModel):
     paragraphs: List[str]
     prompt_text: str
+    additionalSourcesText: List[AdditionalSource] | None = None
 
 class PromptRequest(BaseModel):
     dictionary_id: int | None = None
@@ -112,6 +150,9 @@ class PromptRequest(BaseModel):
     # Extra params for custom_key.
     original_language: str = ""
     translated_language: str = ""
+    
+    # Multi-source translation params
+    num_additional_sources: int = 0
 
 class TranslationExample(TypedDict):
     sourceText: str

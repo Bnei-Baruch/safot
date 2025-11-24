@@ -19,3 +19,15 @@ export async function delSource(sourceId: number): Promise<any> {
   return await httpService.delete(`${SOURCES}/${sourceId}`);
 }
 
+export async function postSourceOriginLinks(
+  originalSourceId: number,
+  otherSourceIds: number[],
+  translatedSourceId: number
+): Promise<any> {
+  return await httpService.post(`${SOURCES}/origins`, {
+    original_source_id: originalSourceId,
+    other_source_ids: otherSourceIds,
+    translated_source_id: translatedSourceId,
+  });
+}
+
