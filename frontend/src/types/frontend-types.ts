@@ -28,6 +28,12 @@ export interface BuildSegmentParams {
   original_segment_timestamp?: string;
 }
 
+export interface OriginSource {
+  id: number;
+  name: string;
+  language: string;
+}
+
 export interface Source {
   id: number;
   name: string;
@@ -54,6 +60,9 @@ export interface Source {
   created_at_epoch: number;
   modified_at_epoch: number;
   dictionary_timestamp_epoch: number;
+  
+  // Origin sources linked via SourcesOrigins
+  origin_sources?: OriginSource[];
 }
 
 export interface SourcePair {

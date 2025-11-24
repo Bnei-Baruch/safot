@@ -22,7 +22,7 @@ const Main: React.FC = () => {
       </Box>
       <Collapse in={open} timeout="auto" unmountOnExit>
         <Box sx={{ backgroundColor: '#f5f5f5', p: 5 }}>
-          <Container maxWidth={false} sx={{ width: "fit-content" }}>
+          <Container maxWidth="md" sx={{ width: "100%" }}>
             <TranslateForm />
           </Container>
         </Box>
