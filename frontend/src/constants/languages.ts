@@ -7,6 +7,7 @@ export const LANGUAGES: LanguageOption[] = [
   { code: 'ar', label: 'Arabic', direction: 'rtl' },
   { code: 'es', label: 'Spanish', direction: 'ltr' },
   { code: 'ru', label: 'Russian', direction: 'ltr' },
+  { code: 'uk', label: 'Ukrainian', direction: 'ltr' },
   { code: 'tr', label: 'Turkish', direction: 'ltr' },
   { code: 'de', label: 'German', direction: 'ltr' },
   { code: 'it', label: 'Italian', direction: 'ltr' },
