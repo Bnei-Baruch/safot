@@ -68,6 +68,7 @@ LANGUAGES = {
     "ar": "Arabic",
     "es": "Spanish",
     "ru": "Russian",
+    "uk": "Ukrainian",
     "tr": "Turkish",
     "de": "German",
     "it": "Italian",
