@@ -14,6 +14,8 @@ export type GetPromptRequest = {
 	prompt_key?: string,
 	original_language?: string,
 	translated_language?: string,
+	
+	num_additional_sources?: number,
 };
 
 export async function getPrompt(request: GetPromptRequest): Promise<string> {

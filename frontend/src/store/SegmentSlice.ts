@@ -32,7 +32,7 @@ export const saveSegments = createAsyncThunk<
   'segments/saveSegments',
   async (segments, { rejectWithValue }) => {
     try {
-      return await postSegments(segments);
+      return await postSegments({ segments });
     } catch (err: any) {
       return rejectWithValue(err.message || 'Failed to save segments');
     }

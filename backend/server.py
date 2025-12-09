@@ -29,7 +29,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from services.translation_service import TranslationService
-from services.segment_service import get_paragraphs_from_file, get_latest_segments, store_segments
+from services.segment_service import (
+    get_paragraphs_from_file, 
+    get_latest_segments, 
+    store_segments, 
+    store_temporal_segments,
+    build_segments_from_paragraphs,
+    build_additional_sources_segments,
+    prepare_segments_for_storage,
+    update_temporal_segments_remaining_text,
+    create_segment_origin_links
+)
 from services.source_service import (
     create_or_update_sources,
     get_sources,
@@ -57,7 +67,9 @@ from models import (
     PromptRequest,
     Rules,
     Segments,
+    SegmentsOrigins,
     Sources,
+    SourcesOrigins,
     TranslationServiceOptions,
 )
 
@@ -168,14 +180,72 @@ def delete_source(translation_source_id: int, _: dict = Depends(get_user_info)):
     translations = list(Sources.select().where(Sources.original_source_id == source.original_source_id))
     source_ids_to_delete = [translation_source_id]
     if len(translations) == 1:
-        # This is the last translation, allow deletion of both translation and original
         source_ids_to_delete.append(source.original_source_id)
 
-    # Delete all segments for these sources
+    # Find all additional sources linked via SourcesOrigins
+    additional_source_ids = [link.origin_source_id for link in SourcesOrigins.select().where(
+        SourcesOrigins.translated_source_id == translation_source_id
+    )]
+    source_ids_to_delete.extend(additional_source_ids)
+    source_ids_to_delete = list(dict.fromkeys(source_ids_to_delete))
+
+    # Get segment IDs
+    segment_ids = [seg.id for seg in Segments.select(Segments.id).where(
+        Segments.source_id.in_(source_ids_to_delete)
+    )]
+
+    # Delete by IDs
+    if segment_ids:
+        SegmentsOrigins.delete().where(
+            (SegmentsOrigins.origin_segment_id.in_(segment_ids)) |
+            (SegmentsOrigins.translated_segment_id.in_(segment_ids))
+        ).execute()
+    SourcesOrigins.delete().where(
+        (SourcesOrigins.origin_source_id.in_(source_ids_to_delete)) |
+        (SourcesOrigins.translated_source_id.in_(source_ids_to_delete))
+    ).execute()
     Segments.delete().where(Segments.source_id.in_(source_ids_to_delete)).execute()
-    # Delete the sources themselves
     Sources.delete().where(Sources.id.in_(source_ids_to_delete)).execute()
     return source_ids_to_delete
+
+@app.post('/sources/origins', response_model=list[dict])
+async def create_source_origin_links(request: Request, user_info: dict = Depends(get_user_info)):
+    try:
+        data = await request.json()
+        original_source_id = data.get("original_source_id")
+        other_source_ids = data.get("other_source_ids", [])
+        translated_source_id = data.get("translated_source_id")
+
+        if original_source_id is None or translated_source_id is None:
+            raise HTTPException(status_code=400, detail="original_source_id and translated_source_id are required")
+
+        if not isinstance(other_source_ids, list):
+            raise HTTPException(status_code=400, detail="other_source_ids must be a list")
+
+        # Create links: original source + all other sources -> translated source
+        all_origin_ids = [original_source_id] + other_source_ids
+        created_links = []
+
+        for source_id in all_origin_ids:
+            # Get next sequence value for id
+            cursor = db.execute_sql("SELECT nextval('sources_origins_id_seq')")
+            link_id = cursor.fetchone()[0]
+
+            # Create the link
+            sources_origins = SourcesOrigins.create(
+                id=link_id,
+                origin_source_id=source_id,
+                translated_source_id=translated_source_id,
+            )
+            created_links.append(model_to_dict(sources_origins))
+
+        logger.info(f"Created {len(created_links)} source origin links: {all_origin_ids} -> {translated_source_id}")
+        return created_links
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error creating source origin links: %s", e)
+        raise HTTPException(status_code=500, detail=f"Failed to create source origin links: {str(e)}")
 
 ####### SEGMENTS 
 @app.get('/segments/{source_id}', response_model=list)
@@ -211,18 +281,47 @@ def read_segments(source_id: int, user_info: dict = Depends(get_user_info)):
 async def save_segments(request: Request, user_info: dict = Depends(get_user_info)):
     try:
         data = await request.json()
-        segments = data.get("segments", [])
-
-        if not isinstance(segments, list):
-            raise HTTPException(status_code=400, detail="Invalid request format - segments must be a list")
-
-        # Add username and timestamp to each segment
         now = datetime.utcnow()
-        for segment in segments:
-            segment["username"] = user_info["preferred_username"]
-            segment["timestamp"] = now
-
+        username = user_info["preferred_username"]
+        
+        # New format: build segments from paragraphs
+        if "paragraphs" in data:
+            paragraphs = data.get("paragraphs", [])
+            source_id = data.get("source_id")
+            properties = data.get("properties", {})
+            original_segments = data.get("originalSegments", [])
+            additional_sources_segments = data.get("additional_sources_segments", {})
+            
+            segments = build_segments_from_paragraphs(
+                paragraphs, source_id, properties, username, now, original_segments
+            )
+            
+            if additional_sources_segments:
+                segments.extend(build_additional_sources_segments(
+                    additional_sources_segments, properties, username, now
+                ))
+                # Update temporal segments (order=0) by removing consumed text
+                update_temporal_segments_remaining_text(
+                    additional_sources_segments, username, now
+                )
+        else:
+            # Old format: segments already built
+            segments = data.get("segments", [])
+            prepare_segments_for_storage(segments, username, now)
+            original_segments = None
+            additional_sources_segments = None
+        
         saved_segments = store_segments(segments)
+        
+        # Create segment origin links after segments are saved
+        if "paragraphs" in data:
+            create_segment_origin_links(
+                saved_segments,
+                source_id,
+                original_segments,
+                additional_sources_segments
+            )
+        
         return saved_segments
     except Exception as e:
         logger.error("Error in /segments: %s", e)
@@ -249,13 +348,21 @@ def translate_paragraphs_handler(
             prompt_text=request.prompt_text
         )
 
-        translated_paragraphs, properties = translation_service.translate_paragraphs(request.paragraphs)
+        additional_sources = None
+        if request.additionalSourcesText:
+            additional_sources = [{"text": source.text, "language": source.language, "source_id": source.source_id} for source in request.additionalSourcesText]
+
+        translated_paragraphs, additional_sources_segments, properties = translation_service.translate_paragraphs(
+            request.paragraphs,
+            additional_sources=additional_sources
+        )
         end_time = datetime.utcnow()
         total_duration = (end_time - start_time).total_seconds()
         logger.info("Total translation time: %.2f seconds for %d paragraphs", total_duration, len(request.paragraphs))
 
         return {
             "translated_paragraphs": translated_paragraphs,
+            "additional_sources_segments": additional_sources_segments,
             "properties": properties,
             "total_segments_translated": len(translated_paragraphs),
             "translation_time_seconds": total_duration
@@ -281,6 +388,56 @@ def extract_segments_handler(file: UploadFile = File(...)):
     except Exception as e:
         logger.error("Error in /docx2text: %s", e)
         raise HTTPException(status_code=500, detail="Failed to extract segments")
+
+@app.post('/extractText')
+async def extract_text_handler(request: Request, user_info: dict = Depends(get_user_info)):
+    try:
+        form = await request.form()
+        files = form.getlist("files")
+        additional_sources_str = form.get("additional_sources")
+        
+        if not files:
+            raise HTTPException(status_code=400, detail="No files provided")
+        
+        # Parse additional_sources if provided (contains name and id)
+        additional_sources = []
+        source_ids = []
+        if additional_sources_str:
+            import json
+            additional_sources = json.loads(additional_sources_str)
+            source_ids = [source.get("id") for source in additional_sources if source.get("id") is not None]
+            if len(source_ids) != len(files):
+                raise HTTPException(status_code=400, detail="Number of source_ids must match number of files")
+        
+        results = []
+        
+        for i, file_item in enumerate(files):
+            if not hasattr(file_item, 'filename') or not file_item.filename:
+                continue
+                
+            if not file_item.filename.lower().endswith('.docx'):
+                raise HTTPException(status_code=400, detail=f"Only .docx files are supported. File: {file_item.filename}")
+            
+            paragraphs = get_paragraphs_from_file(file_item)
+            # Join all paragraphs into a single string
+            text = "\n\n".join(paragraphs)
+            properties = {"segment_type": "file"}
+            
+            results.append({
+                "source_id": source_ids[i],
+                "text": text,
+                "properties": properties
+            })
+    
+        store_temporal_segments(results, user_info['preferred_username'], datetime.utcnow())
+        logger.info(f"Stored {len(source_ids)} temporal segments with order=0")
+        
+        return results
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error in /extractText: %s", e)
+        raise HTTPException(status_code=500, detail=f"Failed to extract text: {str(e)}")
     
 @app.get("/export/{source_id}", response_class=FileResponse)
 def export_translation(source_id: int):
@@ -320,9 +477,13 @@ async def get_prompt(request: PromptRequest, dict = Depends(get_user_info)):
             return build_custom_prompt(
                 request.prompt_key,
                 request.original_language,
-                request.translated_language)
+                request.translated_language,
+                num_additional_sources=request.num_additional_sources)
         else:
-            return build_prompt(request.dictionary_id, request.dictionary_timestamp)
+            return build_prompt(
+                request.dictionary_id,
+                request.dictionary_timestamp,
+                num_additional_sources=request.num_additional_sources)
     except Exception as e:
         logger.error("Error getting prompt: %s", e)
         raise HTTPException(status_code=500, detail=f"Failed to get prompt: {str(e)}")
