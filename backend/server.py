@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from db import db
 from docx import Document
 from dotenv import load_dotenv
@@ -35,8 +35,8 @@ from services.source_service import (
     get_sources,
 )
 from services.dictionary import (
-	get_dictionaries,
-	get_rules,
+  get_dictionaries,
+  get_rules,
 )
 from services.prompt import (
     build_custom_prompt,
@@ -47,7 +47,7 @@ from services.prompt import (
 )
 from services.utils import (
     apply_dict,
-	epoch_microseconds,
+  epoch_microseconds,
     microseconds,
 )
 
@@ -217,7 +217,7 @@ async def save_segments(request: Request, user_info: dict = Depends(get_user_inf
             raise HTTPException(status_code=400, detail="Invalid request format - segments must be a list")
 
         # Add username and timestamp to each segment
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         for segment in segments:
             segment["username"] = user_info["preferred_username"]
             segment["timestamp"] = now
@@ -235,7 +235,7 @@ def translate_paragraphs_handler(
     user_info: dict = Depends(get_user_info)
 ):
     try:
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
 
         if not request.paragraphs:
             raise HTTPException(status_code=400, detail="No paragraphs provided.")
@@ -250,7 +250,7 @@ def translate_paragraphs_handler(
         )
 
         translated_paragraphs, properties = translation_service.translate_paragraphs(request.paragraphs)
-        end_time = datetime.utcnow()
+        end_time = datetime.now(timezone.utc)
         total_duration = (end_time - start_time).total_seconds()
         logger.info("Total translation time: %.2f seconds for %d paragraphs", total_duration, len(request.paragraphs))
 
@@ -329,40 +329,40 @@ async def get_prompt(request: PromptRequest, dict = Depends(get_user_info)):
 
 @app.get("/dictionaries", response_model=list[dict])
 async def read_dictionaries(dictionary_id: int | None = None, dictionary_timestamp: int | None = None, user_info: dict = Depends(get_user_info)):
-	return get_dictionaries(dictionary_id, dictionary_timestamp)
+  return get_dictionaries(dictionary_id, dictionary_timestamp)
 
 @app.post("/dictionaries", response_model=dict)
 async def post_dictionary(dictionary: dict, user_info: dict = Depends(get_user_info)):
-	username = user_info["preferred_username"]
-	now = datetime.utcnow()
-	if not "id" in dictionary or not dictionary["id"]:
-		cursor = db.execute_sql("SELECT nextval('dictionary_id_seq')")
-		dictionary_id = cursor.fetchone()[0]
+  username = user_info["preferred_username"]
+  now = datetime.now(timezone.utc)
+  if not "id" in dictionary or not dictionary["id"]:
+    cursor = db.execute_sql("SELECT nextval('dictionary_id_seq')")
+    dictionary_id = cursor.fetchone()[0]
 
-		updated_dictionary = Dictionaries.create(
-			id=dictionary_id,
-			username=username,
-			timestamp=now,
-			**dictionary,
-		) 
-	else:
-		updated_dictionary = (Dictionaries
-			.select()
-			.where(Dictionaries.id == dictionary["id"])
-			.order_by(Dictionaries.timestamp.desc())
-			.limit(1)
-			.get_or_none())
-		if updated_dictionary is None:
-			raise HTTPException(status_code=404, detail="Dictionary not found")
-		updated_dictionary.username = username
-		updated_dictionary.timestamp = now
-		logger.info('d %s %s', dictionary, type(dictionary)) 
-		logger.info('before %s %s', updated_dictionary, type(updated_dictionary)) 
-		apply_dict(updated_dictionary, dictionary, logger)
-		logger.info('after %s %s', updated_dictionary, type(updated_dictionary)) 
-		updated_dictionary.save(force_insert=True)
+    updated_dictionary = Dictionaries.create(
+      id=dictionary_id,
+      username=username,
+      timestamp=now,
+      **dictionary,
+    ) 
+  else:
+    updated_dictionary = (Dictionaries
+      .select()
+      .where(Dictionaries.id == dictionary["id"])
+      .order_by(Dictionaries.timestamp.desc())
+      .limit(1)
+      .get_or_none())
+    if updated_dictionary is None:
+      raise HTTPException(status_code=404, detail="Dictionary not found")
+    updated_dictionary.username = username
+    updated_dictionary.timestamp = now
+    logger.info('d %s %s', dictionary, type(dictionary)) 
+    logger.info('before %s %s', updated_dictionary, type(updated_dictionary)) 
+    apply_dict(updated_dictionary, dictionary, logger)
+    logger.info('after %s %s', updated_dictionary, type(updated_dictionary)) 
+    updated_dictionary.save(force_insert=True)
 
-	return get_dictionaries(updated_dictionary.id, epoch_microseconds(updated_dictionary.timestamp))[0]
+  return get_dictionaries(updated_dictionary.id, epoch_microseconds(updated_dictionary.timestamp))[0]
 
 @app.post("/dictionaries/prompt", response_model=dict)
 async def create_prompt_dictionary(request: dict, user_info: dict = Depends(get_user_info)):
@@ -372,7 +372,7 @@ async def create_prompt_dictionary(request: dict, user_info: dict = Depends(get_
         original_language = request.get("original_language", None)
         translated_language = request.get("translated_language", None)
 
-        timestamp=datetime.utcnow()
+        timestamp=datetime.now(timezone.utc)
 
         cursor = db.execute_sql("SELECT nextval('dictionary_id_seq')")
         dictionary_id = cursor.fetchone()[0]
@@ -424,35 +424,48 @@ async def create_prompt_dictionary(request: dict, user_info: dict = Depends(get_
 
 @app.get("/rules", response_model=list[dict])
 def fetch_rules(dictionary_id: int | None = None, dictionary_timestamp: int | None = None, user_info: dict = Depends(get_user_info)):
-	return get_rules(dictionary_id, dictionary_timestamp)
+  return get_rules(dictionary_id, dictionary_timestamp)
 
 
-@app.post("/rules", response_model=dict)
-async def post_rules(rule: dict, user_info: dict = Depends(get_user_info)):
-	username = user_info["preferred_username"]
-	now = datetime.utcnow()
-	if not "id" in rule or not rule["id"]:
-		cursor = db.execute_sql("SELECT nextval('rule_id_seq')")
-		rule_id = cursor.fetchone()[0]
+@app.post("/rules", response_model=list[dict])
+async def post_rules(request: dict, user_info: dict = Depends(get_user_info)):
+  username = user_info["preferred_username"]
+  now = datetime.now(timezone.utc)
+  rules = request.get("rules", [])
 
-		updated_rule = Rules.create(
-			id=rule_id,
-			username=username,
-			timestamp=now,
-			**rule,
-		) 
-	else:
-		updated_rule = (Rules
-			.select()
-			.where(Rules.id == rule["id"])
-			.order_by(Rules.timestamp.desc())
-			.limit(1)
-			.get_or_none())
-		if updated_rule is None:
-			raise HTTPException(status_code=404, detail="Rule not found")
-		updated_rule.username = username
-		updated_rule.timestamp = now
-		apply_dict(updated_rule, rule)
-		updated_rule.save(force_insert=True)
+  if not rules:
+    raise HTTPException(status_code=400, detail="No rules provided")
 
-	return get_rules(rule_id=updated_rule.id)[0]
+  updated_rule_ids = []
+  for rule in rules:
+    if not "id" in rule or not rule["id"]:
+      # Create new rule
+      cursor = db.execute_sql("SELECT nextval('rule_id_seq')")
+      rule_id = cursor.fetchone()[0]
+
+      updated_rule = Rules.create(
+        id=rule_id,
+        username=username,
+        timestamp=now,
+        **rule,
+      )
+    else:
+      # Update existing rule
+      updated_rule = (Rules
+        .select()
+        .where(Rules.id == rule["id"])
+        .order_by(Rules.timestamp.desc())
+        .limit(1)
+        .get_or_none())
+      if updated_rule is None:
+        raise HTTPException(status_code=404, detail=f"Rule with id {rule['id']} not found")
+      updated_rule.username = username
+      updated_rule.timestamp = now
+      apply_dict(updated_rule, rule)
+      logger.info("RULE TIMESTAMP BEFORE SAVE [%d]", updated_rule.timestamp) 
+      updated_rule.save(force_insert=True)
+
+    updated_rule_ids.append(updated_rule.id)
+
+  # Return all updated rules with full details
+  return get_rules(rule_ids=updated_rule_ids)

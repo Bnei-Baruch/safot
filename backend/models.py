@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 import peewee as pw
 from playhouse.postgres_ext import ArrayField, JSONField
 from pydantic import BaseModel, validator
@@ -10,9 +10,9 @@ from typing import List, TypedDict
 class Sources(pw.Model):
     id = pw.IntegerField(sequence='source_id_seq')
     username = pw.CharField()
-    created_at = pw.DateTimeField(default=datetime.utcnow)
+    created_at = pw.DateTimeField(default=lambda: datetime.now(timezone.utc))
     modified_by = pw.CharField()
-    modified_at = pw.DateTimeField(default=datetime.utcnow)
+    modified_at = pw.DateTimeField(default=lambda: datetime.now(timezone.utc))
     name = pw.CharField()
     language = pw.CharField()
     original_source_id = pw.IntegerField(null=True)
@@ -32,7 +32,7 @@ class Sources(pw.Model):
 
 class Segments(pw.Model):
     id = pw.IntegerField(sequence='segment_id_seq')
-    timestamp = pw.DateTimeField(default=datetime.utcnow)
+    timestamp = pw.DateTimeField(default=lambda: datetime.now(timezone.utc))
     username = pw.CharField()
     text = pw.TextField()  # Text of the paragraph
     source_id = pw.IntegerField()
@@ -53,7 +53,7 @@ class Segments(pw.Model):
 
 class Dictionaries(pw.Model):
     id = pw.IntegerField(sequence='dictionary_id_seq')
-    timestamp = pw.DateTimeField(default=datetime.utcnow)
+    timestamp = pw.DateTimeField(default=lambda: datetime.now(timezone.utc))
     name = pw.CharField()
     username = pw.CharField()
     labels = ArrayField(pw.CharField, null=True)
@@ -66,13 +66,14 @@ class Dictionaries(pw.Model):
 
 class Rules(pw.Model):
     id = pw.IntegerField(sequence='rule_id_seq')
-    timestamp = pw.DateTimeField(default=datetime.utcnow())
+    timestamp = pw.DateTimeField(default=lambda: datetime.now(timezone.utc))
     name = pw.CharField()
     username = pw.CharField()
     type = pw.CharField()
     dictionary_id = pw.IntegerField()
     properties = JSONField()
     order = pw.IntegerField(null=True)
+    deleted = pw.BooleanField(default=False)
 
     class Meta:
         database = db

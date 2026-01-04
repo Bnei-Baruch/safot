@@ -99,12 +99,14 @@ export interface Example {
 export interface Rule {
   id?: number;
   timestamp?: string;
+  timestamp_epoch?: number;  // Added to match backend response
   name: string;
   username?: string;
   type: string;
   dictionary_id: number;
   properties: Record<string, any>;
   order: number;
+  deleted?: boolean;  // For soft deletion
 
   // Output only field.
   created_at_epoch: number;

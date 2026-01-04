@@ -72,7 +72,8 @@ def create_or_update_sources(sources: list[dict], username: str = ""):
                 modified_at=now,
                 **source_data
             )
-            return model_to_dict(created_source) 
+            # Return source with computed fields (like dictionary_timestamp_epoch)
+            return get_sources(source_id=created_source.id)[0]
         else:
             source = Sources.get(Sources.id == source_data["id"])
             if username:
@@ -80,4 +81,5 @@ def create_or_update_sources(sources: list[dict], username: str = ""):
                 source.modified_at = now
             apply_dict(source, source_data)
             source.save()
-            return model_to_dict(source) 
+            # Return source with computed fields (like dictionary_timestamp_epoch)
+            return get_sources(source_id=source.id)[0] 

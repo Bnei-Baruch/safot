@@ -24,8 +24,8 @@ export async function getRules(dictionary_id: number, dictionary_timestamp?: num
   return await httpService.get<Rule[]>(RULES, { dictionary_id, dictionary_timestamp });
 }
 
-export async function postRule(rule: Rule): Promise<Rule> {
-  return await httpService.post(RULES, rule);
+export async function postRules(rules: Rule[]): Promise<Rule[]> {
+  return await httpService.post(RULES, { rules });
 }
 
 export async function getDictionaries(params = {}): Promise<Dictionary[]> {

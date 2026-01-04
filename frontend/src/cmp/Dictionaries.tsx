@@ -21,11 +21,18 @@ import {
 
 import {
   Edit as EditIcon,
+  TextSnippet as TextSnippetIcon,
 } from '@mui/icons-material';
 
 import { useAppDispatch, useAppSelector, RootState } from '../store/store';
 import { extractUsername, formatShortDateTime } from './Utils';
-import { fetchPrompt, fetchDictionaries } from '../store/DictionarySlice';
+import {
+  fetchPrompt,
+  fetchDictionaries,
+  getLatestDictionary,
+  getLatestDictionaries,
+} from '../store/DictionarySlice';
+import { Dictionary as DictionaryType } from '../types/frontend-types';
 import Dictionary from './Dictionary';
 
 const PREFERRED_ORDER = 'dictionaries_preffered_order';
@@ -45,20 +52,20 @@ const Dictionaries: React.FC = () => {
   const dispatch = useAppDispatch();
   const [sortField, setSortField] = useState<SortField>(localStorage.getItem(PREFERRED_ORDER) as SortField || 'modified_at');
   const [sortDirection, setSortDirection] = useState<SortDirection>(localStorage.getItem(PREFERRED_DIRECTION) as SortDirection || 'asc');
-  const [promptDictionaryId, setPromptDictionaryId] = useState<number | undefined>(undefined);
+  const [promptDictionary, setPromptDictionary] = useState<DictionaryType | undefined>(undefined);
   const [editDictionaryId, setEditDictionaryId] = useState<number | undefined>(undefined);
   const {dictionaries, prompts, loading, error} = useAppSelector((state: RootState) => state.dictionaries);
-  const editDictionaryTimestamp = dictionaries && editDictionaryId && dictionaries[editDictionaryId] && dictionaries[editDictionaryId].timestamp_epoch;
+  const editDictionaryTimestamp = dictionaries && editDictionaryId ? getLatestDictionary(dictionaries, editDictionaryId)?.timestamp_epoch : undefined;
 
   useEffect(() => {
     dispatch(fetchDictionaries());
   }, [dispatch]);
 
   useEffect(() => {
-    if (promptDictionaryId) {
-      dispatch(fetchPrompt({dictionary_id: promptDictionaryId}));
+    if (promptDictionary && promptDictionary.id && promptDictionary.timestamp_epoch) {
+      dispatch(fetchPrompt({dictionary_id: promptDictionary.id, dictionary_timestamp: promptDictionary.timestamp_epoch}));
     }
-  }, [dispatch, promptDictionaryId]);
+  }, [dispatch, promptDictionary]);
 
   const handleSort = useCallback((field: SortField) => {
     if (field === sortField) {
@@ -73,7 +80,8 @@ const Dictionaries: React.FC = () => {
     }
   }, [sortField, setSortField, sortDirection, setSortDirection]);
 
-  const sorted = useMemo(() => Object.values(dictionaries).sort((a, b) => {
+  // Get only the latest version of each dictionary for display
+  const sorted = useMemo(() => getLatestDictionaries(dictionaries).sort((a, b) => {
     const direction = sortDirection === 'asc' ? 1 : -1;
     
     switch (sortField) {
@@ -169,9 +177,11 @@ const Dictionaries: React.FC = () => {
                     <IconButton color="primary" onClick={() => setEditDictionaryId(dictionary.id)}>
                       <EditIcon />
                     </IconButton>
-                    <Button onClick={async () => setPromptDictionaryId(dictionary.id)}>
-                      PROMPT
-                    </Button>
+                    <Tooltip title="Show Prompt">
+                      <IconButton color="primary" onClick={() => setPromptDictionary(dictionary)}>
+                        <TextSnippetIcon />
+                      </IconButton>
+                    </Tooltip>
                   </TableCell>
                 </TableRow>
               ))}
@@ -202,21 +212,24 @@ const Dictionaries: React.FC = () => {
         </DialogActions>
       </Dialog>
       <Dialog
-        open={!!promptDictionaryId}
-        onClose={() => setPromptDictionaryId(undefined)}
+        open={!!promptDictionary}
+        onClose={() => setPromptDictionary(undefined)}
         aria-labelledby="Prompt"
       >
-        <DialogTitle>Prompt for {promptDictionaryId && dictionaries[promptDictionaryId].name}</DialogTitle>
+        <DialogTitle>
+          Prompt for {promptDictionary?.name}
+        </DialogTitle>
 
         <DialogContent>
           <Typography sx={{ whiteSpace: 'pre-line' }}>
-            {promptDictionaryId && prompts[promptDictionaryId]}
+            {promptDictionary && promptDictionary.id && promptDictionary.timestamp_epoch &&
+             prompts[promptDictionary.id]?.[promptDictionary.timestamp_epoch]}
           </Typography>
         </DialogContent>
 
         <DialogActions>
           <Button variant="contained" autoFocus
-            onClick={() => setPromptDictionaryId(undefined)}>
+            onClick={() => setPromptDictionary(undefined)}>
             Close
           </Button>
         </DialogActions>

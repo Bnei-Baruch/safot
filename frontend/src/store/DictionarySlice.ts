@@ -1,5 +1,5 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
-import { 
+import {
   GetPromptRequest,
   PostDictionaryRequest,
   getDictionaries,
@@ -8,14 +8,87 @@ import {
   getRules,
   postDictionary,
   postPromptDictionary,
-  postRule,
+  postRules,
 } from '../services/dictionary.service';
 import { Dictionary, Rule } from '../types/frontend-types';
 
+/**
+ * Helper function to get the latest version of a dictionary by ID
+ */
+export const getLatestDictionary = (
+  dictionaries: Record<number, Record<number, Dictionary>>,
+  id: number
+): Dictionary | null => {
+  const versions = dictionaries[id];
+  if (!versions || Object.keys(versions).length === 0) return null;
+  const latestTimestamp = Math.max(...Object.keys(versions).map(Number));
+  return versions[latestTimestamp];
+};
+
+/**
+ * Helper function to get all latest dictionaries as an array
+ */
+export const getLatestDictionaries = (
+  dictionaries: Record<number, Record<number, Dictionary>>
+): Dictionary[] => {
+  const result: Dictionary[] = [];
+  for (const id in dictionaries) {
+    const latest = getLatestDictionary(dictionaries, Number(id));
+    if (latest) {
+      result.push(latest);
+    }
+  }
+  return result;
+};
+
+/**
+ * Helper to get all dictionary IDs
+ */
+export const getDictionaryIds = (
+  dictionaries: Record<number, Record<number, Dictionary>>
+): number[] => {
+  return Object.keys(dictionaries).map(Number);
+};
+
+/**
+ * Selector to get rules for a specific dictionary version
+ * Returns the latest version of each rule where rule.timestamp <= dictionary_timestamp
+ */
+export const getRulesForDictionaryVersion = (
+  rules: Record<number, Record<number, Record<number, Rule>>>,
+  dictionary_id: number,
+  dictionary_timestamp_epoch: number
+): Rule[] => {
+  const dictionaryRules = rules[dictionary_id];
+  if (!dictionaryRules) return [];
+
+  const result: Rule[] = [];
+  for (const rule_id in dictionaryRules) {
+    const ruleVersions = dictionaryRules[rule_id];
+    // Get the latest rule version where timestamp <= dictionary_timestamp
+    const validTimestamps = Object.keys(ruleVersions)
+      .map(Number)
+      .filter(t => t <= dictionary_timestamp_epoch);
+
+    if (validTimestamps.length > 0) {
+      const latestTimestamp = Math.max(...validTimestamps);
+      result.push(ruleVersions[latestTimestamp]);
+    }
+  }
+
+  // Sort by order field
+  return result.sort((a, b) => (a.order || 0) - (b.order || 0));
+};
+
 interface DictionaryState {
-  dictionaries: Record<number, Dictionary>;
-  rules: Record<number, Rule[]>;
-  prompts: Record<number, string>
+  // dictionaries[dictionary_id][timestamp_epoch] = Dictionary
+  // Stores all versions of dictionaries, keyed by ID then timestamp
+  dictionaries: Record<number, Record<number, Dictionary>>;
+  // rules[dictionary_id][rule_id][rule_timestamp_epoch] = Rule
+  // Stores all versions of rules, independently versioned from dictionaries
+  // To get rules for a dictionary version, use getRulesForDictionaryVersion selector
+  rules: Record<number, Record<number, Record<number, Rule>>>;
+  prompts: Record<number, Record<number, string>>
   loading: boolean;
   error: string | null;
 }
@@ -50,17 +123,17 @@ export const fetchRules = createAsyncThunk<
   }
 );
 
-export const addOrUpdateRule = createAsyncThunk<
-  Rule,
-  Rule,
+export const addOrUpdateRules = createAsyncThunk<
+  Rule[],
+  Rule[],
   { rejectValue: string }
 >(
-  'dictionaries/addOrUpdateRule',
-  async (rule, { rejectWithValue }) => {
+  'dictionaries/addOrUpdateRules',
+  async (rules, { rejectWithValue }) => {
     try {
-      return await postRule(rule);
+      return await postRules(rules);
     } catch (err: any) {
-      return rejectWithValue(err.message || 'Failed to add or update rule');
+      return rejectWithValue(err.message || 'Failed to add or update rules');
     }
   }
 );
@@ -68,7 +141,6 @@ export const addOrUpdateRule = createAsyncThunk<
 type FetchDicationariesParams = {
   dictionary_id?: number,
   dictionary_timestamp?: number,
-  skip_redux?: boolean,
 };
 
 const _fetchDictionaries = createAsyncThunk<
@@ -151,17 +223,17 @@ const dictionarySlice = createSlice({
       state.error = null;
     })
     .addCase(_fetchDictionaries.fulfilled, (state, action) => {
-      const params = action.meta.arg;
       state.loading = false;
-      if (params.skip_redux) {
-        return;
-      }
       const dictionaries = action.payload;
       dictionaries.forEach((dictionary) => {
-        if (dictionary.id) {
-          state.dictionaries[dictionary.id] = dictionary;
+        if (dictionary.id && dictionary.timestamp_epoch) {
+          // Initialize nested structure if needed
+          if (!state.dictionaries[dictionary.id]) {
+            state.dictionaries[dictionary.id] = {};
+          }
+          state.dictionaries[dictionary.id][dictionary.timestamp_epoch] = dictionary;
         } else {
-          state.error = 'Expected id for dictionary.';
+          state.error = 'Expected id and timestamp_epoch for dictionary.';
         }
       });
     })
@@ -175,18 +247,26 @@ const dictionarySlice = createSlice({
     })
     .addCase(fetchRules.fulfilled, (state, action) => {
       const rules = action.payload;
+      const { dictionary_id } = action.meta.arg;
+
+      // Initialize nested structure if needed
+      if (!state.rules[dictionary_id]) {
+        state.rules[dictionary_id] = {};
+      }
+
       rules.forEach((rule) => {
-        if (!(rule.dictionary_id in state.rules)) {
-          state.rules[rule.dictionary_id] = [];
+        if (!rule.id || !rule.timestamp_epoch) {
+          state.error = 'Expected id and timestamp_epoch for rule.';
+          return;
         }
-        // Rules should be unique per rule id (usually the latest)
-        const dictionaryRules = state.rules[rule.dictionary_id];
-        const existingIndex = dictionaryRules.findIndex(r => r.id === rule.id);
-        if (existingIndex !== -1) {
-          dictionaryRules[existingIndex] = rule;
-        } else {
-          dictionaryRules.push(rule);
+
+        // Initialize rule_id level if needed
+        if (!state.rules[dictionary_id][rule.id]) {
+          state.rules[dictionary_id][rule.id] = {};
         }
+
+        // Store this rule version
+        state.rules[dictionary_id][rule.id][rule.timestamp_epoch] = rule;
       });
       state.loading = false;
     })
@@ -194,24 +274,36 @@ const dictionarySlice = createSlice({
       state.loading = false;
       state.error = action.payload || 'Unknown error';
     })
-    .addCase(addOrUpdateRule.pending, (state, action) => {
+    .addCase(addOrUpdateRules.pending, (state, action) => {
       state.loading = true;
       state.error = null;
     })
-    .addCase(addOrUpdateRule.fulfilled, (state, action) => {
-      const rule = action.payload;
-      if (!(rule.dictionary_id in state.rules)) {
-        state.rules[rule.dictionary_id] = [];
-      }
-      const index = state.rules[rule.dictionary_id].findIndex((r) => r.id === rule.id);
-      if (index !== -1) {
-        state.rules[rule.dictionary_id].splice(index, 1, rule);
-      } else {
-        state.rules[rule.dictionary_id].push(rule);
-      }
+    .addCase(addOrUpdateRules.fulfilled, (state, action) => {
+      const rules = action.payload;
+
+      // Process each rule in the response
+      rules.forEach((rule) => {
+        // Validate response has required fields
+        if (!rule.dictionary_id || !rule.id || !rule.timestamp_epoch) {
+          state.error = 'Expected dictionary_id, id, and timestamp_epoch for rule.';
+          return;
+        }
+
+        // Initialize nested structure if needed
+        if (!state.rules[rule.dictionary_id]) {
+          state.rules[rule.dictionary_id] = {};
+        }
+        if (!state.rules[rule.dictionary_id][rule.id]) {
+          state.rules[rule.dictionary_id][rule.id] = {};
+        }
+
+        // Store this rule version (might be a new version of existing rule)
+        state.rules[rule.dictionary_id][rule.id][rule.timestamp_epoch] = rule;
+      });
+
       state.loading = false;
     })
-    .addCase(addOrUpdateRule.rejected, (state, action) => {
+    .addCase(addOrUpdateRules.rejected, (state, action) => {
       state.loading = false;
       state.error = action.payload || 'Unknown error';
     })
@@ -221,10 +313,14 @@ const dictionarySlice = createSlice({
     })
     .addCase(fetchDictionaryBySource.fulfilled, (state, action) => {
       const dictionary = action.payload;
-      if (dictionary.id) {
-        state.dictionaries[dictionary.id] = dictionary;
+      if (dictionary.id && dictionary.timestamp_epoch) {
+        // Initialize nested structure if needed
+        if (!state.dictionaries[dictionary.id]) {
+          state.dictionaries[dictionary.id] = {};
+        }
+        state.dictionaries[dictionary.id][dictionary.timestamp_epoch] = dictionary;
       } else {
-        state.error = 'Expected id for dictionary.';
+        state.error = 'Expected id and timestamp_epoch for dictionary.';
       }
       state.loading = false;
     })
@@ -237,10 +333,13 @@ const dictionarySlice = createSlice({
       state.error = null;
     })
     .addCase(fetchPrompt.fulfilled, (state, action) => {
-      const { dictionary_id } = action.meta.arg;
-      if (dictionary_id) {
+      const { dictionary_id, dictionary_timestamp } = action.meta.arg;
+      if (dictionary_id && dictionary_timestamp) {
         const prompt = action.payload;
-        state.prompts[dictionary_id] = prompt;
+        if (!state.prompts[dictionary_id]) {
+          state.prompts[dictionary_id] = {};
+        }
+        state.prompts[dictionary_id][dictionary_timestamp] = prompt;
         state.loading = false;
       }
     })
@@ -254,10 +353,14 @@ const dictionarySlice = createSlice({
     })
     .addCase(createPromptDictionary.fulfilled, (state, action: PayloadAction<Dictionary>) => {
       state.loading = false;
-      if (action.payload.id) {
-        state.dictionaries[action.payload.id] = action.payload;
+      if (action.payload.id && action.payload.timestamp_epoch) {
+        // Initialize nested structure if needed
+        if (!state.dictionaries[action.payload.id]) {
+          state.dictionaries[action.payload.id] = {};
+        }
+        state.dictionaries[action.payload.id][action.payload.timestamp_epoch] = action.payload;
       } else {
-        state.error = 'Expecting dictionary with id.';
+        state.error = 'Expecting dictionary with id and timestamp_epoch.';
       }
     })
     .addCase(createPromptDictionary.rejected, (state, action: PayloadAction<string | undefined>) => {
@@ -270,10 +373,14 @@ const dictionarySlice = createSlice({
     })
     .addCase(addOrUpdateDictionary.fulfilled, (state, action: PayloadAction<Dictionary>) => {
       state.loading = false;
-      if (action.payload.id) {
-        state.dictionaries[action.payload.id] = action.payload;
+      if (action.payload.id && action.payload.timestamp_epoch) {
+        // Initialize nested structure if needed
+        if (!state.dictionaries[action.payload.id]) {
+          state.dictionaries[action.payload.id] = {};
+        }
+        state.dictionaries[action.payload.id][action.payload.timestamp_epoch] = action.payload;
       } else {
-        state.error = 'Expecting dictionary with id.';
+        state.error = 'Expecting dictionary with id and timestamp_epoch.';
       }
     })
     .addCase(addOrUpdateDictionary.rejected, (state, action: PayloadAction<string | undefined>) => {

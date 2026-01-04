@@ -1,105 +1,202 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useToast } from './Toast';
 
 import debounce from "lodash.debounce";
 import {
   Box,
+  Button,
+  Checkbox,
   Collapse,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControlLabel,
   IconButton,
   List,
   ListItem,
   ListItemButton,
   ListItemText,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 
 import {
+  Add as AddIcon,
+  ArrowDownward as ArrowDownwardIcon,
+  ArrowUpward as ArrowUpwardIcon,
   CheckOutlined as CheckOutlinedIcon,
   CloseOutlined as CloseOutlinedIcon,
+  Delete as DeleteIcon,
+  DeleteOutlined as DeleteOutlinedIcon,
   EditOutlined as EditOutlinedIcon,
   ExpandLess as ExpandLessIcon,
   ExpandMore as ExpandMoreIcon,
   Refresh as RefreshIcon,
+  Restore as RestoreIcon,
+  TextSnippet as TextSnippetIcon,
 } from '@mui/icons-material';
 
 import { useAppDispatch, useAppSelector, RootState } from '../store/store';
 
 import {
   addOrUpdateDictionary,
-  addOrUpdateRule,
+  addOrUpdateRules,
   fetchDictionaries,
   fetchPrompt,
   fetchRules,
+  getRulesForDictionaryVersion,
 } from '../store/DictionarySlice';
 import { Rule } from '../types/frontend-types';
 import { formatShortDateTime } from './Utils';
+
+// Rule type constants (must match backend)
+const RULE_TYPE_TEXT = "text";
+const RULE_TYPE_SEGMENTS_SUFFIX = "segments_suffix";
+// const RULE_TYPE_PROMPT_KEY = "prompt_key";
 
 // We can make the right side panel to be also history for each segment...
 
 type RuleNodeProps = {
   rule: Rule,
+  ruleOrder: number,
+  totalRules: number,
   isOpen: boolean,
   toggle: (id: number) => void,
   update: (rule: Rule) => void,
+  remove: (rule: Rule) => void,
+  moveUp: (rule: Rule) => void,
+  moveDown: (rule: Rule) => void,
 }
 
-function RuleNode({rule, isOpen, toggle, update}: RuleNodeProps) {
+function RuleNode({rule, ruleOrder, totalRules, isOpen, toggle, update, remove, moveUp, moveDown}: RuleNodeProps) {
   const ref = React.useRef<HTMLTextAreaElement>(null);
   const [editing, setEditing] = useState<boolean>(false);
+
+  // Auto-expand when editing starts
+  useEffect(() => {
+    if (editing && rule.id && !isOpen) {
+      toggle(rule.id);
+    }
+  }, [editing, rule.id, isOpen, toggle]);
+
   const defaultPrompt = (rule && rule.properties && rule.properties['text']) || '';
   const [prompt, setPrompt] = useState<{text: string, cursor: number}>({text: defaultPrompt, cursor: defaultPrompt.length});
+  const [ruleName, setRuleName] = useState<string>(rule.name);
 
   const updatePrompt = useMemo(() => debounce((text: string, cursor: number) => {
     setPrompt({ text, cursor });
   }, 500), [setPrompt]);
 
   const updateRule = useCallback(() => {
-    const updatedRule = {...rule, properties: { ...rule.properties, 'text': prompt.text}};
+    const updatedRule = {
+      ...rule,
+      name: ruleName,
+      properties: { ...rule.properties, 'text': prompt.text}
+    };
     update(updatedRule);
     setEditing(false);
-  }, [rule, prompt, update]);
+  }, [rule, ruleName, prompt, update]);
+
+  // Check if this is a suffix rule
+  const isSuffixRule = rule.type === RULE_TYPE_SEGMENTS_SUFFIX;
+  const isLastRule = ruleOrder === totalRules - 1;
 
   return (
     <>
-      <ListItemButton onClick={() => rule.id !== undefined && toggle(rule.id)}>
-        <ListItemText primary={rule.name} />
+      <ListItemButton
+          onClick={() => rule.id !== undefined && toggle(rule.id)}
+          sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          <IconButton
+            size="small"
+            onClick={(e) => {
+              e.stopPropagation();
+              moveUp(rule);
+            }}
+            disabled={ruleOrder === 0 || isSuffixRule || ruleOrder === totalRules - 1}
+          >
+            <ArrowUpwardIcon fontSize="small" />
+          </IconButton>
+          <IconButton
+            size="small"
+            onClick={(e) => {
+              e.stopPropagation();
+              moveDown(rule);
+            }}
+            disabled={isLastRule || isSuffixRule || ruleOrder === totalRules - 2}
+          >
+            <ArrowDownwardIcon fontSize="small" />
+          </IconButton>
+        </Box>
+        <ListItemText primary={rule.name} sx={{ flexGrow: 1 }} />
+        {editing && <IconButton
+          size="small"
+          disabled={prompt.text === defaultPrompt && ruleName === rule.name}
+          onClick={updateRule}
+        >
+          <CheckOutlinedIcon fontSize="small" />
+        </IconButton>}
+        <IconButton
+          size="small"
+          onClick={(e) => {
+            e.stopPropagation();
+            setEditing(!editing);
+            setRuleName(rule.name);
+            setPrompt({text: defaultPrompt, cursor: defaultPrompt.length});
+          }}
+        >
+          {!editing ? <EditOutlinedIcon fontSize="small" /> : <CloseOutlinedIcon fontSize="small" />}
+        </IconButton>
+        <IconButton
+          size="small"
+          onClick={(e) => {
+            e.stopPropagation();
+            remove(rule);
+          }}
+          disabled={isSuffixRule}
+        >
+          {rule.deleted ? <RestoreIcon fontSize="small" /> : <DeleteIcon fontSize="small" />}
+        </IconButton>
         {isOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />}
       </ListItemButton>
       <Collapse in={isOpen} timeout="auto" unmountOnExit>
         <ListItem sx={{ position: "relative" }}>
-          <IconButton
-            sx={{ position: "absolute", top: editing ? -13 : 8, right: editing ? 30 : 13, zIndex: 10 }}
-            size="small"
-            onClick={() => {
-              setEditing(!editing);
-              setPrompt({text: defaultPrompt, cursor: defaultPrompt.length});
-            }}
-          >
-            {!editing && <EditOutlinedIcon fontSize="small" />}
-            {editing && <CloseOutlinedIcon fontSize="small" />}
-          </IconButton>
-          {editing && <IconButton
-            sx={{ position: "absolute", top: -13, right: 63, zIndex: 10 }}
-            size="small"
-            disabled={prompt.text === defaultPrompt}
-            onClick={updateRule}
-          >
-            <CheckOutlinedIcon fontSize="small" />
-          </IconButton>}
           <ListItemButton sx={{ pl: 4 }}>
-            {!editing && <Typography sx={{ whiteSpace: 'pre-line', textAlign: 'left' }}>
-              {prompt.text}
-            </Typography>}
-            {editing && <TextField
-              inputRef={ref}
-              fullWidth
-              multiline
-              minRows={1}
-              maxRows={8}
-              defaultValue={prompt.text}
-              onChange={(e) => updatePrompt(e.target.value, e.target.selectionStart || 0)}
-              placeholder="Prompt text"
-            />}
+            {!editing && (
+              <Typography sx={{ whiteSpace: 'pre-line', textAlign: 'left' }}>
+                {prompt.text}
+              </Typography>
+            )}
+            {editing && (
+              <Box sx={{ width: '100%' }}>
+                <TextField
+                  fullWidth
+                  label="Rule Name"
+                  value={ruleName}
+                  onChange={(e) => setRuleName(e.target.value)}
+                  variant="outlined"
+                  size="small"
+                  sx={{ mb: 2 }}
+                  error={ruleName.trim() === ""}
+                  helperText={ruleName.trim() === "" ? "Name is required" : ""}
+                />
+                <TextField
+                  inputRef={ref}
+                  fullWidth
+                  multiline
+                  minRows={1}
+                  maxRows={8}
+                  defaultValue={prompt.text}
+                  onChange={(e) => updatePrompt(e.target.value, e.target.selectionStart || 0)}
+                  placeholder="Prompt text"
+                  label="Rule Text"
+                  variant="outlined"
+                />
+              </Box>
+            )}
           </ListItemButton>
         </ListItem>
       </Collapse>
@@ -114,9 +211,12 @@ const Dictionary: React.FC<{
   refresh?: () => void
 }> = ({ dictionary_id, dictionary_timestamp_epoch, dictionaryUpdated, refresh }) => {
   const dispatch = useAppDispatch();
-  const {dictionaries, rules, loading, error} = useAppSelector((state: RootState) => state.dictionaries);
+  const { showToast } = useToast();
+  const {dictionaries, rules, prompts, loading, error} = useAppSelector((state: RootState) => state.dictionaries);
   const [open, setOpen] = useState<Record<number, boolean>>({});
   const [titleEditing, setTitleEditing] = useState<string>('');
+  const [showDeleted, setShowDeleted] = useState<boolean>(false);
+  const [promptDialogOpen, setPromptDialogOpen] = useState<boolean>(false);
 
   useEffect(() => {
     if (dictionary_id && dictionary_timestamp_epoch) {
@@ -126,40 +226,226 @@ const Dictionary: React.FC<{
     }
   }, [dispatch, dictionary_id, dictionary_timestamp_epoch]);
 
-  const dictionary = (dictionary_id && dictionaries[dictionary_id]) || null;
-  const dictionaryRules = (dictionary_id && rules[dictionary_id]) || null;
+  // Get the specific version of dictionary based on timestamp
+  const dictionary = useMemo(() => {
+    return (dictionary_id && dictionary_timestamp_epoch &&
+            dictionaries[dictionary_id]?.[dictionary_timestamp_epoch]) || null;
+  }, [dictionaries, dictionary_id, dictionary_timestamp_epoch]);
 
-  const updateRule = useCallback(async (rule: Rule) => {
+  // Get rules valid for this dictionary version (filters by timestamp)
+  const dictionaryRules = useMemo(() => {
+    return (dictionary_id && dictionary_timestamp_epoch)
+      ? getRulesForDictionaryVersion(rules, dictionary_id, dictionary_timestamp_epoch)
+      : null;
+  }, [rules, dictionary_id, dictionary_timestamp_epoch]);
+
+  // Filter deleted rules unless showDeleted is true
+  const visibleRules = useMemo(() => {
+    if (!dictionaryRules) return null;
+    return showDeleted ? dictionaryRules : dictionaryRules.filter(r => !r.deleted);
+  }, [dictionaryRules, showDeleted]);
+
+  const showPrompt = useCallback(() => {
+    const prompt = prompts[dictionary_id]?.[dictionary_timestamp_epoch];
+    if (prompt) {
+      setPromptDialogOpen(true);
+    } else {
+      showToast('No prompt available', 'info');
+    }
+  }, [prompts, dictionary_id, dictionary_timestamp_epoch, showToast]);
+
+  console.log(`Dictionary: ${dictionary && dictionary.modified_at_epoch}`);
+  console.log(`Rules: ${dictionaryRules && dictionaryRules[0] && dictionaryRules[0].properties && dictionaryRules[0].properties.text}`);
+
+  const updateRules = useCallback(async (rules: Rule[]) => {
     try {
-      if (!rule || !dictionary) {
+      if (!rules || rules.length === 0 || !dictionary) {
         return;
       }
-      // Clear username, timestamp, modified_by and modified_at to
-      // allow backend to fill them properly.
-      const updatedRule = await dispatch(addOrUpdateRule({
+      // Clear username, timestamp for all rules to allow backend to fill them properly
+      const rulesForUpdate = rules.map(rule => ({
         ...rule,
         username: undefined,
         timestamp: undefined,
-      })).unwrap();
+      }));
+
+      const updatedRules = await dispatch(addOrUpdateRules(rulesForUpdate)).unwrap();
+
+      if (updatedRules.length === 0) {
+        console.error('Expected at least one updated rule');
+        return;
+      }
+
+      // All rules in the batch have the same timestamp, use the first one
+      const sharedTimestamp = updatedRules[0].timestamp;
       const updatedDictionary = await dispatch(addOrUpdateDictionary({
         ...dictionary,
         username: undefined,
-        timestamp: updatedRule.timestamp,
+        timestamp: sharedTimestamp,
       })).unwrap();
-      if (updatedRule.timestamp) {
-        dictionaryUpdated(updatedRule.timestamp);
+
+      if (sharedTimestamp) {
+        dictionaryUpdated(sharedTimestamp);
       } else {
         console.error('Expected updated rule timestamp.');
       }
-      console.log(updatedRule, updatedDictionary);
+      console.log(updatedRules, updatedDictionary);
     } catch (err) {
-      console.error('Failed updating rule.');
+      console.error('Failed updating rules.');
     }
   }, [dispatch, dictionary, dictionaryUpdated]);
 
-  return (<Box>
+  // Count rules by type
+  const countRulesByType = useCallback((type: string) => {
+    if (!dictionaryRules) return 0;
+    return dictionaryRules.filter(r => r.type === type).length;
+  }, [dictionaryRules]);
+
+  // Add a new text rule
+  const addRule = useCallback(async () => {
+    if (!dictionary || !dictionaryRules) return;
+
+    try {
+      // Find the maximum order, but insert before the last rule (which should be suffix)
+      // If there are no rules or only suffix rule, use order 0
+      // Otherwise, use the order of the second-to-last rule + 1
+      let newOrder = 0;
+      if (dictionaryRules.length > 1) {
+        // Insert before the last rule (suffix)
+        newOrder = (dictionaryRules[dictionaryRules.length - 2].order || 0) + 1;
+      } else if (dictionaryRules.length === 1) {
+        newOrder = 0; // Will be inserted before the suffix
+      }
+
+      const newRule: Rule = {
+        name: "New Rule",
+        type: RULE_TYPE_TEXT,
+        dictionary_id: dictionary_id,
+        properties: { text: "Enter rule text here..." },
+        order: newOrder,
+        // These will be filled by backend
+        created_at_epoch: 0,
+        created_by: "",
+        modified_at_epoch: 0,
+        modified_by: "",
+      };
+
+      const rulesToUpdate: Rule[] = [newRule];
+
+      // If we inserted before the last rule, we need to update the suffix rule's order
+      if (dictionaryRules.length > 0) {
+        const lastRule = dictionaryRules[dictionaryRules.length - 1];
+        if (lastRule.type === RULE_TYPE_SEGMENTS_SUFFIX) {
+          rulesToUpdate.push({
+            ...lastRule,
+            order: newOrder + 1,
+          });
+        }
+      }
+
+      // Update all rules in one batch
+      await updateRules(rulesToUpdate);
+
+      showToast('Rule added successfully', 'success');
+    } catch (err) {
+      console.error('Failed adding rule:', err);
+      showToast('Failed to add rule', 'error');
+    }
+  }, [dictionary, dictionaryRules, dictionary_id, updateRules, showToast]);
+
+  // Toggle delete/undelete rule
+  const toggleRuleDeleted = useCallback(async (rule: Rule) => {
+    if (!dictionary || !dictionaryRules) return;
+
+    if (!rule.id) {
+      showToast('Cannot modify rule without ID', 'error');
+      return;
+    }
+
+    const isDeleting = !rule.deleted;
+
+    // Only validate when deleting (not when undeleting)
+    if (isDeleting) {
+      // Cannot delete suffix rules
+      if (rule.type === RULE_TYPE_SEGMENTS_SUFFIX) {
+        showToast('Cannot remove segments suffix rule', 'error');
+        return;
+      }
+
+      // Validate: must keep at least one text rule
+      const textCount = countRulesByType(RULE_TYPE_TEXT);
+
+      if (rule.type === RULE_TYPE_TEXT && textCount <= 1) {
+        showToast('Cannot remove the last text rule', 'error');
+        return;
+      }
+
+      // eslint-disable-next-line no-restricted-globals
+      if (!confirm(`Are you sure you want to remove rule "${rule.name}"?`)) {
+        return;
+      }
+    }
+
+    try {
+      // Toggle deleted state
+      await updateRules([{
+        ...rule,
+        deleted: isDeleting,
+      }]);
+      showToast(isDeleting ? 'Rule removed successfully' : 'Rule restored successfully', 'success');
+    } catch (err) {
+      console.error(isDeleting ? 'Failed removing rule:' : 'Failed restoring rule:', err);
+      showToast(isDeleting ? 'Failed to remove rule' : 'Failed to restore rule', 'error');
+    }
+  }, [dictionary, dictionaryRules, countRulesByType, updateRules, showToast]);
+
+  // Move rule up
+  const moveRuleUp = useCallback(async (rule: Rule) => {
+    if (!dictionary || !dictionaryRules) return;
+    const currentIndex = dictionaryRules.findIndex(r => r.id === rule.id);
+    if (currentIndex <= 0) return;
+
+    // Find the previous rule (skip deleted only if not showing them)
+    let prevIndex = currentIndex - 1;
+    while (prevIndex >= 0 && (!showDeleted && dictionaryRules[prevIndex].deleted)) {
+      prevIndex--;
+    }
+
+    // No valid rule found above
+    if (prevIndex < 0) return;
+
+    const prevRule = dictionaryRules[prevIndex];
+    const tempOrder = rule.order;
+
+    // Swap orders
+    await updateRules([{ ...rule, order: prevRule.order }, { ...prevRule, order: tempOrder }]);
+  }, [dictionary, dictionaryRules, showDeleted, updateRules]);
+
+  // Move rule down
+  const moveRuleDown = useCallback(async (rule: Rule) => {
+    if (!dictionary || !dictionaryRules) return;
+    const currentIndex = dictionaryRules.findIndex(r => r.id === rule.id);
+    if (currentIndex < 0 || currentIndex >= dictionaryRules.length - 1) return;
+
+    // Find the next rule (skip deleted only if not showing them)
+    let nextIndex = currentIndex + 1;
+    while (nextIndex < dictionaryRules.length && (!showDeleted && dictionaryRules[nextIndex].deleted)) {
+      nextIndex++;
+    }
+
+    // No valid rule found below
+    if (nextIndex >= dictionaryRules.length) return;
+
+    const nextRule = dictionaryRules[nextIndex];
+    const tempOrder = rule.order;
+
+    // Swap orders
+    await updateRules([{ ...rule, order: nextRule.order }, { ...nextRule, order: tempOrder }]);
+  }, [dictionary, dictionaryRules, showDeleted, updateRules]);
+
+  return (<Box sx={{ position: 'relative' }}>
     {error && <Typography>{error}</Typography>}
-    {loading && <Typography>loading...</Typography>}
+    {loading && <Typography sx={{ position: 'absolute', left: '50%', transform: 'translate(-50%, 0)'}}>loading...</Typography>}
     {dictionary &&
       <Typography variant="h5" component="h5" gutterBottom>
         {!titleEditing && <>
@@ -201,26 +487,81 @@ const Dictionary: React.FC<{
             <CloseOutlinedIcon fontSize="small" />
           </IconButton>
         </>}
+        <Box component="span" sx={{ float: 'right' }}>
+          <IconButton onClick={addRule} sx={{ 'padding-top': '6px' }}>
+            <AddIcon />
+          </IconButton>
+        </Box>
+        <Box component="span" sx={{ float: 'right' }}>
+          <Tooltip title="Show Prompt">
+            <IconButton onClick={showPrompt} sx={{ 'padding-top': '6px' }}>
+              <TextSnippetIcon />
+            </IconButton>
+          </Tooltip>
+        </Box>
+        <Box component="span" sx={{ float: 'right' }}>
+          <Tooltip title="Show Deleted">
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={showDeleted}
+                  onChange={(e) => setShowDeleted(e.target.checked)}
+                  size="small"
+                />
+              }
+              label={<DeleteOutlinedIcon fontSize="small" sx={{ 'vertical-align': 'sub' }} />}
+            />
+          </Tooltip>
+        </Box>
         <Typography variant="caption" component="div" sx={{ mt: 0.5 }}>
           Version: {formatShortDateTime(dictionary.timestamp_epoch || 0)}
-          {refresh && <IconButton onClick={refresh} size="small">
-            <RefreshIcon fontSize="small" />
-          </IconButton>}
+          <Box component="span">
+            {refresh && <IconButton onClick={refresh} size="small">
+              <RefreshIcon fontSize="small" />
+            </IconButton>}
+          </Box>
         </Typography>
       </Typography>
     }
-    {dictionaryRules &&
-      <List disablePadding>
-        {dictionaryRules.map((rule) =>
+    {visibleRules &&
+      <List>
+        {visibleRules.map((rule, index) =>
           <RuleNode
-            key={rule.id}
+            key={`${rule.id}-${rule.modified_at_epoch}`}
             rule={rule}
+            ruleOrder={index}
+            totalRules={visibleRules.length}
             isOpen={rule.id ? open[rule.id] : false}
             toggle={(id: number) => setOpen({...open, [id]: !open[id]})}
-            update={(rule: Rule) => updateRule(rule)} />
+            update={(rule: Rule) => updateRules([rule])}
+            remove={(rule: Rule) => toggleRuleDeleted(rule)}
+            moveUp={(rule: Rule) => moveRuleUp(rule)}
+            moveDown={(rule: Rule) => moveRuleDown(rule)} />
         )}
       </List>
     }
+    <Dialog
+      open={promptDialogOpen}
+      onClose={() => setPromptDialogOpen(false)}
+      aria-labelledby="Prompt"
+    >
+      <DialogTitle>
+        Prompt for {dictionary?.name}
+      </DialogTitle>
+
+      <DialogContent>
+        <Typography sx={{ whiteSpace: 'pre-line' }}>
+          {prompts[dictionary_id]?.[dictionary_timestamp_epoch]}
+        </Typography>
+      </DialogContent>
+
+      <DialogActions>
+        <Button variant="contained" autoFocus
+          onClick={() => setPromptDialogOpen(false)}>
+          Close
+        </Button>
+      </DialogActions>
+    </Dialog>
   </Box>);
 };
 
