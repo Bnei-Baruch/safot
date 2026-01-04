@@ -158,12 +158,13 @@ const SourceEdit: React.FC = () => {
 
   const refreshDictionary = useCallback(async (source: Source) => {
     if (source.dictionary_id) {
-      const dicts = await dispatch(fetchDictionaries({dictionary_id: source.dictionary_id, skip_redux: true})).unwrap();
+      const dicts = await dispatch(fetchDictionaries({dictionary_id: source.dictionary_id})).unwrap();
       if (dicts.length !== 1) {
         return false;
       }
       const latestDictionary = dicts[0];
       if (latestDictionary.timestamp !== source.dictionary_timestamp) {
+        console.log(source.dictionary_timestamp_epoch, latestDictionary.timestamp_epoch);
         // eslint-disable-next-line no-restricted-globals
         if (confirm(`Current dictionary version is ${formatShortDateTime(source.dictionary_timestamp_epoch || 0)},` +
             ` later version exist ${formatShortDateTime(latestDictionary.timestamp_epoch || 0)}, update?`)) {

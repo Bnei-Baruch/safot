@@ -22,7 +22,11 @@ import { LANGUAGES } from '../constants/languages'
 import { useToast } from './Toast';
 import { useFlow } from '../useFlow';
 import { useAppDispatch, useAppSelector, RootState } from '../store/store';
-import { fetchDictionaries } from '../store/DictionarySlice';
+import {
+  fetchDictionaries,
+  getLatestDictionary,
+  getDictionaryIds,
+} from '../store/DictionarySlice';
 
 const LANG_STYLE = {
   width: 150,
@@ -203,13 +207,18 @@ const TranslateForm: React.FC = () => {
                 value={selectedDictionary.id || 0}
                 onChange={(e) => {
                   const id = Number(e.target.value);
-                  setSelectedDictionary({id: id || null, timestamp: dictionaries[id].timestamp || null});
+                  if (id) {
+                    const latest = getLatestDictionary(dictionaries, id);
+                    setSelectedDictionary({id: id || null, timestamp: latest?.timestamp || null});
+                  } else {
+                    setSelectedDictionary({id: null, timestamp: null});
+                  }
                 }}
                 sx={{ minWidth: 200, maxWidth: 400 }}
               >
                 <MenuItem value={0}>Default</MenuItem>
-                {Object.entries(dictionaries).map(([id, dictionary]) =>
-                  <MenuItem key={id} value={id}>{dictionary.name}</MenuItem>
+                {getDictionaryIds(dictionaries).map((id) =>
+                  <MenuItem key={id} value={id}>{getLatestDictionary(dictionaries, id)?.name}</MenuItem>
                 )}
               </Select>
 

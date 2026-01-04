@@ -10,7 +10,6 @@ from collections import ChainMap
 
 from models import (
     Dictionaries,
-    Rules,
 )
 
 
@@ -18,6 +17,7 @@ from models import (
 from services.utils import (
     microseconds,
 )
+from services.dictionary import get_rules
 
 logger = logging.getLogger(__name__)
 
@@ -99,40 +99,23 @@ def build_custom_prompt(prompt_key: str, original_language: str, translated_lang
         "translated_language": LANGUAGES[translated_language],
     }, defaults)) + segments_suffix
 
-# TODO: There is duplication of this function and standard fetch_fules handler.
-# Need to merge both of them.
-def select_rules(d: Dictionaries) -> list[dict]:
-    latest = Rules.select(
-        Rules.id,
-        fn.MAX(Rules.timestamp).alias("latest_timestamp"),
-    ).where(
-        (Rules.dictionary_id == d.id) &
-        # Fetching rules not newer than dictionary is key to
-        # fetch rules per for specific dictionary timestamp version.
-        (Rules.timestamp <= d.timestamp)  
-    ).group_by(Rules.id)
-    q = Rules.select().join(latest, JOIN.INNER, on=(
-        (Rules.id == latest.c.id) &
-        (Rules.timestamp == latest.c.latest_timestamp)
-    )).order_by(Rules.order)
-    return list(q)
+def rule_to_string(r: dict) -> str:
+    timestamp_epoch = r.get("timestamp_epoch", r.get("modified_at_epoch", 0)) / 1000000
+    return "%d %d %s %s %s" % (r["id"], timestamp_epoch, r.get("modified_by", r.get("username", "")), r["type"], r["properties"])
 
-def rule_to_string(r: Rules) -> str:
-    return "%d %d %s %s %s" % (r.id, r.timestamp.timestamp(), r.username, r.type, r.properties)
-
-def rule_to_prompt(r: Rules) -> str:
+def rule_to_prompt(r: dict) -> str:
     logger.info("RULE: %s", rule_to_string(r))
-    if r.type == RULE_TYPE_PROMPT_KEY:
-        ret = build_custom_prompt(r.properties["prompt_key"], ORIGINAL_LANGUAGE, TRANSLATED_LANGUAGE, False)
+    if r["type"] == RULE_TYPE_PROMPT_KEY:
+        ret = build_custom_prompt(r["properties"]["prompt_key"], ORIGINAL_LANGUAGE, TRANSLATED_LANGUAGE, False)
         logger.info("PROMPT KEY RULE PROMPT: %s", ret)
         return ret
 
-    if r.type == RULE_TYPE_TEXT or r.type == RULE_TYPE_SEGMENTS_SUFFIX:
-        ret = r.properties["text"]
+    if r["type"] == RULE_TYPE_TEXT or r["type"] == RULE_TYPE_SEGMENTS_SUFFIX:
+        ret = r["properties"]["text"]
         logger.info("TEXT RULE PROMPT: %s", ret)
         return ret
 
-    raise Exception("%s rule type not implemented" % r.type)
+    raise Exception("%s rule type not implemented" % r["type"])
 
 def build_prompt(dictionary_id: int, dictionary_timestamp: int | None) -> str | None:
     if dictionary_timestamp is not None:
@@ -157,6 +140,9 @@ def build_prompt(dictionary_id: int, dictionary_timestamp: int | None) -> str | 
         raise HTTPException(status_code=500, detail="Multiple rows found")
     dictionary = dictionaries[0]
     logger.info("Dictionary: %s", dictionary)
-    rules = select_rules(dictionary)
+    # Get all rules (including deleted) for this dictionary/timestamp
+    rules = get_rules(dictionary_id=dictionary.id, dictionary_timestamp=dictionary_timestamp)
+    # Filter deleted rules at the end (after getting latest versions)
+    rules = [r for r in rules if not r.get("deleted", False)]
     rule_prompts = [rule_to_prompt(r) for r in rules]
     return "\n".join(rule_prompts)

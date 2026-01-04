@@ -52,9 +52,10 @@ def get_dictionaries(dictionary_id: int | None = None, dictionary_timestamp: int
         query = query.where(microseconds(D_CREATED_AT.timestamp) <= dictionary_timestamp)
     return list(query.dicts())
 
-def get_rules(dictionary_id: int | None = None, dictionary_timestamp: int | None = None, rule_id: int | None = None) -> list[dict]:
+def get_rules(dictionary_id: int | None = None, dictionary_timestamp: int | None = None, rule_ids: list[int] | None = None) -> list[dict]:
 	R = Rules
-		
+
+	# Always get all rules (including deleted), let frontend filter
 	MIN_MAX = (R
 		.select(
 			R.id,
@@ -67,8 +68,8 @@ def get_rules(dictionary_id: int | None = None, dictionary_timestamp: int | None
 		MIN_MAX = MIN_MAX.where(R.dictionary_id == dictionary_id)
 	if dictionary_timestamp is not None:
 		MIN_MAX = MIN_MAX.where(microseconds(R.timestamp) <= dictionary_timestamp)
-	if rule_id is not None:
-		MIN_MAX = MIN_MAX.where(R.id == rule_id)
+	if rule_ids is not None:
+		MIN_MAX = MIN_MAX.where(R.id.in_(rule_ids))
 
 	R_CREATED_AT = R.alias('R_CREATED_AT')
 	R_MODIFIED_AT = R.alias('R_MODIFIED_AT')
@@ -89,10 +90,11 @@ def get_rules(dictionary_id: int | None = None, dictionary_timestamp: int | None
 					   (R_MODIFIED_AT.timestamp == MIN_MAX.c.modified_at)))
 		 .order_by(R_MODIFIED_AT.order)
 	)
+
 	if dictionary_id is not None:
 		query = query.where(R_CREATED_AT.dictionary_id == dictionary_id)
 	if dictionary_timestamp is not None:
 		query = query.where(microseconds(R_CREATED_AT.timestamp) <= dictionary_timestamp)
-	if rule_id is not None:
-		query = query.where(R_CREATED_AT.id == rule_id)
+	if rule_ids is not None:
+		query = query.where(R_CREATED_AT.id.in_(rule_ids))
 	return list(query.dicts())
