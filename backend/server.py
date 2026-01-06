@@ -416,7 +416,7 @@ async def create_prompt_dictionary(request: dict, user_info: dict = Depends(get_
                 properties={"text": SEGMENTS_SUFFIX},
             )
 
-        return model_to_dict(created_dictionary) 
+        return get_dictionaries(created_dictionary.id, epoch_microseconds(created_dictionary.timestamp))[0]
     except Exception as e:
         logger.error("Error adding or creating new dictionary: %s", e)
         raise HTTPException(status_code=500, detail=f"Failed adding or creating new dictionary: {str(e)}")
