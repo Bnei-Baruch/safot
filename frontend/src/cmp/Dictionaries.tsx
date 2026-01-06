@@ -15,6 +15,7 @@ import {
   TableHead,
   TableRow,
   TableSortLabel,
+  TextField,
   Tooltip,
   Typography,
 } from '@mui/material';
@@ -31,9 +32,13 @@ import {
   fetchDictionaries,
   getLatestDictionary,
   getLatestDictionaries,
+  createPromptDictionary,
 } from '../store/DictionarySlice';
 import { Dictionary as DictionaryType } from '../types/frontend-types';
 import Dictionary from './Dictionary';
+import LanguageSelector from './LanguageSelector';
+import { useToast } from './Toast';
+import { DEFAULT_PROMPT_KEY } from '../constants/prompts';
 
 const PREFERRED_ORDER = 'dictionaries_preffered_order';
 const PREFERRED_DIRECTION = 'dictionaries_preffered_direction';
@@ -50,10 +55,16 @@ type SortField =
 
 const Dictionaries: React.FC = () => {
   const dispatch = useAppDispatch();
+  const { showToast } = useToast();
   const [sortField, setSortField] = useState<SortField>(localStorage.getItem(PREFERRED_ORDER) as SortField || 'modified_at');
   const [sortDirection, setSortDirection] = useState<SortDirection>(localStorage.getItem(PREFERRED_DIRECTION) as SortDirection || 'asc');
   const [promptDictionary, setPromptDictionary] = useState<DictionaryType | undefined>(undefined);
   const [editDictionaryId, setEditDictionaryId] = useState<number | undefined>(undefined);
+  const [createDialogOpen, setCreateDialogOpen] = useState<boolean>(false);
+  const [dictionaryName, setDictionaryName] = useState<string>('');
+  const [sourceLang, setSourceLang] = useState<string>('');
+  const [targetLang, setTargetLang] = useState<string>('');
+  const [submitAttempted, setSubmitAttempted] = useState<boolean>(false);
   const {dictionaries, prompts, loading, error} = useAppSelector((state: RootState) => state.dictionaries);
   const editDictionaryTimestamp = dictionaries && editDictionaryId ? getLatestDictionary(dictionaries, editDictionaryId)?.timestamp_epoch : undefined;
 
@@ -79,6 +90,38 @@ const Dictionaries: React.FC = () => {
       localStorage.setItem(PREFERRED_DIRECTION, 'asc');
     }
   }, [sortField, setSortField, sortDirection, setSortDirection]);
+
+  const handleCloseCreateDialog = useCallback(() => {
+    setCreateDialogOpen(false);
+    setDictionaryName('');
+    setSourceLang('');
+    setTargetLang('');
+    setSubmitAttempted(false);
+  }, []);
+
+  const handleCreateDictionary = useCallback(async () => {
+    setSubmitAttempted(true);
+    if (!dictionaryName.trim() || !sourceLang || !targetLang) {
+      showToast('Please fill all required fields', 'error');
+      return;
+    }
+    setSubmitAttempted(false);
+
+    try {
+      await dispatch(createPromptDictionary({
+        name: dictionaryName.trim(),
+        prompt_key: DEFAULT_PROMPT_KEY,
+        original_language: sourceLang,
+        translated_language: targetLang,
+      })).unwrap();
+      showToast('Dictionary created successfully', 'success');
+      dispatch(fetchDictionaries());
+    } catch (error) {
+      showToast('Failed to create dictionary', 'error');
+    }
+
+    handleCloseCreateDialog();
+  }, [dispatch, dictionaryName, sourceLang, targetLang, showToast, handleCloseCreateDialog]);
 
   // Get only the latest version of each dictionary for display
   const sorted = useMemo(() => getLatestDictionaries(dictionaries).sort((a, b) => {
@@ -128,7 +171,16 @@ const Dictionaries: React.FC = () => {
   }, [sortField, sortDirection, handleSort]);
 
   return (
-    <Container maxWidth="xl">
+    <Container maxWidth="xl" sx={{ position: 'relative' }}>
+      <Tooltip title="Create Dictionary">
+        <Button
+          color="primary"
+          onClick={() => setCreateDialogOpen(true)}
+          sx={{ mb: 2, position: 'absolute', top: -40, right: 5 }}
+        >
+          Create Dictionary
+        </Button>
+      </Tooltip>
       {loading && <Typography>Loading...</Typography>}
       {error && <Typography color="error">Error: {error}</Typography>}
       {!loading && !error && (!sorted || !sorted.length) && <Typography variant="h6">No results</Typography>}
@@ -231,6 +283,50 @@ const Dictionaries: React.FC = () => {
           <Button variant="contained" autoFocus
             onClick={() => setPromptDictionary(undefined)}>
             Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog
+        open={createDialogOpen}
+        onClose={handleCloseCreateDialog}
+        aria-labelledby="Create Dictionary"
+      >
+        <DialogTitle>Create New Dictionary</DialogTitle>
+
+        <DialogContent sx={{ 'padding-top': '10px !important' }}>
+          <TextField
+            label="Dictionary Name"
+            value={dictionaryName}
+            onChange={(e) => setDictionaryName(e.target.value)}
+            variant="outlined"
+            error={submitAttempted && !dictionaryName.trim()}
+            helperText={submitAttempted && !dictionaryName.trim() ? 'Required' : ' '}
+            disabled={loading}
+            fullWidth
+            size="small"
+            sx={{ mb: 2 }}
+          />
+          <LanguageSelector
+            sourceLang={sourceLang}
+            targetLang={targetLang}
+            onSourceLangChange={setSourceLang}
+            onTargetLangChange={setTargetLang}
+            submitAttempted={submitAttempted}
+            disabled={loading}
+            size="small"
+          />
+        </DialogContent>
+
+        <DialogActions>
+          <Button onClick={handleCloseCreateDialog}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleCreateDictionary}
+            disabled={loading}
+          >
+            Create
           </Button>
         </DialogActions>
       </Dialog>

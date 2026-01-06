@@ -9,29 +9,22 @@ import {
   Divider,
   MenuItem,
   Paper,
-  TextField,
   Typography,
 } from '@mui/material';
 import {
   ArrowDropDown,
-  ArrowForward,
   InsertDriveFileOutlined,
 } from '@mui/icons-material';
 
-import { LANGUAGES } from '../constants/languages'
 import { useToast } from './Toast';
 import { useFlow } from '../useFlow';
+import LanguageSelector from './LanguageSelector';
 import { useAppDispatch, useAppSelector, RootState } from '../store/store';
 import {
   fetchDictionaries,
   getLatestDictionary,
   getDictionaryIds,
 } from '../store/DictionarySlice';
-
-const LANG_STYLE = {
-  width: 150,
-  fontFamily: 'Kanit, sans-serif',
-};
 
 const TranslateForm: React.FC = () => {
   const navigate = useNavigate();
@@ -110,49 +103,15 @@ const TranslateForm: React.FC = () => {
       <Box display="flex" alignItems="center" gap={2}>
         <Box display="flex" alignItems="center" flexDirection="column">
           {/* Language Selection */}
-          <Box display="flex" alignItems="center" gap={2}>
-            <TextField
-              select
-              label="From Language"
-              value={sourceLang}
-              onChange={(e) => setSourceLang(e.target.value)}
-              variant="outlined"
-              error={submitAttempted && !sourceLang}
-              helperText={submitAttempted && !sourceLang ? 'Required' : ' '}
-              disabled={!!anythingLoading}
-              sx={LANG_STYLE}
-              InputLabelProps={{ sx: { fontFamily: 'Kanit, sans-serif' } }}
-              size="small"
-            >
-              {LANGUAGES.map((lang) => (
-                <MenuItem key={lang.code} value={lang.code}>
-                  <Typography sx={{ fontFamily: 'inherit' }}>{lang.label}</Typography>
-                </MenuItem>
-              ))}
-            </TextField>
-
-            <ArrowForward sx={{ color: '#ccc', pb:3 }} />
-            
-            <TextField
-              select
-              label="To Language"
-              value={targetLang}
-              onChange={(e) => setTargetLang(e.target.value)}
-              variant="outlined"
-              error={submitAttempted && !targetLang}
-              helperText={submitAttempted && !targetLang ? 'Required' : ' '}
-              disabled={!!anythingLoading}
-              sx={LANG_STYLE}
-              InputLabelProps={{ sx: { fontFamily: 'Kanit, sans-serif' } }}
-              size="small"
-            >
-              {LANGUAGES.map((lang) => (
-                <MenuItem key={lang.code} value={lang.code}>
-                  <Typography sx={{ fontFamily: 'inherit' }}>{lang.label}</Typography>
-                </MenuItem>
-              ))}
-            </TextField>
-          </Box>
+          <LanguageSelector
+            sourceLang={sourceLang}
+            targetLang={targetLang}
+            onSourceLangChange={setSourceLang}
+            onTargetLangChange={setTargetLang}
+            submitAttempted={submitAttempted}
+            disabled={!!anythingLoading}
+            size="small"
+          />
 
           {/* Upload Area */}
           <Box

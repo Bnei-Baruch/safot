@@ -1,5 +1,5 @@
 import { httpService } from './http.service';
-import { Dictionary, Rule, Example } from '../types/frontend-types';
+import { Dictionary, Rule } from '../types/frontend-types';
  
 const PROMPT = 'prompt';
 const DICTIONARIES = 'dictionaries';

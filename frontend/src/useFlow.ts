@@ -5,9 +5,9 @@ import { getPrompt, postPromptDictionary } from './services/dictionary.service';
 import { buildSegment, extractParagraphs, postSegments } from './services/segment.service';
 import { getSource, postSource } from './services/source.service';
 import { Segment, Source } from './types/frontend-types';
+import { DEFAULT_PROMPT_KEY } from './constants/prompts';
 
 // import compareTwoStrings from 'string-similarity-js';
-const DEFAULT_PROMPT_KEY = 'prompt_1';
 
 const buildAndSaveSegments = async (
   paragraphs: string[],
@@ -222,7 +222,7 @@ export function useFlow() {
     setLoadingCount(prev => prev + 1);
     try {
       const translatedSource = await getSource(translatedSourceId);
-      const promptKey = "prompt_1"; // Hard-coded default prompt key.
+      const promptKey = DEFAULT_PROMPT_KEY;
       let promptText = "";
       if (translatedSource.dictionary_id) {
         promptText = await getPrompt({dictionary_id: translatedSource.dictionary_id, dictionary_timestamp: translatedSource.dictionary_timestamp_epoch});
