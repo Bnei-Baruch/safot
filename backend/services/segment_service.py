@@ -7,27 +7,39 @@ import logging
 
 from models import Segments
 from services.source_service import create_or_update_sources
+from services.utils import microseconds
 
 # Get logger for this module
 logger = logging.getLogger(__name__)
 
-def get_latest_segments(source_id):
-    max_timestamp_subquery = (
-        Segments
-        .select(Segments.order, fn.MAX(Segments.timestamp).alias('max_timestamp'))
-        .where(Segments.source_id == source_id)
-        .group_by(Segments.order)
-    )
+def get_latest_segments(source_ids: list[int] | None = None):
+    """Get latest segments for given source IDs
+    If source_ids is None or empty list, returns all latest segments from all sources
+    """
+    # Subquery to get latest timestamp for each segment
+    max_timestamp_subquery = Segments.select(
+        Segments.id,
+        fn.MAX(Segments.timestamp).alias('max_timestamp')
+    ).group_by(Segments.id)
+
+    if source_ids is not None and len(source_ids) > 0:
+        max_timestamp_subquery = max_timestamp_subquery.where(Segments.source_id.in_(source_ids))
 
     latest_segments_query = (
         Segments
-        .select()
+        .select(
+            Segments,
+            microseconds(Segments.timestamp, 'timestamp_epoch'),
+        )
         .join(max_timestamp_subquery, on=(
-            (Segments.order == max_timestamp_subquery.c.order) &
+            (Segments.id == max_timestamp_subquery.c.id) &
             (Segments.timestamp == max_timestamp_subquery.c.max_timestamp)
         ))
-        .where(Segments.source_id == source_id)
+        .order_by(Segments.source_id, Segments.order)
     )
+
+    if source_ids is not None and len(source_ids) > 0:
+        latest_segments_query = latest_segments_query.where(Segments.source_id.in_(source_ids))
 
     return list(latest_segments_query.dicts())
     

@@ -10,22 +10,9 @@ export interface Segment {
   original_segment_id?: number;
   original_segment_timestamp?: string;
   properties?: {
-    segment_type?: "user_translation" | "provider_translation" | "edited" | "file";
+    segment_type?: "user_translation" | "provider_translation" | "edited" | "file" | "rest_of_text";
     [key: string]: any;
   };
-}
-
-export interface BuildSegmentParams {
-  text: string;
-  source_id: number;
-  order: number;
-  properties: {
-    segment_type?: "user_translation" | "provider_translation" | "edited" | "file";
-    [key: string]: any;
-  };
-  id?: number;
-  original_segment_id?: number;
-  original_segment_timestamp?: string;
 }
 
 export interface Source {
@@ -36,7 +23,6 @@ export interface Source {
   type?: string;
   order?: number;
 
-  original_source_id?: number;
   parent_source_id?: number;
 
   properties?: Record<string, any>;
@@ -47,7 +33,7 @@ export interface Source {
   modified_at?: string;
 
   dictionary_id: number;
-  dictionary_timestamp: string | undefined;
+  dictionary_timestamp: number | string | undefined;  // Also accepts epoch (number).
 
   // Metadata, output fields only.
   count?: number;
@@ -56,8 +42,14 @@ export interface Source {
   dictionary_timestamp_epoch: number;
 }
 
-export interface SourcePair {
-  original: Source;
+export interface SourceRelations {
+  origins: number[];
+  translations: number[];
+}
+
+export interface SourceTuple {
+  originalSource: Source;        // The source with is_original: true
+  additionalSources: Source[];   // Additional sources
   translated: Source;
 }
 
@@ -131,6 +123,9 @@ export interface Dictionary {
   name: string;
   username?: string;
   labels: string[];
+  original_language?: string;
+  additional_sources_languages?: string[];
+  translated_language?: string;
 
   // Output only fields.
   created_at_epoch: number;

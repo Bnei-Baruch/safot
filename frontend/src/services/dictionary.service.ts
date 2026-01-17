@@ -6,13 +6,14 @@ const DICTIONARIES = 'dictionaries';
 const RULES = 'rules';
 
 // If dictionary_id is set, timestamp is optional.
-// If custom_key is set, you must also set original and translated languages.
+// If prompt_key is set, you must also set original and translated languages.
 export type GetPromptRequest = {
 	dictionary_id?: number,
 	dictionary_timestamp?: number,
 
 	prompt_key?: string,
 	original_language?: string,
+	additional_sources_languages?: string[],
 	translated_language?: string,
 };
 
@@ -41,6 +42,7 @@ export type PostDictionaryRequest = {
 
 	prompt_key?: string,
 	original_language?: string,
+	additional_sources_languages?: string[],
 	translated_language?: string,
 }
 

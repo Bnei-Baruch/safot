@@ -28,11 +28,9 @@ class HttpService {
   }
 
   async post<T>(url: string, data: any): Promise<T> {
-    console.log('POST', url, data);
     const response = await this.client.post(url, data, {
       timeout: 600000,
     });
-    console.log('POST', response);
     return response.data;
   }
 

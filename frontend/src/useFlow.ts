@@ -2,44 +2,71 @@ import { useCallback, useState } from 'react';
 
 import { translateParagraphs } from './services/translation.service';
 import { getPrompt, postPromptDictionary } from './services/dictionary.service';
-import { buildSegment, extractParagraphs, postSegments } from './services/segment.service';
-import { getSource, postSource } from './services/source.service';
+import { extractParagraphs, postSegments, postSegmentOriginLinks } from './services/segment.service';
+import { getSources, postSources, postSourceOriginLinks, getSourceRelations } from './services/source.service';
 import { Segment, Source } from './types/frontend-types';
-import { DEFAULT_PROMPT_KEY } from './constants/prompts';
 
 // import compareTwoStrings from 'string-similarity-js';
 
-const buildAndSaveSegments = async (
+const buildSegments = (
   paragraphs: string[],
   source_id: number,
   properties: Record<string, any>,
-  originalSegments?: Segment[]
-): Promise<Segment[]> => {
-  const segments = paragraphs.map((text, index) => {
-    const originalSegment = originalSegments?.[index];
-    return buildSegment({
+  initialOrder: number = 1,  // Order is 1 based.
+): Segment[] =>
+  paragraphs.map((text, index) => {
+    return {
       text,
       source_id,
-      order: originalSegment?.order ?? index + 1,
+      // Order is 1 based as it is user facing feature.
+      order: initialOrder + index,
       properties,
-      original_segment_id: originalSegment?.id,
-      original_segment_timestamp: originalSegment?.timestamp
-    });
+    };
   });
-  return await postSegments(segments);
-};
 
-const initSourceFromFile = async (file: File, name: string, originalLanguage: string, translatedLanguage: string, dictionaryId: null|number, dictionaryTimestamp: null|string)
-  : Promise<{originalSegments: Segment[], translatedSourceId: number}> => {
+const initSourceFromFile = async (
+  originalLanguage: string,
+  originalFile: File,
+  additionalSourcesLanguages: string[],
+  additionalSourcesFiles: File[],
+  translatedLanguage: string,
+  dictionaryId: undefined|number,
+  dictionaryTimestamp: undefined|string,
+) : Promise<{originalSegments: Segment[], additionalSourcesSegments: Segment[], translatedSourceId: number}> => {
   // Create original and translation sources
-  const { originalSourceId, translatedSourceId } = await createSources(name, originalLanguage, translatedLanguage, dictionaryId, dictionaryTimestamp);
+  const {
+    originalSourceId,
+    additionalSourcesIds,
+    translatedSourceId,
+  } = await createSources(
+    originalFile.name,
+    originalLanguage,
+    additionalSourcesFiles.map(f => f.name),
+    additionalSourcesLanguages,
+    translatedLanguage,
+    dictionaryId,
+    dictionaryTimestamp,
+  );
 
-  // Extract paragraphs from uploaded file
-  const { paragraphs, properties } = await extractParagraphs(file);
+  // Extract paragraphs from all uploaded files
+  const allFiles = [originalFile, ...additionalSourcesFiles];
+  const allParagraphs = await extractParagraphs(allFiles);
+
+  // Save original segments to database
+  const segments = await buildSegments(allParagraphs[0], originalSourceId, { segment_type: "file" });
+
+  // Additional sources should be saved as one segment with whole text.
+  // We will extract each time the next paragraph matching the original 
+  // source segments.
+  for (let i = 0; i < additionalSourcesIds.length; i++) {
+    const restOfText = allParagraphs[i+1].join('\n\n');
+    segments.push(...buildSegments([restOfText], additionalSourcesIds[i], { segment_type: "rest_of_text" }));
+  }
+  const savedSegments = await postSegments(segments);
 
   return {
-    // Save original segments to database
-    originalSegments: await buildAndSaveSegments(paragraphs, originalSourceId, properties),
+    originalSegments: savedSegments.slice(0, allParagraphs[0].length),
+    additionalSourcesSegments: savedSegments.slice(allParagraphs[0].length),
     translatedSourceId,
   }
 }
@@ -189,50 +216,104 @@ const initSourceFromFile = async (file: File, name: string, originalLanguage: st
 
 const normalizeName = (filename: string) => filename.replace(/\.docx$/i, '').trim().replace(/\s+/g, '-');
 
-const createSources = async (name: string, originalLanguage: string, translatedLanguage: string, dictionaryId: null|number, dictionaryTimestamp: null|string)
-  : Promise<{originalSourceId: number, translatedSourceId: number}> => {
+const createSources = async (
+  name: string,
+  originalLanguage: string,
+  additionalSourcesNames: string[],
+  additionalSourcesLanguages: string[],
+  translatedLanguage: string,
+  dictionaryId: undefined|number,
+  dictionaryTimestamp: undefined|string
+) : Promise<{originalSourceId: number, additionalSourcesIds: number[], translatedSourceId: number}> => {
   const baseName = normalizeName(name);
 
-  const originalSource = await postSource({
-    name: baseName,
-    language: originalLanguage,
-  });
-  console.log(originalSource);
+  const [originalSource, translatedSource, ...additionalSources] = await postSources([
+    {
+      name: baseName,
+      language: originalLanguage,
+      properties: {
+        is_original: true,
+      }
+    },
+    {
+      name: `${baseName}-${translatedLanguage}`,
+      language: translatedLanguage,
+      dictionary_id: dictionaryId || undefined,
+      dictionary_timestamp: dictionaryTimestamp || undefined,
+    },
+    ...additionalSourcesLanguages.map(additionalLanguage => ({
+      name: `${baseName}-${additionalLanguage}`,
+      language: additionalLanguage,
+      properties: {
+        is_original: false,
+      }
+    })),
+  ]);
 
-  const translatedSource = await postSource({
-    name: `${baseName}-${translatedLanguage}`,
-    language: translatedLanguage,
-    original_source_id: originalSource.id,
-    dictionary_id: dictionaryId || undefined,
-    dictionary_timestamp: dictionaryTimestamp || undefined,
-  });
-  console.log(translatedSource);
+  // Create the origin-translation relation
+  const additionalSourcesIds = additionalSources.map(source => source.id);
+  await postSourceOriginLinks([
+    {
+      origin_source_id: originalSource.id,
+      translated_source_id: translatedSource.id,
+    },
+    ...additionalSourcesIds.map(additionalSourcesId => ({
+      origin_source_id: additionalSourcesId,
+      translated_source_id: translatedSource.id,
+    }))
+  ]);
 
-  return { 
+  return {
     originalSourceId: originalSource.id,
     translatedSourceId: translatedSource.id,
+    additionalSourcesIds,
   };
 };
 
 export function useFlow() {
   const [loadingCount, setLoadingCount] = useState<number>(0);
 
-  const translateSegments = useCallback(async (originalSegments: Segment[], translatedSourceId: number, originalLanguage: string, translatedLanguage: string)
-    : Promise<{translatedSegments: Segment[], translatedSourceId: number}> => {
+  const translateSegments = useCallback(async (
+    originalLanguage: string,
+    originalSegments: Segment[],
+    additionalSourcesLanguages: string[],
+    additionalSourcesSegments: Segment[],
+    translatedLanguage: string,
+    translatedSourceId: number
+  ): Promise<number> => {
     setLoadingCount(prev => prev + 1);
     try {
-      const translatedSource = await getSource(translatedSourceId);
-      const promptKey = DEFAULT_PROMPT_KEY;
-      let promptText = "";
-      if (translatedSource.dictionary_id) {
-        promptText = await getPrompt({dictionary_id: translatedSource.dictionary_id, dictionary_timestamp: translatedSource.dictionary_timestamp_epoch});
-      } else {
-        promptText = await getPrompt({prompt_key: promptKey, original_language: originalLanguage, translated_language: translatedLanguage});
-      }
-      console.log('Using following prompt: ', promptText);
+      const [translatedSource] = await getSources([translatedSourceId]);
 
-      const { translated_paragraphs, properties: translationProperties } =
-          await translateParagraphs(originalSegments.map((segment) => segment.text), promptText);
+      // Fetch task prompt from server (from dictionary or default)
+      let taskPrompt = "";
+      if (translatedSource.dictionary_id) {
+        taskPrompt = await getPrompt({
+          dictionary_id: translatedSource.dictionary_id,
+          dictionary_timestamp: translatedSource.dictionary_timestamp_epoch,
+        });
+      } else {
+        taskPrompt = await getPrompt({
+          original_language: originalLanguage,
+          additional_sources_languages: additionalSourcesLanguages,
+          translated_language: translatedLanguage,
+        });
+      }
+      console.log('Using task prompt: ', taskPrompt);
+
+      const {
+        translated_paragraphs,
+        additional_sources_paragraphs: additionalSourcesParagraphs = [],
+        remaining_additional_sources_texts: remainingAdditionalSourcesTexts = [],
+        properties: translationProperties
+      } = await translateParagraphs(
+        originalLanguage,
+        originalSegments.map((segment) => segment.text),
+        additionalSourcesLanguages,
+        additionalSourcesSegments.map(s => s.text),
+        translatedLanguage,
+        taskPrompt,
+      );
 
       const properties: Record<string, any> = {
         translation: translationProperties,
@@ -241,31 +322,133 @@ export function useFlow() {
       if (translatedSource.dictionary_id) {
         properties["dictionary_id"] = translatedSource.dictionary_id;
         properties["dictionary_timestamp"] = translatedSource.dictionary_timestamp_epoch;
-      } else {
-        properties["prompt_key"] = promptKey;
+      }
+
+      if (translated_paragraphs.length !== originalSegments.length) {
+        throw new Error(`Failed translating, expected ${originalSegments.length} translated paragraphs but got ${translated_paragraphs.length}`);
+      }
+
+      if (additionalSourcesParagraphs.length !== additionalSourcesLanguages.length ||
+          remainingAdditionalSourcesTexts.length !== additionalSourcesLanguages.length) {
+        throw new Error(`Expected returned additional sources to be of size ${additionalSourcesLanguages}, got: ${additionalSourcesParagraphs.length} and ${remainingAdditionalSourcesTexts.length}.`);
+      }
+
+      // Validate that each additional source has matching number of segments
+      for (let i = 0; i < additionalSourcesParagraphs.length; i++) {
+        if (additionalSourcesParagraphs[i].length !== originalSegments.length) {
+          throw new Error(`Additional source ${i} has ${additionalSourcesParagraphs[i].length} segments but expected ${originalSegments.length}`);
+        }
       }
 
       // Save translated segments to database
-      return {
-        translatedSegments: await buildAndSaveSegments(translated_paragraphs, translatedSourceId, properties, originalSegments),
-        translatedSourceId,
-      };
+      const firstOrder = originalSegments[0].order;
+      const nextOrder = originalSegments[originalSegments.length - 1].order + 1;
+      const segments: Segment[] = [
+        // New translated segments.
+        ...buildSegments(translated_paragraphs, translatedSourceId, properties, firstOrder),
+        // For each additional source new segments extracted for remining texts.
+        ...additionalSourcesParagraphs.reduce((arr: Segment[], paragraphs, i) => {
+          arr.push(...buildSegments(paragraphs, additionalSourcesSegments[i].source_id, properties, firstOrder));
+          return arr;
+        }, [] as Segment[]),
+        // Update remaining segments.
+        ...remainingAdditionalSourcesTexts.map((restOfText, i) => buildSegments([restOfText], additionalSourcesSegments[i].source_id, additionalSourcesSegments[i].properties || {}, nextOrder)[0]),
+      ];
+      const savedSegments = await postSegments(segments);
+
+      // Create segment origin links
+      const translatedSegmentsCount = translated_paragraphs.length;
+      const translatedSegments = savedSegments.slice(0, translatedSegmentsCount);
+
+      // Calculate where each additional source's segments start in savedSegments
+      let additionalSourcesOffset = translatedSegmentsCount;
+      const additionalSourcesSegmentsBySource: Segment[][] = [];
+      for (let i = 0; i < additionalSourcesParagraphs.length; i++) {
+        const count = additionalSourcesParagraphs[i].length;
+        const additionalSourceSegments = savedSegments.slice(additionalSourcesOffset, additionalSourcesOffset + count);
+        additionalSourcesSegmentsBySource.push(additionalSourceSegments);
+        additionalSourcesOffset += count;
+      }
+
+      // Link each translated segment to its original segment and additional source segments
+      const relations = [];
+      for (let i = 0; i < translatedSegments.length; i++) {
+        const translatedSegment = translatedSegments[i];
+        const originalSegment = originalSegments[i];
+
+        // Link translated segment to original segment
+        if (originalSegment.id && originalSegment.timestamp && translatedSegment.id && translatedSegment.timestamp) {
+          relations.push({
+            origin_segment_id: originalSegment.id,
+            origin_segment_timestamp: originalSegment.timestamp,
+            translated_segment_id: translatedSegment.id,
+            translated_segment_timestamp: translatedSegment.timestamp,
+          });
+        }
+
+        // Link translated segment to corresponding segments from each additional source
+        for (let j = 0; j < additionalSourcesSegmentsBySource.length; j++) {
+          const additionalSourceSegments = additionalSourcesSegmentsBySource[j];
+          const additionalSegment = additionalSourceSegments[i];
+          if (additionalSegment.id && additionalSegment.timestamp && translatedSegment.id && translatedSegment.timestamp) {
+            relations.push({
+              origin_segment_id: additionalSegment.id,
+              origin_segment_timestamp: additionalSegment.timestamp,
+              translated_segment_id: translatedSegment.id,
+              translated_segment_timestamp: translatedSegment.timestamp,
+            });
+          }
+        }
+      }
+
+      if (relations.length > 0) {
+        await postSegmentOriginLinks(relations);
+      }
+
+      return translatedSourceId;
     } finally {
       setLoadingCount(prev => prev - 1);
     }
   }, [setLoadingCount]);
 
-  const translateFile = useCallback(async (file: File, name: string, originalLanguage: string, translatedLanguage: string, stepByStep: boolean, dictionaryId: null|number, dictionaryTimestamp: null|string)
-    : Promise<{translatedSegments: Segment[], translatedSourceId: number}> => {
+  const translateFile = useCallback(async (
+    originalLanguage: string,
+    originalFile: File,
+    additionalSourcesLanguages: string[],
+    additionalSourcesFiles: File[],
+    translatedLanguage: string,
+    stepByStep: boolean,
+    dictionaryId: undefined|number,
+    dictionaryTimestamp: undefined|string,
+  ) : Promise<number> => {
     console.log(dictionaryId, dictionaryTimestamp)
     setLoadingCount(prev => prev + 1);
     try {
-      const { originalSegments, translatedSourceId } = await initSourceFromFile(file, name, originalLanguage, translatedLanguage, dictionaryId, dictionaryTimestamp);
+      const {
+        originalSegments,
+        additionalSourcesSegments,
+        translatedSourceId,
+      } = await initSourceFromFile(
+        originalLanguage,
+        originalFile,
+        additionalSourcesLanguages,
+        additionalSourcesFiles,
+        translatedLanguage,
+        dictionaryId,
+        dictionaryTimestamp,
+      );
 
       // Step-by-step translation (first 10 paragraphs only)
       const originalSegmentsChunk = stepByStep ? originalSegments.slice(0, 10) : originalSegments;
 
-      return await translateSegments(originalSegmentsChunk, translatedSourceId, originalLanguage, translatedLanguage);
+      return await translateSegments(
+        originalLanguage,
+        originalSegmentsChunk,
+        additionalSourcesLanguages,
+        additionalSourcesSegments,
+        translatedLanguage,
+        translatedSourceId,
+      );
     } finally {
       setLoadingCount(prev => prev - 1);
     }
@@ -277,17 +460,32 @@ export function useFlow() {
     try {
       let name = "New dictionary";
       let originalLanguage = undefined;
+      let additionalSourcesLanguages: string[] = [];
       const translatedLanguage = (source && source.language) || undefined;
-      if (source && source.original_source_id) {
-        const originalSource = await getSource(source.original_source_id);
-        originalLanguage = originalSource && originalSource.language;
-        name = source && source.name ? `Dictionary for "${source.name}"` : "New dictionary";
+      if (source && source.id) {
+        // Get relations to find all origin sources
+        const relations = await getSourceRelations([source.id]);
+        const originRelations = relations.filter(r => r.translated_source_id === source.id);
+        if (originRelations.length > 0) {
+          const originSourceIds = originRelations.map(r => r.origin_source_id);
+          const originSources = await getSources(originSourceIds);
+
+          // Find original source (with is_original property)
+          const originalSource = originSources.find(s => s.properties?.is_original === true);
+          if (originalSource) {
+            originalLanguage = originalSource.language;
+            name = source && source.name ? `Dictionary for "${source.name}"` : "New dictionary";
+          }
+
+          // Get additional sources languages
+          const additionalSources = originSources.filter(s => s.properties?.is_original !== true);
+          additionalSourcesLanguages = additionalSources.map(s => s.language);
+        }
       }
       const dictionary = await postPromptDictionary({
         name,
-        // Set default dictionary content.
-        prompt_key: DEFAULT_PROMPT_KEY,
         original_language: originalLanguage,
+        additional_sources_languages: additionalSourcesLanguages,
         translated_language: translatedLanguage,
        });
       // Update source with dictionary
@@ -297,7 +495,8 @@ export function useFlow() {
           dictionary_id: dictionary.id,
           dictionary_timestamp: dictionary.timestamp,
         }
-        return postSource(sourceToUpdate);
+        const [updatedSource] = await postSources([sourceToUpdate]);
+        return updatedSource;
       }
       return;
     } finally {
