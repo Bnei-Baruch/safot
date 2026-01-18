@@ -100,6 +100,13 @@ def migrate(migrator, database, fake=False, **kwargs):
           AND original_segment_timestamp IS NOT NULL
     """)
 
+    # Set is_original: true for sources that are origins
+    database.execute_sql("""
+        UPDATE sources
+        SET properties = jsonb_set(COALESCE(properties, '{}'), '{is_original}', 'true')
+        WHERE id IN (SELECT DISTINCT origin_source_id FROM sources_origins)
+    """)
+
     # Drop old columns from sources table
     database.execute_sql("ALTER TABLE sources DROP COLUMN IF EXISTS original_source_id")
 
