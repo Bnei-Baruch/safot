@@ -103,7 +103,7 @@ def migrate(migrator, database, fake=False, **kwargs):
     # Set is_original: true for sources that are origins
     database.execute_sql("""
         UPDATE sources
-        SET properties = jsonb_set(COALESCE(properties, '{}'), '{is_original}', 'true')
+        SET properties = jsonb_set(COALESCE(properties::jsonb, '{}'), '{is_original}', 'true')::json
         WHERE id IN (SELECT DISTINCT origin_source_id FROM sources_origins)
     """)
 

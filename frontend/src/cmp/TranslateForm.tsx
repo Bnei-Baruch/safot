@@ -50,7 +50,7 @@ const TranslateForm: React.FC = () => {
   const [targetLang, setTargetLang] = useState<string>('');
   const [submitAttempted, setSubmitAttempted] = useState<boolean>(false);
   const {showToast} = useToast();
-  const [stepByStep, setStepByStep] = useState<boolean>(true);
+  const [translateAll, setTranslateAll] = useState<boolean>(false);
   const {translateFile, loadingCount} = useFlow();
   const {dictionaries, loading, error} = useAppSelector((state: RootState) => state.dictionaries);
   const [selectedDictionary, setSelectedDictionary] = useState<Dictionary | null>(null);
@@ -177,7 +177,7 @@ const TranslateForm: React.FC = () => {
         additionalSourcesLanguages,
         additionalSourcesFiles,
         targetLang,
-        /*step_by_step*/ !all,
+        all,
         selectedDictionary?.id,
         selectedDictionary?.timestamp,
       );
@@ -280,18 +280,18 @@ const TranslateForm: React.FC = () => {
             {/* Translate Section */}
             {!anythingLoading ? (
               <Button
-                variant={stepByStep ? "contained" : "outlined"}
-                onClick={() => handleSubmit(!stepByStep)}
+                variant={translateAll ? "outlined" : "contained"}
+                onClick={() => handleSubmit(translateAll)}
                 sx={{ width: '100%', height: '4em', fontFamily: 'inherit' }}
               >
                 <Typography sx={{ flexGrow: 1, textAlign: "center" }}>
-                  {stepByStep ? "Translate" : "Translate ALL!"}
+                  {translateAll ? "Translate ALL!" : "Translate"}
                 </Typography>
                 <ArrowDropDown
                   sx={{ ml: "auto" }}
                   onClick={(e) => {
                     e.stopPropagation();
-                    setStepByStep(!stepByStep);
+                    setTranslateAll(!translateAll);
                   }}
                 />
               </Button>

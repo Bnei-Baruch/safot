@@ -463,7 +463,7 @@ def extract_paragraphs_handler(files: list[UploadFile] = File(...)):
 @app.get("/export/{source_id}", response_class=FileResponse)
 def export_translation(source_id: int):
     try:
-        segments = get_latest_segments(source_id)
+        segments = get_latest_segments([source_id])
         if not segments:
             raise HTTPException(
                 status_code=404, detail="No translated segments found.")
