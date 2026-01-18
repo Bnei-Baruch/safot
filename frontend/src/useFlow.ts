@@ -417,7 +417,7 @@ export function useFlow() {
     additionalSourcesLanguages: string[],
     additionalSourcesFiles: File[],
     translatedLanguage: string,
-    stepByStep: boolean,
+    translateAll: boolean,
     dictionaryId: undefined|number,
     dictionaryTimestamp: undefined|string,
   ) : Promise<number> => {
@@ -439,7 +439,7 @@ export function useFlow() {
       );
 
       // Step-by-step translation (first 10 paragraphs only)
-      const originalSegmentsChunk = stepByStep ? originalSegments.slice(0, 10) : originalSegments;
+      const originalSegmentsChunk = translateAll ? originalSegments : originalSegments.slice(0, 10);
 
       return await translateSegments(
         originalLanguage,

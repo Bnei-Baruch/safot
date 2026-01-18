@@ -273,7 +273,7 @@ const Dictionary: React.FC<{
       // All rules in the batch have the same timestamp, use the first one
       const sharedTimestamp = updatedRules[0].timestamp;
       const sharedTimestampEpoch = updatedRules[0].timestamp_epoch;
-      const updatedDictionary = await dispatch(addOrUpdateDictionary({
+      await dispatch(addOrUpdateDictionary({
         ...dictionary,
         username: undefined,
         timestamp: sharedTimestamp,
@@ -284,7 +284,6 @@ const Dictionary: React.FC<{
       } else {
         console.error('Expected updated rule timestamp_epoch.');
       }
-      // console.log(updatedRules, updatedDictionary);
     } catch (err) {
       console.error('Failed updating rules.');
     }
