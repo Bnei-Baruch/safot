@@ -11,13 +11,13 @@ interface SegmentState {
 
 export const fetchSegments = createAsyncThunk<
   Segment[],
-  { source_id: number },
+  number[] | undefined,
   { rejectValue: string }
 >(
   'segments/fetchSegments',
-  async ({ source_id }, { rejectWithValue }) => {
+  async (sourceIds, { rejectWithValue }) => {
     try {
-      return await getSegments(source_id);
+      return await getSegments(sourceIds);
     } catch (err: any) {
       return rejectWithValue(err.message || 'Failed to fetch segments');
     }
@@ -51,19 +51,28 @@ const segmentSlice = createSlice({
   reducers: {},
   extraReducers: (builder) => {
     builder
-      .addCase(fetchSegments.pending, (state, action) => {
-        const { source_id } = action.meta.arg;
-        if (!state.segments[source_id]) {
-          state.segments[source_id] = [];
-        }
+      .addCase(fetchSegments.pending, (state) => {
         state.loading = true;
         state.error = null;
       })
       .addCase(fetchSegments.fulfilled, (state, action) => {
-        const source_id = action.meta.arg.source_id;
         const segments = action.payload;
-        state.segments[source_id] = segments;
         state.loading = false;
+
+        // Group segments by source_id
+        const segmentsBySource: Record<number, Segment[]> = {};
+        segments.forEach(segment => {
+          if (!segmentsBySource[segment.source_id]) {
+            segmentsBySource[segment.source_id] = [];
+          }
+          segmentsBySource[segment.source_id].push(segment);
+        });
+
+        // Update state with grouped segments
+        Object.keys(segmentsBySource).forEach(sourceIdStr => {
+          const sourceId = parseInt(sourceIdStr);
+          state.segments[sourceId] = segmentsBySource[sourceId];
+        });
       })
       .addCase(fetchSegments.rejected, (state, action) => {
         state.loading = false;
@@ -81,16 +90,14 @@ const segmentSlice = createSlice({
         segments.forEach(segment => {
           const source_id = segment.source_id;
           if (!state.segments[source_id]) {
-          state.segments[source_id] = [];
+            state.segments[source_id] = [];
           }
-          const segments = state.segments[source_id].slice();
-          const exist = segments.find((s) => s.id === segment.id);
-          if (exist) {
-						Object.assign(exist, segment);
+          const existingIndex = state.segments[source_id].findIndex(s => s.id === segment.id);
+          if (existingIndex !== -1) {
+            state.segments[source_id][existingIndex] = segment;
           } else {
-						segments.push(segment);
+            state.segments[source_id].push(segment);
           }
-          state.segments[source_id] = segments;
         });
       })
       .addCase(saveSegments.rejected, (state, action) => {

@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from keycloak import KeycloakOpenID
 import logging
 import os
+import traceback
 
 from peewee import (
     SQL,
@@ -39,16 +40,18 @@ from services.dictionary import (
   get_rules,
 )
 from services.prompt import (
-    build_custom_prompt,
-    build_prompt,
+    build_prompt_from_dictionary,
+    get_task_prompt,
+    LANGUAGES,
     SEGMENTS_SUFFIX,
     RULE_TYPE_TEXT,
     RULE_TYPE_SEGMENTS_SUFFIX,
 )
 from services.utils import (
     apply_dict,
-  epoch_microseconds,
+    epoch_microseconds,
     microseconds,
+    to_datetime,
 )
 
 from models import (
@@ -57,7 +60,9 @@ from models import (
     PromptRequest,
     Rules,
     Segments,
+    SegmentsOrigins,
     Sources,
+    SourcesOrigins,
     TranslationServiceOptions,
 )
 
@@ -75,6 +80,11 @@ def configure_logging():
 configure_logging()
 
 logger = logging.getLogger(__name__)
+
+def required(param, error_message: str):
+    """Validate that a required parameter is present, raise 400 if not."""
+    if not param:
+        raise HTTPException(status_code=400, detail=error_message)
 
 load_dotenv()
 
@@ -139,94 +149,240 @@ def shutdown():
     logger.info('Database connection closed')
 
 ####### SOURCES
-@app.get('/sources', response_model=list[dict])
-def read_sources(metadata: bool = Query(False), user_info: dict = Depends(get_user_info)):
-    return get_sources(metadata)
+@app.post('/sources', response_model=list[dict])
+async def sources_handler(request: Request, metadata: bool = Query(False), user_info: dict = Depends(get_user_info)):
+    """Create/update or fetch sources
+    - If body has 'source_ids' key: fetch sources by IDs (empty array = all sources)
+    - Otherwise: create/update sources
+    """
+    data = await request.json()
 
-@app.get('/sources/{source_id}', response_model=dict)
-def read_source(source_id: int, metadata: bool = Query(False), user_info: dict = Depends(get_user_info)):
-    sources = get_sources(metadata, source_id)
-    if not len(sources):
-        raise HTTPException(status_code=404, detail='Source not found')
-    if len(sources) > 1:
-        raise HTTPException(status_code=500, detail='Expected only one source for source_id: ' + str(source_id))
-    return sources[0]
+    if 'source_ids' in data:
+        # Fetch sources
+        source_ids = data.get("source_ids", [])
+        if not source_ids or len(source_ids) == 0:
+            return get_sources(metadata)
+        return get_sources(metadata, source_ids)
+    else:
+        # Create/update sources
+        sources = data if isinstance(data, list) else [data]
+        return create_or_update_sources(sources, user_info['preferred_username'])
 
-@app.post('/sources', response_model=dict)
-def create_or_update_source_handler(source: dict, user_info: dict = Depends(get_user_info)):
-    return create_or_update_sources([source], user_info['preferred_username'])
+@app.post('/sources/relations', response_model=list[dict])
+def get_source_relations(request: dict, user_info: dict = Depends(get_user_info)):
+    """Get source relations for a list of source IDs
 
-@app.delete('/sources/{translation_source_id}', response_model=list)
-def delete_source(translation_source_id: int, _: dict = Depends(get_user_info)):
+    Request body: { "source_ids": [1, 2, 3, ...] }
+    Returns: [{"origin_source_id": 1, "translated_source_id": 2}, ...]
+    """
+    source_ids = request.get("source_ids", [])
+    if not source_ids:
+        return []
+
+    relations = list(SourcesOrigins.select(
+        SourcesOrigins.origin_source_id,
+        SourcesOrigins.translated_source_id
+    ).where(
+        (SourcesOrigins.translated_source_id.in_(source_ids)) |
+        (SourcesOrigins.origin_source_id.in_(source_ids))
+    ).dicts())
+
+    return relations
+
+@app.post('/sources/origins', response_model=list[dict])
+async def create_source_origin_links(request: Request, user_info: dict = Depends(get_user_info)):
+    """Create source origin relations
+
+    Request body: { "relations": [{"origin_source_id": 1, "translated_source_id": 2}, ...] }
+    Returns: [{"origin_source_id": 1, "translated_source_id": 2}, ...]
+    """
     try:
-        source = Sources.get(Sources.id == translation_source_id)
+        data = await request.json()
+        relations = data.get("relations", [])
+
+        if not isinstance(relations, list):
+            raise HTTPException(status_code=400, detail="relations must be a list")
+
+        created_links = []
+
+        for rel in relations:
+            origin_source_id = rel.get("origin_source_id")
+            translated_source_id = rel.get("translated_source_id")
+
+            if origin_source_id is None or translated_source_id is None:
+                raise HTTPException(status_code=400, detail="Each relation must have origin_source_id and translated_source_id")
+
+            # Get next sequence value for id
+            cursor = db.execute_sql("SELECT nextval('sources_origins_id_seq')")
+            link_id = cursor.fetchone()[0]
+
+            # Create the link
+            sources_origins = SourcesOrigins.create(
+                id=link_id,
+                origin_source_id=origin_source_id,
+                translated_source_id=translated_source_id,
+            )
+            created_links.append({
+                "origin_source_id": sources_origins.origin_source_id,
+                "translated_source_id": sources_origins.translated_source_id
+            })
+
+        logger.info(f"Created {len(created_links)} source origin link(s)")
+        return created_links
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error creating source origin links: %s", e)
+        raise HTTPException(status_code=500, detail=f"Failed to create source origin links: {str(e)}")
+
+@app.delete('/sources/{source_id}', response_model=list)
+def delete_source(source_id: int, _: dict = Depends(get_user_info)):
+    try:
+        source = Sources.get(Sources.id == source_id)
     except Exception as e:
         logger.error(f"Deletion - Source not found: {e}")
         raise HTTPException(status_code=404, detail='Source not found')
 
-    # Get all translations of the original source
-    translations = list(Sources.select().where(Sources.original_source_id == source.original_source_id))
-    source_ids_to_delete = [translation_source_id]
-    if len(translations) == 1:
-        # This is the last translation, allow deletion of both translation and original
-        source_ids_to_delete.append(source.original_source_id)
+    # Check if this source has any translations (other sources use it as origin)
+    translations = list(SourcesOrigins.select().where(
+        SourcesOrigins.origin_source_id == source_id
+    ))
+    if translations:
+        raise HTTPException(
+            status_code=400,
+            detail=f'Cannot delete source: {len(translations)} translation(s) depend on it'
+        )
 
-    # Delete all segments for these sources
-    Segments.delete().where(Segments.source_id.in_(source_ids_to_delete)).execute()
-    # Delete the sources themselves
-    Sources.delete().where(Sources.id.in_(source_ids_to_delete)).execute()
-    return source_ids_to_delete
+    # Get all segments for this source
+    segment_ids = [seg.id for seg in Segments.select(Segments.id).where(
+        Segments.source_id == source_id
+    )]
+
+    # Check if any segments have translations (other segments use them as origin)
+    if segment_ids:
+        segment_translations = list(SegmentsOrigins.select().where(
+            SegmentsOrigins.origin_segment_id.in_(segment_ids)
+        ))
+        if segment_translations:
+            raise HTTPException(
+                status_code=400,
+                detail=f'Cannot delete source: {len(segment_translations)} segment translation(s) depend on it'
+            )
+
+    # Delete all segment relations for these segments
+    if segment_ids:
+        SegmentsOrigins.delete().where(
+            (SegmentsOrigins.origin_segment_id.in_(segment_ids)) |
+            (SegmentsOrigins.translated_segment_id.in_(segment_ids))
+        ).execute()
+
+    # Delete all source relations for this source
+    SourcesOrigins.delete().where(
+        (SourcesOrigins.origin_source_id == source_id) |
+        (SourcesOrigins.translated_source_id == source_id)
+    ).execute()
+
+    # Delete all segments for this source
+    Segments.delete().where(Segments.source_id == source_id).execute()
+
+    # Delete the source itself
+    Sources.delete().where(Sources.id == source_id).execute()
+
+    return [source_id]
 
 ####### SEGMENTS 
-@app.get('/segments/{source_id}', response_model=list)
-def read_segments(source_id: int, user_info: dict = Depends(get_user_info)):
-    try:
-        # Sub query to get latest segments.
-        subquery = (Segments
-            .select(Segments.id, fn.MAX(Segments.timestamp).alias('latest_timestamp'))
-            .where(Segments.source_id == source_id)
-            .group_by(Segments.id))
-        # Get all latest segments
-        query = (Segments
-            .select(
-                Segments,
-                microseconds(Segments.timestamp, 'timestamp_epoch'),
-            )
-            .where(Segments.source_id == source_id)
-            .join(subquery, on=(
-                (Segments.id == subquery.c.id) &
-                (Segments.timestamp == subquery.c.latest_timestamp)
-            ))
-            .order_by(Segments.order))
-
-        return list(query.dicts())
-        
-    except Exception as e:
-        logger.error("Error fetching segments: %s", e)
-        raise HTTPException(
-            status_code=500, detail=f"Failed to fetch segments: {str(e)}")
-
 # TODO: Refactor segments to have _epoch fields and created_/modified_ fields..
 @app.post('/segments', response_model=list[dict])
-async def save_segments(request: Request, user_info: dict = Depends(get_user_info)):
+async def segments_handler(request: Request, user_info: dict = Depends(get_user_info)):
+    """Fetch or save segments
+    - If body has 'source_ids' key: fetch segments from those sources (empty array = all segments)
+    - Otherwise: save segments
+    """
     try:
         data = await request.json()
-        segments = data.get("segments", [])
 
-        if not isinstance(segments, list):
-            raise HTTPException(status_code=400, detail="Invalid request format - segments must be a list")
+        if 'source_ids' in data:
+            # Fetch segments
+            source_ids = data.get("source_ids", [])
+            # Empty list means all segments
+            return get_latest_segments(source_ids if len(source_ids) > 0 else None)
+        else:
+            # Save segments
+            segments = data.get("segments", [])
 
-        # Add username and timestamp to each segment
-        now = datetime.now(timezone.utc)
-        for segment in segments:
-            segment["username"] = user_info["preferred_username"]
-            segment["timestamp"] = now
+            if not isinstance(segments, list):
+                raise HTTPException(status_code=400, detail="Invalid request format - segments must be a list")
 
-        saved_segments = store_segments(segments)
-        return saved_segments
+            # Add username and timestamp to each segment
+            now = datetime.now(timezone.utc)
+            for segment in segments:
+                segment["username"] = user_info["preferred_username"]
+                segment["timestamp"] = now
+
+            saved_segments = store_segments(segments)
+            return saved_segments
+
     except Exception as e:
         logger.error("Error in /segments: %s", e)
-        raise HTTPException(status_code=500, detail="Failed to store segments")
+        raise HTTPException(status_code=500, detail=f"Failed to process segments: {str(e)}")
+
+@app.post('/segments/origins', response_model=list[dict])
+async def create_segment_origin_links(request: Request, user_info: dict = Depends(get_user_info)):
+    """Create segment origin relations
+
+    Request body: { "relations": [{"origin_segment_id": 1, "origin_segment_timestamp": "2024-01-01T00:00:00Z", "translated_segment_id": 2, "translated_segment_timestamp": "2024-01-01T00:00:00Z"}, ...] }
+    Timestamps can be ISO format strings or epoch microseconds integers.
+    Returns: [{"origin_segment_id": 1, "origin_segment_timestamp": "2024-01-01T00:00:00Z", "translated_segment_id": 2, "translated_segment_timestamp": "2024-01-01T00:00:00Z"}, ...]
+    """
+    try:
+        data = await request.json()
+        relations = data.get("relations", [])
+
+        print(f"DEBUG: Exception type is {type(Exception)} and value is {Exception}")
+        if not isinstance(relations, list):
+            raise HTTPException(status_code=400, detail="relations must be a list")
+
+        created_links = []
+
+        for rel in relations:
+            origin_segment_id = rel.get("origin_segment_id")
+            origin_segment_timestamp = rel.get("origin_segment_timestamp")
+            translated_segment_id = rel.get("translated_segment_id")
+            translated_segment_timestamp = rel.get("translated_segment_timestamp")
+
+            if origin_segment_id is None or origin_segment_timestamp is None or translated_segment_id is None or translated_segment_timestamp is None:
+                raise HTTPException(status_code=400, detail="Each relation must have origin_segment_id, origin_segment_timestamp, translated_segment_id, and translated_segment_timestamp")
+
+            # Convert timestamps to datetime objects (handles both ISO strings and epoch microseconds)
+            origin_segment_timestamp = to_datetime(origin_segment_timestamp)
+            translated_segment_timestamp = to_datetime(translated_segment_timestamp)
+
+            # Get next sequence value for id
+            cursor = db.execute_sql("SELECT nextval('segments_origins_id_seq')")
+            link_id = cursor.fetchone()[0]
+
+            # Create the link
+            segments_origins = SegmentsOrigins.create(
+                id=link_id,
+                origin_segment_id=origin_segment_id,
+                origin_segment_timestamp=origin_segment_timestamp,
+                translated_segment_id=translated_segment_id,
+                translated_segment_timestamp=translated_segment_timestamp,
+            )
+            created_links.append({
+                "origin_segment_id": segments_origins.origin_segment_id,
+                "origin_segment_timestamp": segments_origins.origin_segment_timestamp.isoformat(),
+                "translated_segment_id": segments_origins.translated_segment_id,
+                "translated_segment_timestamp": segments_origins.translated_segment_timestamp.isoformat()
+            })
+
+        logger.info(f"Created {len(created_links)} segment origin link(s)")
+        return created_links
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error creating segment origin links: %s", e)
+        raise HTTPException(status_code=500, detail=f"Failed to create segment origin links: {str(e)}")
 
 ####### TRANSLATION
 @app.post("/translate", response_model=dict)
@@ -237,47 +393,69 @@ def translate_paragraphs_handler(
     try:
         start_time = datetime.now(timezone.utc)
 
-        if not request.paragraphs:
-            raise HTTPException(status_code=400, detail="No paragraphs provided.")
-        
-        if not request.prompt_text or not request.prompt_text.strip():
-            raise HTTPException(status_code=400, detail="Missing prompt_text in request.")
+        required(request.paragraphs, "No paragraphs provided.")
+        required(request.original_language, "Missing original_language in request.")
+        required(request.translate_language, "Missing translate_language in request.")
+
+        if request.additional_sources_languages and (not request.additional_sources_texts or len(request.additional_sources_texts) != len(request.additional_sources_languages)):
+            raise HTTPException(status_code=400, detail="len(additional_sources_texts) should match len(additional_sources_languages).")
 
         translation_service = TranslationService(
             api_key=OPENAI_API_KEY,
-            options=TranslationServiceOptions(),  # Allow setting options via request.
-            prompt_text=request.prompt_text
+            options=TranslationServiceOptions(),
         )
 
-        translated_paragraphs, properties = translation_service.translate_paragraphs(request.paragraphs)
+        result = translation_service.translate_paragraphs(
+            original_language=request.original_language,
+            paragraphs=request.paragraphs,
+            additional_sources_languages=request.additional_sources_languages,
+            additional_sources_texts=request.additional_sources_texts,
+            translate_language=request.translate_language,
+            task_prompt=request.task_prompt,
+        )
+
+        # Convert references_by_language dict to additional_sources_paragraphs list for backward compatibility
+        # The order must match additional_sources_languages
+        additional_sources_paragraphs = []
+        for lang_code in request.additional_sources_languages:
+            lang_name = LANGUAGES.get(lang_code, lang_code)
+            refs = result["references_by_language"].get(lang_name, [])
+            additional_sources_paragraphs.append(refs)
+
         end_time = datetime.now(timezone.utc)
         total_duration = (end_time - start_time).total_seconds()
         logger.info("Total translation time: %.2f seconds for %d paragraphs", total_duration, len(request.paragraphs))
 
         return {
-            "translated_paragraphs": translated_paragraphs,
-            "properties": properties,
-            "total_segments_translated": len(translated_paragraphs),
+            "translated_paragraphs": result["translated_paragraphs"],
+            "additional_sources_paragraphs": additional_sources_paragraphs,
+            "remaining_additional_sources_texts": result["remaining_additional_sources_texts"],
+            "properties": result["properties"],
+            "total_segments_translated": len(result["translated_paragraphs"]),
             "translation_time_seconds": total_duration
         }
 
     except Exception as e:
         logger.error("Error in translation handler: %s", e)
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Translation failed: {str(e)}")
     
 ####### IMPORT/EXPORT
+# TODO: Consider moving this to a frontend library.
 @app.post('/docx2text')
-def extract_segments_handler(file: UploadFile = File(...)):
-    if not file.filename.lower().endswith('.docx'):
-        raise HTTPException(status_code=400, detail="Only .docx files are supported.")
+def extract_paragraphs_handler(files: list[UploadFile] = File(...)):
     try:
-        paragraphs = get_paragraphs_from_file(file)
-        properties = {"segment_type": "file"}
+        results = []
+        for file in files:
+            if not file.filename.lower().endswith('.docx'):
+                raise HTTPException(status_code=400, detail=f"Only .docx files are supported. Invalid file: {file.filename}")
 
-        return  {
-            "paragraphs": paragraphs,
-            "properties": properties
-        }
+            paragraphs = get_paragraphs_from_file(file)
+            results.append(paragraphs)
+
+        return results
+    except HTTPException as e:
+        raise e
     except Exception as e:
         logger.error("Error in /docx2text: %s", e)
         raise HTTPException(status_code=500, detail="Failed to extract segments")
@@ -313,16 +491,21 @@ def export_translation(source_id: int):
 ####### DICTIONARY, RULES, PROMPT.
 @app.post("/prompt", response_model=str)
 async def get_prompt(request: PromptRequest, dict = Depends(get_user_info)):
-    if request.dictionary_id is None and not request.prompt_key:
-        raise HTTPException(status_code=400, detail=f"Either dictionary_id or prompt_key should be set.")
     try:
-        if request.prompt_key:
-            return build_custom_prompt(
-                request.prompt_key,
-                request.original_language,
-                request.translated_language)
+        if request.dictionary_id is not None:
+            return build_prompt_from_dictionary(
+                    request.dictionary_id,
+                    request.dictionary_timestamp)
         else:
-            return build_prompt(request.dictionary_id, request.dictionary_timestamp)
+            # Return default task prompt - validate required fields
+            required(request.original_language, "original_language is required when dictionary_id is not set.")
+            required(request.translated_language, "translated_language is required when dictionary_id is not set.")
+            return get_task_prompt(
+                request.original_language,
+                request.additional_sources_languages,
+                request.translated_language)
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Error getting prompt: %s", e)
         raise HTTPException(status_code=500, detail=f"Failed to get prompt: {str(e)}")
@@ -368,9 +551,12 @@ async def post_dictionary(dictionary: dict, user_info: dict = Depends(get_user_i
 async def create_prompt_dictionary(request: dict, user_info: dict = Depends(get_user_info)):
     try:
         name = request.get("name", None)
-        prompt_key = request.get("prompt_key", None)
         original_language = request.get("original_language", None)
+        additional_sources_languages = request.get("additional_sources_languages", [])
         translated_language = request.get("translated_language", None)
+
+        required(original_language, "original_language is required.")
+        required(translated_language, "translated_language is required.")
 
         timestamp=datetime.now(timezone.utc)
 
@@ -382,39 +568,40 @@ async def create_prompt_dictionary(request: dict, user_info: dict = Depends(get_
             timestamp=timestamp,
             username=user_info['preferred_username'],
             name=name,
+            original_language=original_language,
+            additional_sources_languages=additional_sources_languages,
+            translated_language=translated_language,
         )
 
-        if prompt_key:
-            if not original_language or not translated_language:
-                raise HTTPException(status_code=404, detail='When prompt_key set, original_language and translated_language must be set')
-                
-            cursor = db.execute_sql("SELECT nextval('rule_id_seq')")
-            rule_id = cursor.fetchone()[0]
+        # Create default task prompt rule
+        cursor = db.execute_sql("SELECT nextval('rule_id_seq')")
+        rule_id = cursor.fetchone()[0]
 
-            prompt_rule = Rules.create(
-                id=rule_id,
-                timestamp=timestamp,
-                name="Default prompt " + prompt_key,
-                username=user_info['preferred_username'],
-                dictionary_id=dictionary_id,
-                order=0,
-                type=RULE_TYPE_TEXT,
-                properties={"text": build_custom_prompt(prompt_key, original_language, translated_language, with_segments_suffix=False)},
-            )
+        prompt_rule = Rules.create(
+            id=rule_id,
+            timestamp=timestamp,
+            name="Default task prompt",
+            username=user_info['preferred_username'],
+            dictionary_id=dictionary_id,
+            order=0,
+            type=RULE_TYPE_TEXT,
+            properties={"text": get_task_prompt(original_language, additional_sources_languages, translated_language)},
+        )
 
-            cursor = db.execute_sql("SELECT nextval('rule_id_seq')")
-            rule_id = cursor.fetchone()[0]
+        # Create paragraphs suffix rule
+        cursor = db.execute_sql("SELECT nextval('rule_id_seq')")
+        rule_id = cursor.fetchone()[0]
 
-            segments_rule = Rules.create(
-                id=rule_id,
-                timestamp=timestamp,
-                name="Segments suffix rule.",
-                username=user_info['preferred_username'],
-                dictionary_id=dictionary_id,
-                order=1,
-                type=RULE_TYPE_SEGMENTS_SUFFIX,
-                properties={"text": SEGMENTS_SUFFIX},
-            )
+        paragraphs_rule = Rules.create(
+            id=rule_id,
+            timestamp=timestamp,
+            name="Paragraphs suffix rule.",
+            username=user_info['preferred_username'],
+            dictionary_id=dictionary_id,
+            order=1,
+            type=RULE_TYPE_SEGMENTS_SUFFIX,
+            properties={"text": SEGMENTS_SUFFIX},
+        )
 
         return get_dictionaries(created_dictionary.id, epoch_microseconds(created_dictionary.timestamp))[0]
     except Exception as e:

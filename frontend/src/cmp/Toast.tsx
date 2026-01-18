@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode } from "react";
+import React, { createContext, useCallback, useContext, useState, ReactNode } from "react";
 import { Snackbar, Alert } from "@mui/material";
 
 type Severity = "success" | "error" | "warning" | "info";
@@ -20,9 +20,9 @@ export const ToastProvider: React.FC<ToastProviderProps> = ({ children }) => {
     open: false,
   });
 
-  const showToast = (message: string, severity: Severity) => {
+  const showToast = useCallback((message: string, severity: Severity) => {
     setToast({ message, severity, open: true });
-  };
+  }, []);
   const handleClose = () => setToast({ ...toast, open: false });
 
   return (

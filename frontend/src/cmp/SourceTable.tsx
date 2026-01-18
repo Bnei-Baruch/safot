@@ -21,7 +21,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useAppDispatch } from '../store/store';
 import { deleteSource } from '../store/SourceSlice';
-import { SourcePair } from '../types/frontend-types';
+import { SourceTuple } from '../types/frontend-types';
 import { LANGUAGES } from '../constants/languages';
 import { exportTranslationDocx } from '../services/segment.service';
 import { extractUsername, formatShortDateTime } from './Utils';
@@ -35,7 +35,7 @@ const renderLang = (code: string) => {
 };
 
 interface SourceTableProps {
-  pairs: SourcePair[];
+  tuples: SourceTuple[];
 }
 
 type SortDirection = 'asc' | 'desc';
@@ -72,7 +72,7 @@ const docx = async (sourceId: number, name: string, language: string) => {
 const PREFERRED_ORDER = 'preffered_order';
 const PREFERRED_DIRECTION = 'preffered_direction';
 
-const SourceTable: React.FC<SourceTableProps> = ({ pairs }) => {
+const SourceTable: React.FC<SourceTableProps> = ({ tuples }) => {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
   const [sortField, setSortField] = useState<SortField>(localStorage.getItem(PREFERRED_ORDER) as SortField || 'modified_at');
@@ -91,20 +91,20 @@ const SourceTable: React.FC<SourceTableProps> = ({ pairs }) => {
     }
   };
 
-  const sortedPairs = [...pairs].sort((a, b) => {
+  const sortedTuples = [...tuples].sort((a, b) => {
     const direction = sortDirection === 'asc' ? 1 : -1;
-    
+
     switch (sortField) {
       case 'originalName':
-        return direction * a.original.name.localeCompare(b.original.name);
+        return direction * a.originalSource.name.localeCompare(b.originalSource.name);
       case 'translatedName':
-        return direction * a.original.name.localeCompare(b.original.name);
+        return direction * a.originalSource.name.localeCompare(b.originalSource.name);
       case 'username':
-        return direction * extractUsername(a.original.username).localeCompare(extractUsername(b.original.username));
+        return direction * extractUsername(a.originalSource.username).localeCompare(extractUsername(b.originalSource.username));
       case 'modified_by':
-        return direction * extractUsername(a.original.modified_by).localeCompare(extractUsername(b.original.modified_by));
+        return direction * extractUsername(a.originalSource.modified_by).localeCompare(extractUsername(b.originalSource.modified_by));
       case 'originalLanguage':
-        return direction * a.original.language.localeCompare(b.original.language);
+        return direction * a.originalSource.language.localeCompare(b.originalSource.language);
       case 'translatedLanguage':
         if (!a.translated && !b.translated) return 0;
         if (!a.translated) return 1;
@@ -115,13 +115,13 @@ const SourceTable: React.FC<SourceTableProps> = ({ pairs }) => {
       case 'modified_at':
         return direction * ((a.translated.modified_at_epoch || 0) - (b.translated.modified_at_epoch || 0));
       case 'progress':
-        return direction * ((a.translated.count || 0) / (a.original.count || 1) - (b.translated.count || 0) / (b.original.count || 1));
+        return direction * ((a.translated.count || 0) / (a.originalSource.count || 1) - (b.translated.count || 0) / (b.originalSource.count || 1));
       default:
         return 0;
     }
   });
 
-  if (!pairs.length) {
+  if (!tuples.length) {
     return (
       <Box sx={{ p: 4, textAlign: 'center', color: '#888' }}>
         <Typography variant="h6">No results match your filter.</Typography>
@@ -158,13 +158,13 @@ const SourceTable: React.FC<SourceTableProps> = ({ pairs }) => {
         <TableHead>
           <TableRow>
             <TableCell sx={{ maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              <SortableHeader field="originalName" label="Source" />
+              <SortableHeader field="originalName" label="Origin" />
             </TableCell>
             <TableCell>
               <SortableHeader field="originalLanguage" label="From" />
             </TableCell>
             <TableCell sx={{ maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              <SortableHeader field="translatedName" label="Trnslation" />
+              <SortableHeader field="translatedName" label="Translation" />
             </TableCell>
             <TableCell>
               <SortableHeader field="translatedLanguage" label="To" />
@@ -188,38 +188,49 @@ const SourceTable: React.FC<SourceTableProps> = ({ pairs }) => {
           </TableRow>
         </TableHead>
         <TableBody>
-          {sortedPairs.map(({ original, translated }) => (
-            <TableRow key={translated.id}>
-              <TableCell sx={{ maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {original.name}
-              </TableCell>
-              <TableCell>{renderLang(original.language)}</TableCell>
-              <TableCell sx={{ maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {translated.name}
-               </TableCell>
-              <TableCell>{translated ? renderLang(translated.language) : '-'}</TableCell>
-              <TableCell>{extractUsername(translated.username)}</TableCell>
-              <TableCell>{formatShortDateTime(translated.created_at_epoch || 0)}</TableCell>
-              <TableCell>{extractUsername(translated.modified_by)}</TableCell>
-              <TableCell>{formatShortDateTime(translated.modified_at_epoch || 0)}</TableCell>
-              <TableCell>{translated.count || 0} / {original.count}</TableCell>
-              <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                {translated && (
-                  <IconButton color="primary" onClick={() => navigate(`/source-edit/${translated.id}`)}>
-                    <EditIcon />
+          {sortedTuples.map(({ originalSource, additionalSources, translated }) => {
+            // Build all languages: original first, then additional sources
+            const allLanguages = [originalSource.language, ...additionalSources.map(s => s.language)];
+
+            return (
+              <TableRow key={translated.id}>
+                <TableCell sx={{ maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {originalSource.name}
+                </TableCell>
+                <TableCell>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                    {allLanguages.map((lang, idx) => (
+                      <Box key={idx}>{renderLang(lang)}</Box>
+                    ))}
+                  </Box>
+                </TableCell>
+                <TableCell sx={{ maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {translated.name}
+                </TableCell>
+                <TableCell>{translated ? renderLang(translated.language) : '-'}</TableCell>
+                <TableCell>{extractUsername(translated.username)}</TableCell>
+                <TableCell>{formatShortDateTime(translated.created_at_epoch || 0)}</TableCell>
+                <TableCell>{extractUsername(translated.modified_by)}</TableCell>
+                <TableCell>{formatShortDateTime(translated.modified_at_epoch || 0)}</TableCell>
+                <TableCell>{translated.count || 0} / {originalSource.count}</TableCell>
+                <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                  {translated && (
+                    <IconButton color="primary" onClick={() => navigate(`/source-edit/${translated.id}`)}>
+                      <EditIcon />
+                    </IconButton>
+                  )}
+                  <Button disabled={!translated} onClick={() =>
+                      translated && docx(translated.id, translated.name, translated.language)}>
+                    DOCX
+                  </Button>
+                  <IconButton sx={{ color: 'lightgray' }} disabled={!translated} onClick={() =>
+                      translated && window.confirm(`Are you sure you want to delete ${translated.name}`) && dispatch(deleteSource(translated.id))}>
+                    <DeleteIcon />
                   </IconButton>
-                )}
-                <Button disabled={!translated} onClick={() =>
-                    translated && docx(translated.id, translated.name, translated.language)}>
-                  DOCX
-                </Button>
-                <IconButton sx={{ color: 'lightgray' }} disabled={!translated} onClick={() =>
-                    translated && window.confirm(`Are you sure you want to delete ${translated.name}`) && dispatch(deleteSource(translated.id))}>
-                  <DeleteIcon />
-                </IconButton>
-              </TableCell>
-            </TableRow>
-          ))}
+                </TableCell>
+              </TableRow>
+            );
+          })}
         </TableBody>
       </Table>
     </TableContainer>

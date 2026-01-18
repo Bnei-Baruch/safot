@@ -15,7 +15,7 @@ from services.utils import (
     microseconds,
 )
 
-def get_sources(metadata: bool = False, source_id: int | None = None) -> list[dict]:
+def get_sources(metadata: bool = False, source_ids: list[int] | None = None) -> list[dict]:
     if not metadata:
         query = Sources.select(
             Sources,
@@ -23,8 +23,8 @@ def get_sources(metadata: bool = False, source_id: int | None = None) -> list[di
             microseconds(Sources.modified_at, 'modified_at_epoch'),
             microseconds(Sources.dictionary_timestamp, 'dictionary_timestamp_epoch'),
         )
-        if source_id is not None:
-            query = query.where(Sources.id == source_id)
+        if source_ids is not None and len(source_ids) > 0:
+            query = query.where(Sources.id.in_(source_ids))
 
         sources = list(query.dicts())
         return sources
@@ -35,8 +35,8 @@ def get_sources(metadata: bool = False, source_id: int | None = None) -> list[di
         .select(Segments.order, Segments.source_id)
         .group_by(Segments.order, Segments.source_id)
     )
-    if source_id is not None:
-        query = query.where(unique_segments_per_source.id == source_id)
+    if source_ids is not None and len(source_ids) > 0:
+        unique_segments_per_source = unique_segments_per_source.where(Segments.source_id.in_(source_ids))
 
     query = (
         Sources
@@ -50,12 +50,14 @@ def get_sources(metadata: bool = False, source_id: int | None = None) -> list[di
         .join(unique_segments_per_source, JOIN.LEFT_OUTER, on=(unique_segments_per_source.c.source_id == Sources.id))
         .group_by(Sources.id)
     )
-    if source_id is not None:
-        query = query.where(Sources.id == source_id)
+    if source_ids is not None and len(source_ids) > 0:
+        query = query.where(Sources.id.in_(source_ids))
     return list(query.dicts())
 
 def create_or_update_sources(sources: list[dict], username: str = ""):
-    """Create a new source or update existing and return it as a dictionary"""
+    """Create or update sources and return them as a list of dictionaries"""
+    processed_ids = []
+
     for source_data in sources:
         logging.info("source_data %s", source_data)
         now = datetime.utcnow()
@@ -72,8 +74,7 @@ def create_or_update_sources(sources: list[dict], username: str = ""):
                 modified_at=now,
                 **source_data
             )
-            # Return source with computed fields (like dictionary_timestamp_epoch)
-            return get_sources(source_id=created_source.id)[0]
+            processed_ids.append(created_source.id)
         else:
             source = Sources.get(Sources.id == source_data["id"])
             if username:
@@ -81,5 +82,7 @@ def create_or_update_sources(sources: list[dict], username: str = ""):
                 source.modified_at = now
             apply_dict(source, source_data)
             source.save()
-            # Return source with computed fields (like dictionary_timestamp_epoch)
-            return get_sources(source_id=source.id)[0] 
+            processed_ids.append(source.id)
+
+    # Return all sources with computed fields (like dictionary_timestamp_epoch)
+    return get_sources(source_ids=processed_ids) 

@@ -1,32 +1,33 @@
 import { httpService } from './http.service';
-import { Segment, BuildSegmentParams } from '../types/frontend-types';
+import { Segment } from '../types/frontend-types';
 
 const SEGMENTS = 'segments';
 
-export function buildSegment(params: BuildSegmentParams): Segment {
-  return {
-    text: params.text,
-    source_id: params.source_id,
-    order: params.order,
-    properties: params.properties,
-    id: params.id,
-    original_segment_id: params.original_segment_id,
-    original_segment_timestamp: params.original_segment_timestamp
-  };
+export interface SegmentRelation {
+  origin_segment_id: number;
+  origin_segment_timestamp: string;
+  translated_segment_id: number;
+  translated_segment_timestamp: string;
 }
 
-export async function getSegments(source_id: number): Promise<Segment[]> {
-  return await httpService.get<Segment[]>(`${SEGMENTS}/${source_id}`);
+export async function getSegments(sourceIds?: number[]): Promise<Segment[]> {
+  return await httpService.post<Segment[]>(SEGMENTS, { source_ids: sourceIds || [] });
 }
 
 export async function postSegments(segments: Segment[]): Promise<Segment[]> {
   return await httpService.post<Segment[]>(`${SEGMENTS}`, { segments });
 }
 
-export async function extractParagraphs(file: File,): Promise<{paragraphs: string[], properties: object}> {
+export async function postSegmentOriginLinks(relations: SegmentRelation[]): Promise<SegmentRelation[]> {
+  return await httpService.post(`${SEGMENTS}/origins`, { relations });
+}
+
+export async function extractParagraphs(files: File[]): Promise<string[][]> {
   const formData = new FormData();
-  formData.append("file", file);
-  return await httpService.post("/docx2text", formData);
+  files.forEach(file => {
+    formData.append("files", file);
+  });
+  return await httpService.post<string[][]>("/docx2text", formData);
 }
 
 export async function exportTranslationDocx(source_id: number): Promise<Blob> {

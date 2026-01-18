@@ -38,7 +38,6 @@ import { Dictionary as DictionaryType } from '../types/frontend-types';
 import Dictionary from './Dictionary';
 import LanguageSelector from './LanguageSelector';
 import { useToast } from './Toast';
-import { DEFAULT_PROMPT_KEY } from '../constants/prompts';
 
 const PREFERRED_ORDER = 'dictionaries_preffered_order';
 const PREFERRED_DIRECTION = 'dictionaries_preffered_direction';
@@ -110,7 +109,6 @@ const Dictionaries: React.FC = () => {
     try {
       await dispatch(createPromptDictionary({
         name: dictionaryName.trim(),
-        prompt_key: DEFAULT_PROMPT_KEY,
         original_language: sourceLang,
         translated_language: targetLang,
       })).unwrap();
@@ -251,7 +249,7 @@ const Dictionaries: React.FC = () => {
             dictionary_id={editDictionaryId}
             dictionary_timestamp_epoch={editDictionaryTimestamp}
             dictionaryUpdated={async (newDictionaryTimestampEpoch) => {
-              dispatch(fetchPrompt({dictionary_id: editDictionaryId}));
+              dispatch(fetchPrompt({dictionary_id: editDictionaryId, dictionary_timestamp: newDictionaryTimestampEpoch}));
             }}
           />}
         </DialogContent>
@@ -273,7 +271,7 @@ const Dictionaries: React.FC = () => {
         </DialogTitle>
 
         <DialogContent>
-          <Typography sx={{ whiteSpace: 'pre-line' }}>
+          <Typography sx={{ whiteSpace: 'pre', fontFamily: 'monospace' }}>
             {promptDictionary && promptDictionary.id && promptDictionary.timestamp_epoch &&
              prompts[promptDictionary.id]?.[promptDictionary.timestamp_epoch]}
           </Typography>

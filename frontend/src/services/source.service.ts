@@ -3,16 +3,25 @@ import { Source } from '../types/frontend-types';
 
 const SOURCES = 'sources';
 
-export async function getSources(): Promise<Source[]> {
-  return await httpService.get(SOURCES, { metadata: true });
+export interface SourceRelation {
+  origin_source_id: number;
+  translated_source_id: number;
 }
 
-export async function getSource(sourceId: number): Promise<Source> {
-  return await httpService.get(`${SOURCES}/${sourceId}`);
+export async function getSources(sourceIds?: number[], metadata: boolean = true): Promise<Source[]> {
+  return await httpService.post(`${SOURCES}?metadata=${metadata}`, {source_ids: sourceIds || []});
 }
 
-export async function postSource(source: Partial<Source>): Promise<Source> {
-  return await httpService.post(SOURCES, source);
+export async function getSourceRelations(sourceIds: number[]): Promise<SourceRelation[]> {
+  return await httpService.post(`${SOURCES}/relations`, { source_ids: sourceIds });
+}
+
+export async function postSources(sources: Partial<Source>[]): Promise<Source[]> {
+  return await httpService.post(SOURCES, sources);
+}
+
+export async function postSourceOriginLinks(relations: SourceRelation[]): Promise<SourceRelation[]> {
+  return await httpService.post(`${SOURCES}/origins`, { relations });
 }
 
 export async function delSource(sourceId: number): Promise<any> {

@@ -53,7 +53,6 @@ import { formatShortDateTime } from './Utils';
 
 // Rule type constants (must match backend)
 const RULE_TYPE_TEXT = "text";
-const RULE_TYPE_SEGMENTS_SUFFIX = "segments_suffix";
 // const RULE_TYPE_PROMPT_KEY = "prompt_key";
 
 // We can make the right side panel to be also history for each segment...
@@ -99,10 +98,6 @@ function RuleNode({rule, ruleOrder, totalRules, isOpen, toggle, update, remove, 
     setEditing(false);
   }, [rule, ruleName, prompt, update]);
 
-  // Check if this is a suffix rule
-  const isSuffixRule = rule.type === RULE_TYPE_SEGMENTS_SUFFIX;
-  const isLastRule = ruleOrder === totalRules - 1;
-
   return (
     <>
       <ListItemButton
@@ -116,7 +111,7 @@ function RuleNode({rule, ruleOrder, totalRules, isOpen, toggle, update, remove, 
               e.stopPropagation();
               moveUp(rule);
             }}
-            disabled={ruleOrder === 0 || isSuffixRule || ruleOrder === totalRules - 1}
+            disabled={ruleOrder === 0}
           >
             <ArrowUpwardIcon fontSize="small" />
           </IconButton>
@@ -126,7 +121,7 @@ function RuleNode({rule, ruleOrder, totalRules, isOpen, toggle, update, remove, 
               e.stopPropagation();
               moveDown(rule);
             }}
-            disabled={isLastRule || isSuffixRule || ruleOrder === totalRules - 2}
+            disabled={ruleOrder === totalRules - 1}
           >
             <ArrowDownwardIcon fontSize="small" />
           </IconButton>
@@ -156,7 +151,6 @@ function RuleNode({rule, ruleOrder, totalRules, isOpen, toggle, update, remove, 
             e.stopPropagation();
             remove(rule);
           }}
-          disabled={isSuffixRule}
         >
           {rule.deleted ? <RestoreIcon fontSize="small" /> : <DeleteIcon fontSize="small" />}
         </IconButton>
@@ -207,7 +201,7 @@ function RuleNode({rule, ruleOrder, totalRules, isOpen, toggle, update, remove, 
 const Dictionary: React.FC<{
   dictionary_id: number,
   dictionary_timestamp_epoch: number,
-  dictionaryUpdated: (new_dictionary_timestamp: string) => void,
+  dictionaryUpdated: (new_dictionary_timestamp_epoch: number) => void,
   refresh?: () => void
 }> = ({ dictionary_id, dictionary_timestamp_epoch, dictionaryUpdated, refresh }) => {
   const dispatch = useAppDispatch();
@@ -254,8 +248,8 @@ const Dictionary: React.FC<{
     }
   }, [prompts, dictionary_id, dictionary_timestamp_epoch, showToast]);
 
-  console.log(`Dictionary: ${dictionary && dictionary.modified_at_epoch}`);
-  console.log(`Rules: ${dictionaryRules && dictionaryRules[0] && dictionaryRules[0].properties && dictionaryRules[0].properties.text}`);
+  // console.log(`Dictionary: ${dictionary && dictionary.modified_at_epoch}`);
+  // console.log(`Rules: ${dictionaryRules && dictionaryRules[0] && dictionaryRules[0].properties && dictionaryRules[0].properties.text}`);
 
   const updateRules = useCallback(async (rules: Rule[]) => {
     try {
@@ -278,43 +272,34 @@ const Dictionary: React.FC<{
 
       // All rules in the batch have the same timestamp, use the first one
       const sharedTimestamp = updatedRules[0].timestamp;
+      const sharedTimestampEpoch = updatedRules[0].timestamp_epoch;
       const updatedDictionary = await dispatch(addOrUpdateDictionary({
         ...dictionary,
         username: undefined,
         timestamp: sharedTimestamp,
       })).unwrap();
 
-      if (sharedTimestamp) {
-        dictionaryUpdated(sharedTimestamp);
+      if (sharedTimestampEpoch) {
+        dictionaryUpdated(sharedTimestampEpoch);
       } else {
-        console.error('Expected updated rule timestamp.');
+        console.error('Expected updated rule timestamp_epoch.');
       }
-      console.log(updatedRules, updatedDictionary);
+      // console.log(updatedRules, updatedDictionary);
     } catch (err) {
       console.error('Failed updating rules.');
     }
   }, [dispatch, dictionary, dictionaryUpdated]);
-
-  // Count rules by type
-  const countRulesByType = useCallback((type: string) => {
-    if (!dictionaryRules) return 0;
-    return dictionaryRules.filter(r => r.type === type).length;
-  }, [dictionaryRules]);
 
   // Add a new text rule
   const addRule = useCallback(async () => {
     if (!dictionary || !dictionaryRules) return;
 
     try {
-      // Find the maximum order, but insert before the last rule (which should be suffix)
-      // If there are no rules or only suffix rule, use order 0
-      // Otherwise, use the order of the second-to-last rule + 1
+      // Find the maximum order and add at the end
       let newOrder = 0;
-      if (dictionaryRules.length > 1) {
-        // Insert before the last rule (suffix)
-        newOrder = (dictionaryRules[dictionaryRules.length - 2].order || 0) + 1;
-      } else if (dictionaryRules.length === 1) {
-        newOrder = 0; // Will be inserted before the suffix
+      if (dictionaryRules.length > 0) {
+        const maxOrder = Math.max(...dictionaryRules.map(r => r.order || 0));
+        newOrder = maxOrder + 1;
       }
 
       const newRule: Rule = {
@@ -330,21 +315,7 @@ const Dictionary: React.FC<{
         modified_by: "",
       };
 
-      const rulesToUpdate: Rule[] = [newRule];
-
-      // If we inserted before the last rule, we need to update the suffix rule's order
-      if (dictionaryRules.length > 0) {
-        const lastRule = dictionaryRules[dictionaryRules.length - 1];
-        if (lastRule.type === RULE_TYPE_SEGMENTS_SUFFIX) {
-          rulesToUpdate.push({
-            ...lastRule,
-            order: newOrder + 1,
-          });
-        }
-      }
-
-      // Update all rules in one batch
-      await updateRules(rulesToUpdate);
+      await updateRules([newRule]);
 
       showToast('Rule added successfully', 'success');
     } catch (err) {
@@ -366,17 +337,10 @@ const Dictionary: React.FC<{
 
     // Only validate when deleting (not when undeleting)
     if (isDeleting) {
-      // Cannot delete suffix rules
-      if (rule.type === RULE_TYPE_SEGMENTS_SUFFIX) {
-        showToast('Cannot remove segments suffix rule', 'error');
-        return;
-      }
-
-      // Validate: must keep at least one text rule
-      const textCount = countRulesByType(RULE_TYPE_TEXT);
-
-      if (rule.type === RULE_TYPE_TEXT && textCount <= 1) {
-        showToast('Cannot remove the last text rule', 'error');
+      // Validate: must keep at least one rule
+      const nonDeletedRules = dictionaryRules.filter(r => !r.deleted);
+      if (nonDeletedRules.length <= 1) {
+        showToast('Cannot remove the last rule', 'error');
         return;
       }
 
@@ -397,7 +361,7 @@ const Dictionary: React.FC<{
       console.error(isDeleting ? 'Failed removing rule:' : 'Failed restoring rule:', err);
       showToast(isDeleting ? 'Failed to remove rule' : 'Failed to restore rule', 'error');
     }
-  }, [dictionary, dictionaryRules, countRulesByType, updateRules, showToast]);
+  }, [dictionary, dictionaryRules, updateRules, showToast]);
 
   // Move rule up
   const moveRuleUp = useCallback(async (rule: Rule) => {
@@ -474,10 +438,10 @@ const Dictionary: React.FC<{
                 username: undefined,
                 timestamp: undefined,
               })).unwrap();
-              if (updatedDictionary.timestamp) {
-                dictionaryUpdated(updatedDictionary.timestamp);
+              if (updatedDictionary.timestamp_epoch) {
+                dictionaryUpdated(updatedDictionary.timestamp_epoch);
               } else {
-                console.error('Expecting timestamp after dictionary update for', updatedDictionary);
+                console.error('Expecting timestamp_epoch after dictionary update for', updatedDictionary);
               }
               setTitleEditing("");
             }} size="small">
@@ -488,13 +452,13 @@ const Dictionary: React.FC<{
           </IconButton>
         </>}
         <Box component="span" sx={{ float: 'right' }}>
-          <IconButton onClick={addRule} sx={{ 'padding-top': '6px' }}>
+          <IconButton onClick={addRule} sx={{ paddingTop: '6px' }}>
             <AddIcon />
           </IconButton>
         </Box>
         <Box component="span" sx={{ float: 'right' }}>
           <Tooltip title="Show Prompt">
-            <IconButton onClick={showPrompt} sx={{ 'padding-top': '6px' }}>
+            <IconButton onClick={showPrompt} sx={{ paddingTop: '6px' }}>
               <TextSnippetIcon />
             </IconButton>
           </Tooltip>
@@ -550,7 +514,7 @@ const Dictionary: React.FC<{
       </DialogTitle>
 
       <DialogContent>
-        <Typography sx={{ whiteSpace: 'pre-line' }}>
+        <Typography sx={{ whiteSpace: 'pre', fontFamily: 'monospace' }}>
           {prompts[dictionary_id]?.[dictionary_timestamp_epoch]}
         </Typography>
       </DialogContent>

@@ -26,7 +26,7 @@ def microseconds(field, alias = ''):
 def epoch_microseconds(dt: datetime) -> int:
     if isinstance(dt, str):
         try:
-            dt = datetime.fromisoformat(dt) 
+            dt = datetime.fromisoformat(dt)
         except ValueError:
             raise ValueError(f"Invalid datetime string format: {dt}")
     # Treat naive datetimes as UTC; adjust if you want localtime instead
@@ -38,3 +38,29 @@ def epoch_microseconds(dt: datetime) -> int:
     epoch = datetime(1970, 1, 1, tzinfo=timezone.utc)
     delta = dt - epoch
     return delta // timedelta(microseconds=1)  # exact integer µs
+
+def to_datetime(value) -> datetime:
+    """
+    Convert various timestamp formats to datetime object.
+    Accepts:
+    - datetime object (returned as-is)
+    - ISO format string (e.g., "2024-01-01T00:00:00Z")
+    - Integer epoch microseconds
+    """
+    if isinstance(value, datetime):
+        return value
+
+    if isinstance(value, str):
+        # Parse ISO format string, handle 'Z' suffix
+        try:
+            return datetime.fromisoformat(value.replace('Z', '+00:00'))
+        except ValueError:
+            raise ValueError(f"Invalid datetime string format: {value}")
+
+    if isinstance(value, int):
+        # Convert from epoch microseconds to datetime
+        epoch = datetime(1970, 1, 1, tzinfo=timezone.utc)
+        dt = epoch + timedelta(microseconds=value)
+        return dt.replace(tzinfo=None)  # Remove timezone info to match Peewee storage
+
+    raise ValueError(f"Cannot convert {type(value)} to datetime")
