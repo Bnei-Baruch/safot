@@ -131,6 +131,9 @@ class TranslationServiceOptions(BaseModel):
     # model: str = "gpt-3.5-turbo"
     provider: Provider = Provider.OPENAI
     temperature: float = 0.2
+    # Organization TPM (Tokens Per Minute) rate limit from OpenAI dashboard.
+    # Set to 0 to disable TPM-based limiting (use only model context window).
+    tpm_limit: int = 30000
 
 class ParagraphsTranslateRequest(BaseModel):
     original_language: str

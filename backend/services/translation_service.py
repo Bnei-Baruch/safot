@@ -72,49 +72,121 @@ class TranslationService:
         multiplier = 2 + (num_references * 0.5)  # More references = more output
         return int(base_estimate * multiplier)
 
+    def limit_additional_sources(
+        self,
+        paragraphs: list[str],
+        additional_sources_texts: list[str] | None
+    ) -> list[str] | None:
+        """
+        Limit additional sources text proportional to paragraphs being translated.
+        Uses ADDITIONAL_SOURCES_TEXT_LENGTH_MULTIPLIER to determine max size.
+        """
+        if not additional_sources_texts:
+            return None
+
+        paragraphs_text = "\n".join(paragraphs)
+        max_sources_chars = int(len(paragraphs_text) * ADDITIONAL_SOURCES_TEXT_LENGTH_MULTIPLIER)
+        chars_per_source = max_sources_chars // len(additional_sources_texts)
+
+        return [text[:chars_per_source] for text in additional_sources_texts]
+
     def reduce_paragraphs_to_fit(
         self,
         task_prompt: str,
         paragraphs: list[str],
         additional_sources_texts: list[str] | None = None
-    ) -> tuple[list[str], int]:
+    ) -> tuple[list[str], list[str] | None, int]:
         """
-        Reduces paragraphs until they fit within the model's context window.
+        Reduces paragraphs until they fit within both the model's context window
+        and the organization's TPM rate limit.
+
+        Uses binary search for efficient O(log n) complexity.
 
         Returns:
-            Tuple of (paragraphs that fit, max tokens available for output)
+            Tuple of (paragraphs that fit, limited additional sources, max tokens available for output)
         """
-        paragraphs_to_translate = paragraphs.copy()
         model_limits = self.get_model_token_limit()
         context_window = model_limits["context_window"]
         max_output_tokens = model_limits["max_output_tokens"]
 
-        while paragraphs_to_translate:
+        num_references = len(additional_sources_texts) if additional_sources_texts else 0
+        tpm_limit = self.options.tpm_limit
+
+        # Helper function to check if N paragraphs fit within limits
+        def check_paragraphs_fit(num_paragraphs: int) -> tuple[bool, list[str] | None, int]:
+            """Check if num_paragraphs fit, return (fits, limited_sources, available_output_tokens)"""
+            if num_paragraphs == 0:
+                return False, None, 0
+
+            paragraphs_to_check = paragraphs[:num_paragraphs]
+
+            # Limit additional sources proportional to paragraphs
+            limited_sources = self.limit_additional_sources(paragraphs_to_check, additional_sources_texts)
+
             input_tokens = self.calculate_input_tokens(
-                task_prompt, paragraphs_to_translate, additional_sources_texts
+                task_prompt, paragraphs_to_check, limited_sources
             )
             estimated_output = self.estimate_output_tokens(
-                paragraphs_to_translate,
-                len(additional_sources_texts) if additional_sources_texts else 0
+                paragraphs_to_check, num_references
             )
+            total_tokens = input_tokens + estimated_output
+
+            # Check TPM limit (input + output must fit under TPM)
+            if tpm_limit > 0 and total_tokens > tpm_limit:
+                return False, None, 0
 
             # Check if we fit within context window
-            total_tokens = input_tokens + min(estimated_output, max_output_tokens)
-            if total_tokens < context_window * 0.9:  # 90% safety margin
-                available_output_tokens = min(max_output_tokens, context_window - input_tokens)
-                return paragraphs_to_translate, available_output_tokens
+            context_total = input_tokens + min(estimated_output, max_output_tokens)
+            if context_total >= context_window * 0.9:  # 90% safety margin
+                return False, None, 0
 
-            # Remove last paragraph and try again
-            paragraphs_to_translate = paragraphs_to_translate[:-1]
-            if paragraphs_to_translate:
-                logger.warning("Reduced paragraphs to %d due to token limits", len(paragraphs_to_translate))
+            available_output_tokens = min(max_output_tokens, context_window - input_tokens)
+            return True, limited_sources, available_output_tokens
 
-        raise ValueError("Cannot fit any paragraphs within model context window.")
+        # Binary search for maximum number of paragraphs that fit
+        left, right = 0, len(paragraphs) - 1
+        best_fit = -1
+        best_sources = None
+        best_output_tokens = 0
+
+        while left <= right:
+            mid = (left + right) // 2
+            fits, limited_sources, available_output_tokens = check_paragraphs_fit(mid + 1)
+
+            if fits:
+                # This many paragraphs fit, try more
+                best_fit = mid
+                best_sources = limited_sources
+                best_output_tokens = available_output_tokens
+                left = mid + 1
+                logger.debug("Binary search: %d paragraphs fit, trying more", mid)
+            else:
+                # Too many paragraphs, try fewer
+                right = mid - 1
+                logger.debug("Binary search: %d paragraphs don't fit, trying fewer", mid)
+
+        count = 1 + best_fit
+        if count > 0:
+            if count < len(paragraphs):
+                logger.warning("Reduced paragraphs to %d (from %d) due to limits",
+                             count, len(paragraphs))
+            return paragraphs[:count], best_sources, best_output_tokens
+
+        # No paragraphs fit - calculate token breakdown for error message
+        prompt_tokens = len(self.encoding.encode(task_prompt))
+        sources_tokens = sum(len(self.encoding.encode(t)) for t in (additional_sources_texts or []))
+        raise ValueError(
+            f"Cannot fit any paragraphs within limits. "
+            f"Prompt: {prompt_tokens} tokens, Additional sources: {sources_tokens} tokens, "
+            f"TPM limit: {tpm_limit}, Context window: {context_window}. "
+            f"Try removing additional sources or increasing TPM limit in OpenAI dashboard."
+        )
 
     def send_for_translation(
         self,
         task_prompt: str,
         input_text: str,
+        max_output_tokens: int,
     ) -> list[TranslatedParagraph]:
         """
         Send paragraphs to OpenAI for translation.
@@ -122,12 +194,11 @@ class TranslationService:
         Args:
             task_prompt: Task prompt (Part 1) - system message
             input_text: Input text (Part 2) - user message
+            max_output_tokens: Maximum tokens to allocate for output
 
         Returns:
             List of TranslatedParagraph objects from LLM response
         """
-        model_limits = self.get_model_token_limit()
-        max_output_tokens = min(model_limits["max_output_tokens"], 16000)
 
         messages = [
             {"role": "system", "content": task_prompt},
@@ -276,10 +347,8 @@ class TranslationService:
             batch_num += 1
             logger.info("Processing batch %d, %d paragraphs remaining", batch_num, len(remaining_paragraphs))
 
-            # Determine how many paragraphs fit in this batch. This does NOT
-            # require exact input_text as it estimated additional sources by
-            # multiplying the original paragraphs by a constant.
-            paragraphs_to_translate, _ = self.reduce_paragraphs_to_fit(
+            # Determine how many paragraphs fit and limit additional sources proportionally
+            paragraphs_to_translate, limited_additional_sources_texts, available_output_tokens = self.reduce_paragraphs_to_fit(
                 task_prompt=task_prompt,
                 paragraphs=remaining_paragraphs,
                 additional_sources_texts=remaining_additional_sources_texts if remaining_additional_sources_texts else None
@@ -290,14 +359,15 @@ class TranslationService:
                 original_language=original_language,
                 original_paragraphs=paragraphs_to_translate,
                 additional_sources_languages=additional_sources_languages,
-                additional_sources_texts=remaining_additional_sources_texts,
+                additional_sources_texts=limited_additional_sources_texts,
                 translate_language=translate_language,
             )
 
-            # Send batch for translation
+            # Send batch for translation with dynamically calculated output token budget
             translated_batch = self.send_for_translation(
                 task_prompt=task_prompt,
                 input_text=input_text,
+                max_output_tokens=available_output_tokens,
             )
 
             # Extract results from batch
