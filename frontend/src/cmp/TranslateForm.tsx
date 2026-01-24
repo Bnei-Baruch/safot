@@ -164,8 +164,10 @@ const TranslateForm: React.FC = () => {
       ].sort().join(',');
       if (targetLang !== selectedDictionary.translated_language ||
          sourcesSortedLanguages !== dictionarySortedLanguages) {
-        showToast(`Dictionary languages ${dictionarySortedLanguages} => ${selectedDictionary.translated_language} must match the requested translation languages ${sourcesSortedLanguages} => ${targetLang}.`, 'error');
-        return;
+        // eslint-disable-next-line no-restricted-globals
+        if (!confirm(`Dictionary languages (${dictionarySortedLanguages} => ${selectedDictionary.translated_language}) don't match the requested translation (${sourcesSortedLanguages} => ${targetLang}). Continue anyway?`)) {
+          return;
+        }
       }
     }
     
@@ -184,11 +186,8 @@ const TranslateForm: React.FC = () => {
       showToast('Translation completed', 'success');
       navigate(`/source-edit/${translatedSourceId}`);
     } catch (error) {
-      if (error instanceof Error) {
-        showToast('Error translating file: ' + error.message, 'error');
-      } else {
-        showToast('Error translating file', 'error');
-      }
+      // HTTP errors are handled by the global error interceptor
+      console.error('Translation failed:', error);
     }
   };
 

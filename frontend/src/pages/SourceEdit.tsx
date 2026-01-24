@@ -405,11 +405,8 @@ const SourceEdit: React.FC = () => {
       showToast('Translation completed', 'success');
       dispatch(fetchSegments([translatedSourceId, ...additionalSources.map(s => s.id)]));
     } catch (error) {
-      if (error instanceof Error) {
-        showToast('Error translating more: ' + error.message, 'error');
-      } else {
-        showToast('Error translating more', 'error');
-      }
+      // HTTP errors are handled by the global error interceptor
+      console.error('Translation failed:', error);
     }
   }, [translations, segments, translatedSegmentsByOrder, translateSegments, showToast, dispatch, translatedSourceId, translatedLanguage, originalSource, originalLanguage, originalSegments, additionalSources, additionalSourcesLanguages]);
 
@@ -465,8 +462,8 @@ const SourceEdit: React.FC = () => {
 
       showToast("Translation saved successfully!", "success");
     } catch (error) {
+      // HTTP errors are handled by the global error interceptor
       console.error("Error saving translation:", error);
-      showToast("Failed to save translation. Please try again.", "error");
     }
   }, [dispatch, showToast, translatedSourceId, originalSource]);
 
@@ -493,8 +490,8 @@ const SourceEdit: React.FC = () => {
       document.body.removeChild(a);
       showToast("Document exported successfully!", "success");
     } catch (error) {
+      // HTTP errors are handled by the global error interceptor
       console.error("Error exporting document:", error);
-      showToast("Failed to export document. Please try again.", "error");
     }
   };
 

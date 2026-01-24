@@ -17,6 +17,7 @@ import {
   ListItem,
   ListItemButton,
   ListItemText,
+  MenuItem,
   TextField,
   Tooltip,
   Typography,
@@ -50,6 +51,7 @@ import {
 } from '../store/DictionarySlice';
 import { Rule } from '../types/frontend-types';
 import { formatShortDateTime } from './Utils';
+import { LANGUAGES } from '../constants/languages';
 
 // Rule type constants (must match backend)
 const RULE_TYPE_TEXT = "text";
@@ -211,6 +213,11 @@ const Dictionary: React.FC<{
   const [titleEditing, setTitleEditing] = useState<string>('');
   const [showDeleted, setShowDeleted] = useState<boolean>(false);
   const [promptDialogOpen, setPromptDialogOpen] = useState<boolean>(false);
+  const [languagesEditing, setLanguagesEditing] = useState<{
+    original: string;
+    additional: string[];
+    translated: string;
+  } | null>(null);
 
   useEffect(() => {
     if (dictionary_id && dictionary_timestamp_epoch) {
@@ -484,6 +491,84 @@ const Dictionary: React.FC<{
             </IconButton>}
           </Box>
         </Typography>
+        <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+          {!languagesEditing && <>
+            <Typography variant="body2" color="text.secondary">
+              Languages: {dictionary.original_language || '?'}
+              {dictionary.additional_sources_languages?.length ? ` (+${dictionary.additional_sources_languages.join(', ')})` : ''}
+              {' → '}{dictionary.translated_language || '?'}
+            </Typography>
+            <IconButton onClick={() => setLanguagesEditing({
+              original: dictionary.original_language || '',
+              additional: dictionary.additional_sources_languages || [],
+              translated: dictionary.translated_language || '',
+            })} size="small">
+              <EditOutlinedIcon fontSize="small" />
+            </IconButton>
+          </>}
+          {languagesEditing && <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+            <TextField
+              select
+              label="Original"
+              value={languagesEditing.original}
+              onChange={(e) => setLanguagesEditing({ ...languagesEditing, original: e.target.value })}
+              size="small"
+              sx={{ minWidth: 120 }}
+            >
+              <MenuItem value=""><em>None</em></MenuItem>
+              {LANGUAGES.map((lang) => (
+                <MenuItem key={lang.code} value={lang.code}>{lang.label}</MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              select
+              label="Additional"
+              value={languagesEditing.additional}
+              onChange={(e) => setLanguagesEditing({ ...languagesEditing, additional: typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value })}
+              size="small"
+              sx={{ minWidth: 120 }}
+              SelectProps={{ multiple: true }}
+            >
+              {LANGUAGES.map((lang) => (
+                <MenuItem key={lang.code} value={lang.code}>{lang.label}</MenuItem>
+              ))}
+            </TextField>
+            <Typography>→</Typography>
+            <TextField
+              select
+              label="Translated"
+              value={languagesEditing.translated}
+              onChange={(e) => setLanguagesEditing({ ...languagesEditing, translated: e.target.value })}
+              size="small"
+              sx={{ minWidth: 120 }}
+            >
+              <MenuItem value=""><em>None</em></MenuItem>
+              {LANGUAGES.map((lang) => (
+                <MenuItem key={lang.code} value={lang.code}>{lang.label}</MenuItem>
+              ))}
+            </TextField>
+            <IconButton
+              onClick={async () => {
+                const updatedDictionary = await dispatch(addOrUpdateDictionary({
+                  ...dictionary,
+                  original_language: languagesEditing.original || undefined,
+                  additional_sources_languages: languagesEditing.additional.length > 0 ? languagesEditing.additional : undefined,
+                  translated_language: languagesEditing.translated || undefined,
+                  username: undefined,
+                  timestamp: undefined,
+                })).unwrap();
+                if (updatedDictionary.timestamp_epoch) {
+                  dictionaryUpdated(updatedDictionary.timestamp_epoch);
+                }
+                setLanguagesEditing(null);
+              }} size="small">
+              <CheckOutlinedIcon fontSize="small" />
+            </IconButton>
+            <IconButton onClick={() => setLanguagesEditing(null)} size="small">
+              <CloseOutlinedIcon fontSize="small" />
+            </IconButton>
+          </Box>}
+        </Box>
       </Typography>
     }
     {visibleRules &&
