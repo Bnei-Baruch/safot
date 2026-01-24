@@ -1,3 +1,4 @@
+import threading
 import tiktoken
 import logging
 from openai import OpenAI
@@ -8,6 +9,17 @@ from services.prompt import get_task_prompt, format_input, LANGUAGES
 from typing import List, TypedDict
 import re
 import json
+
+# Global locks per provider to prevent concurrent translations that would exceed TPM limits
+_provider_locks = {}
+_locks_lock = threading.Lock()
+
+def get_provider_lock(provider: str) -> threading.Lock:
+    """Get or create a lock for the given provider (thread-safe)"""
+    with _locks_lock:
+        if provider not in _provider_locks:
+            _provider_locks[provider] = threading.Lock()
+        return _provider_locks[provider]
 
 logger = logging.getLogger(__name__)
 
@@ -67,9 +79,10 @@ class TranslationService:
 
     def estimate_output_tokens(self, original_paragraphs: list[str], num_references: int) -> int:
         """Estimate output tokens based on input size."""
-        # Rough estimate: each paragraph produces ~2x tokens in output (original + translation + references)
+        # Each paragraph produces: original + translation (2x) + references from each source
+        # Each reference can be up to ADDITIONAL_SOURCES_TEXT_LENGTH_MULTIPLIER of paragraph size
         base_estimate = sum(len(self.encoding.encode(p)) for p in original_paragraphs)
-        multiplier = 2 + (num_references * 0.5)  # More references = more output
+        multiplier = 2 + (num_references * ADDITIONAL_SOURCES_TEXT_LENGTH_MULTIPLIER)
         return int(base_estimate * multiplier)
 
     def limit_additional_sources(
@@ -79,14 +92,15 @@ class TranslationService:
     ) -> list[str] | None:
         """
         Limit additional sources text proportional to paragraphs being translated.
-        Uses ADDITIONAL_SOURCES_TEXT_LENGTH_MULTIPLIER to determine max size.
+        Each source gets ADDITIONAL_SOURCES_TEXT_LENGTH_MULTIPLIER * paragraphs_size,
+        allowing each source to contain references for all paragraphs.
         """
         if not additional_sources_texts:
             return None
 
         paragraphs_text = "\n".join(paragraphs)
-        max_sources_chars = int(len(paragraphs_text) * ADDITIONAL_SOURCES_TEXT_LENGTH_MULTIPLIER)
-        chars_per_source = max_sources_chars // len(additional_sources_texts)
+        # Each source should be able to contain references to all paragraphs
+        chars_per_source = int(len(paragraphs_text) * ADDITIONAL_SOURCES_TEXT_LENGTH_MULTIPLIER)
 
         return [text[:chars_per_source] for text in additional_sources_texts]
 
@@ -122,6 +136,9 @@ class TranslationService:
 
             # Limit additional sources proportional to paragraphs
             limited_sources = self.limit_additional_sources(paragraphs_to_check, additional_sources_texts)
+            if limited_sources:
+                source_tokens = [len(self.encoding.encode(s)) for s in limited_sources]
+                logger.debug(f"  Limited sources to: {source_tokens} tokens ({[len(s) for s in limited_sources]} chars)")
 
             input_tokens = self.calculate_input_tokens(
                 task_prompt, paragraphs_to_check, limited_sources
@@ -130,6 +147,10 @@ class TranslationService:
                 paragraphs_to_check, num_references
             )
             total_tokens = input_tokens + estimated_output
+
+            logger.debug(f"Binary search check: {num_paragraphs} paras, "
+                        f"input_tokens={input_tokens}, estimated_output={estimated_output}, "
+                        f"total={total_tokens}, tpm_limit={tpm_limit}")
 
             # Check TPM limit (input + output must fit under TPM)
             if tpm_limit > 0 and total_tokens > tpm_limit:
@@ -159,11 +180,11 @@ class TranslationService:
                 best_sources = limited_sources
                 best_output_tokens = available_output_tokens
                 left = mid + 1
-                logger.debug("Binary search: %d paragraphs fit, trying more", mid)
+                logger.debug("Binary search: %d paragraphs fit, trying more", mid + 1)
             else:
                 # Too many paragraphs, try fewer
                 right = mid - 1
-                logger.debug("Binary search: %d paragraphs don't fit, trying fewer", mid)
+                logger.debug("Binary search: %d paragraphs don't fit, trying fewer", mid + 1)
 
         count = 1 + best_fit
         if count > 0:

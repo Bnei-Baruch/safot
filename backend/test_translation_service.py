@@ -76,7 +76,7 @@ def log_token_info(service, description, task_prompt, paragraphs, additional_sou
     # Estimate output
     num_refs = len(additional_sources) if additional_sources else 0
     estimated_output = service.estimate_output_tokens(paragraphs, num_refs)
-    logger.info(f"Estimated output tokens: {estimated_output}")
+    logger.info(f"Estimated output tokens for {len(paragraphs)} and {num_refs} refereces: {estimated_output}")
     logger.info(f"Total tokens (input + output): {total_input + estimated_output}")
 
 
@@ -112,7 +112,7 @@ class TestLimitAdditionalSources:
         assert len(result[0]) < len(large_source)  # Should be truncated
 
     def test_multiple_additional_sources(self, translation_service):
-        """Should distribute character budget evenly and ensure enough tokens for extraction"""
+        """Each source should get full budget (1.5x input) to reference all paragraphs"""
         paragraphs = create_paragraphs(3, words_per_paragraph=50)
         sources = [create_paragraph(1000) for _ in range(3)]
 
@@ -124,13 +124,13 @@ class TestLimitAdditionalSources:
         assert result is not None
         assert len(result) == 3
 
-        # All should be approximately same length (evenly distributed)
+        # All should be approximately same length (each gets full multiplier budget)
         lengths = [len(s) for s in result]
         logger.info(f"Limited source lengths: {lengths}")
         assert max(lengths) - min(lengths) < 5  # Should be very close
 
         # Each source should have enough tokens to extract references for all paragraphs
-        # Each paragraph needs at least some portion in each source
+        # With ADDITIONAL_SOURCES_TEXT_LENGTH_MULTIPLIER = 1.5, each source gets ~1.5x paragraph tokens
         paragraphs_tokens = sum(len(translation_service.encoding.encode(p)) for p in paragraphs)
         logger.info(f"Total paragraphs tokens: {paragraphs_tokens}")
 
@@ -138,10 +138,10 @@ class TestLimitAdditionalSources:
             source_tokens = len(translation_service.encoding.encode(source))
             logger.info(f"Limited source {i}: {source_tokens} tokens")
             # Each source should have at least as many tokens as all paragraphs combined
-            # (since we want to extract references for each paragraph)
-            # Use 0.49 instead of 0.5 to allow for rounding differences in character-to-token conversion
-            assert source_tokens >= paragraphs_tokens * 0.49, \
-                f"Source {i} has only {source_tokens} tokens, expected at least {paragraphs_tokens * 0.49}"
+            # (since each source needs to contain references for all paragraphs)
+            # Use 0.9 instead of 1.0 to allow for character-to-token conversion variance
+            assert source_tokens >= paragraphs_tokens * 0.9, \
+                f"Source {i} has only {source_tokens} tokens, expected at least {paragraphs_tokens * 0.9}"
 
     def test_small_sources_not_truncated(self, translation_service):
         """Sources smaller than budget should not be modified"""
@@ -483,22 +483,27 @@ class TestTPMLimiting:
 
     def test_very_large_additional_sources_exceed_tpm(self, translation_service):
         """Very large additional sources should trigger TPM limiting"""
-        task_prompt = "Translate:"
-        paragraphs = create_paragraphs(1, words_per_paragraph=10)
+        task_prompt = "Translate: " * 2000
+        paragraphs = create_paragraphs(50, words_per_paragraph=40)
         # Create huge additional sources
         huge_sources = [create_paragraph(10000) for _ in range(3)]
 
         log_token_info(translation_service, "Very large additional sources",
                       task_prompt, paragraphs, huge_sources)
 
-        result_paras, result_sources, _ = translation_service.reduce_paragraphs_to_fit(
+        result_paras, result_sources, available_output_tokens = translation_service.reduce_paragraphs_to_fit(
             task_prompt, paragraphs, huge_sources
         )
 
         logger.info(f"Result: {len(result_paras)} paragraphs")
+        logger.info(f"Available output tokens: {available_output_tokens}")
+        logger.info(f"TPM limit: {translation_service.options.tpm_limit}")
+        logger.info(f"Context window: {translation_service.get_model_token_limit()['context_window']}")
         for i, src in enumerate(result_sources):
-            logger.info(f"Limited source {i}: {len(src)} chars (original: {len(huge_sources[i])} chars)")
-            logger.info(f"  Reduction: {100 * (1 - len(src)/len(huge_sources[i])):.1f}%")
+            src_tokens = len(translation_service.encoding.encode(src))
+            orig_tokens = len(translation_service.encoding.encode(huge_sources[i]))
+            logger.info(f"Limited source {i}: {src_tokens} tokens / {len(src)} chars (original: {orig_tokens} tokens / {len(huge_sources[i])} chars)")
+            logger.info(f"  Token reduction: {100 * (1 - src_tokens/orig_tokens):.1f}%, Char reduction: {100 * (1 - len(src)/len(huge_sources[i])):.1f}%")
 
         # Should still return something (limited)
         assert len(result_paras) > 0
