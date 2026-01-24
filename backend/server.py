@@ -29,7 +29,7 @@ from fastapi import (
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from services.translation_service import TranslationService
+from services.translation_service import TranslationService, get_provider_lock
 from services.segment_service import get_paragraphs_from_file, get_latest_segments, store_segments
 from services.source_service import (
     create_or_update_sources,
@@ -400,19 +400,27 @@ def translate_paragraphs_handler(
         if request.additional_sources_languages and (not request.additional_sources_texts or len(request.additional_sources_texts) != len(request.additional_sources_languages)):
             raise HTTPException(status_code=400, detail="len(additional_sources_texts) should match len(additional_sources_languages).")
 
+        options = TranslationServiceOptions()
         translation_service = TranslationService(
             api_key=OPENAI_API_KEY,
-            options=TranslationServiceOptions(),
+            options=options,
         )
 
-        result = translation_service.translate_paragraphs(
-            original_language=request.original_language,
-            paragraphs=request.paragraphs,
-            additional_sources_languages=request.additional_sources_languages,
-            additional_sources_texts=request.additional_sources_texts,
-            translate_language=request.translate_language,
-            task_prompt=request.task_prompt,
-        )
+        # Acquire provider lock to prevent concurrent translations that would exceed TPM limit
+        provider_lock = get_provider_lock(options.provider.value)
+
+        logger.info(f"User {user_info['preferred_username']} waiting for {options.provider.value} translation lock...")
+        with provider_lock:
+            logger.info(f"User {user_info['preferred_username']} acquired {options.provider.value} translation lock")
+            result = translation_service.translate_paragraphs(
+                original_language=request.original_language,
+                paragraphs=request.paragraphs,
+                additional_sources_languages=request.additional_sources_languages,
+                additional_sources_texts=request.additional_sources_texts,
+                translate_language=request.translate_language,
+                task_prompt=request.task_prompt,
+            )
+            logger.info(f"User {user_info['preferred_username']} released {options.provider.value} translation lock")
 
         # Convert references_by_language dict to additional_sources_paragraphs list for backward compatibility
         # The order must match additional_sources_languages
