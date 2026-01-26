@@ -4,7 +4,7 @@ Tests for TranslationService request sizing and batching logic
 import pytest
 import logging
 from unittest.mock import MagicMock, patch
-from services.translation_service import TranslationService, ADDITIONAL_SOURCES_TEXT_LENGTH_MULTIPLIER
+from services.translation_service import TranslationService, OTHER_LANG_TEXT_MULTIPLIER
 from models import TranslationServiceOptions
 
 # Setup logging for test visibility
@@ -107,7 +107,7 @@ class TestLimitAdditionalSources:
         assert len(result) == 1
         # Should be limited (approximately paragraphs_length * 1.5)
         paragraphs_text = "\n".join(paragraphs)
-        max_chars = int(len(paragraphs_text) * ADDITIONAL_SOURCES_TEXT_LENGTH_MULTIPLIER)
+        max_chars = int(len(paragraphs_text) * OTHER_LANG_TEXT_MULTIPLIER)
         assert len(result[0]) <= max_chars
         assert len(result[0]) < len(large_source)  # Should be truncated
 
@@ -130,7 +130,7 @@ class TestLimitAdditionalSources:
         assert max(lengths) - min(lengths) < 5  # Should be very close
 
         # Each source should have enough tokens to extract references for all paragraphs
-        # With ADDITIONAL_SOURCES_TEXT_LENGTH_MULTIPLIER = 1.5, each source gets ~1.5x paragraph tokens
+        # With OTHER_LANG_TEXT_MULTIPLIER = 1.5, each source gets ~1.5x paragraph tokens
         paragraphs_tokens = sum(len(translation_service.encoding.encode(p)) for p in paragraphs)
         logger.info(f"Total paragraphs tokens: {paragraphs_tokens}")
 
@@ -533,6 +533,55 @@ class TestTPMLimiting:
         assert "Additional sources:" in error_msg
         assert "TPM limit:" in error_msg
         assert "tokens" in error_msg
+
+    def test_estimated_output_exceeds_available_tokens(self, translation_service):
+        """Should reduce paragraphs when estimated output exceeds available output tokens (model max)"""
+        # Create scenario where:
+        # - SMALL prompt (plenty of context window space)
+        # - Many paragraphs with 3 references
+        # - Estimated output (6.5x multiplier) exceeds model's max_output_tokens (16384 for gpt-4o)
+
+        # Tiny prompt - lots of context window available
+        task_prompt = "Translate:"
+
+        # Many paragraphs to create large estimated output
+        # With 3 refs and 6.5x multiplier, we need ~2500 paragraph tokens to hit 16K output
+        paragraphs = create_paragraphs(150, words_per_paragraph=20)
+        sources = [create_paragraph(4500) for _ in range(1)]
+
+        logger.info("\n" + "="*60)
+        logger.info("TEST: Estimated output exceeds available tokens")
+        logger.info("="*60)
+
+        log_token_info(translation_service, "Large prompt scenario", task_prompt, paragraphs, sources)
+
+        result_paras, result_sources, available_output_tokens = translation_service.reduce_paragraphs_to_fit(
+            task_prompt, paragraphs, sources
+        )
+
+        # Calculate what we actually got
+        input_tokens = translation_service.calculate_input_tokens(
+            task_prompt, result_paras, result_sources
+        )
+        estimated_output = translation_service.estimate_output_tokens(
+            result_paras, len(sources)
+        )
+
+        logger.info(f"\nResult: {len(result_paras)} paragraphs (out of {len(paragraphs)})")
+        logger.info(f"Input tokens: {input_tokens}")
+        logger.info(f"Estimated output: {estimated_output}")
+        logger.info(f"Available output tokens: {available_output_tokens}")
+        logger.info(f"Model max output: {translation_service.get_model_token_limit()['max_output_tokens']}")
+        logger.info(f"Context window: {translation_service.get_model_token_limit()['context_window']}")
+
+        # The key assertion: available_output_tokens should be >= estimated_output
+        # Otherwise OpenAI will truncate the response
+        assert available_output_tokens >= estimated_output, \
+            f"Available output tokens ({available_output_tokens}) should be >= estimated output ({estimated_output}) to avoid truncation"
+
+        # Should have reduced paragraphs to make room for output
+        assert len(result_paras) < len(paragraphs), \
+            "Should have reduced paragraph count due to output token constraints"
 
 
 if __name__ == "__main__":
