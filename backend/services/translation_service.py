@@ -23,8 +23,11 @@ def get_provider_lock(provider: str) -> threading.Lock:
 
 logger = logging.getLogger(__name__)
 
-# Constant for calculating additional sources text length relative to original text
-ADDITIONAL_SOURCES_TEXT_LENGTH_MULTIPLIER = 1.5
+# Multiplier for translated text in other languages (including references)
+OTHER_LANG_TEXT_MULTIPLIER = 1.5
+
+# Safety margin for token limits to avoid hitting exact limits (90%)
+SAFETY_MARGIN = 0.9
 
 
 class TranslatedParagraph(TypedDict):
@@ -79,10 +82,10 @@ class TranslationService:
 
     def estimate_output_tokens(self, original_paragraphs: list[str], num_references: int) -> int:
         """Estimate output tokens based on input size."""
-        # Each paragraph produces: original + translation (2x) + references from each source
-        # Each reference can be up to ADDITIONAL_SOURCES_TEXT_LENGTH_MULTIPLIER of paragraph size
+        # Output includes: original text (1x) + translation (OTHER_LANG_TEXT_MULTIPLIER)
+        # + references from each source (num_references * OTHER_LANG_TEXT_MULTIPLIER)
         base_estimate = sum(len(self.encoding.encode(p)) for p in original_paragraphs)
-        multiplier = 2 + (num_references * ADDITIONAL_SOURCES_TEXT_LENGTH_MULTIPLIER)
+        multiplier = 1 + OTHER_LANG_TEXT_MULTIPLIER + (num_references * OTHER_LANG_TEXT_MULTIPLIER)
         return int(base_estimate * multiplier)
 
     def limit_additional_sources(
@@ -92,7 +95,7 @@ class TranslationService:
     ) -> list[str] | None:
         """
         Limit additional sources text proportional to paragraphs being translated.
-        Each source gets ADDITIONAL_SOURCES_TEXT_LENGTH_MULTIPLIER * paragraphs_size,
+        Each source gets OTHER_LANG_TEXT_MULTIPLIER * paragraphs_size,
         allowing each source to contain references for all paragraphs.
         """
         if not additional_sources_texts:
@@ -100,7 +103,7 @@ class TranslationService:
 
         paragraphs_text = "\n".join(paragraphs)
         # Each source should be able to contain references to all paragraphs
-        chars_per_source = int(len(paragraphs_text) * ADDITIONAL_SOURCES_TEXT_LENGTH_MULTIPLIER)
+        chars_per_source = int(len(paragraphs_text) * OTHER_LANG_TEXT_MULTIPLIER)
 
         return [text[:chars_per_source] for text in additional_sources_texts]
 
@@ -150,7 +153,7 @@ class TranslationService:
 
             logger.debug(f"Binary search check: {num_paragraphs} paras, "
                         f"input_tokens={input_tokens}, estimated_output={estimated_output}, "
-                        f"total={total_tokens}, tpm_limit={tpm_limit}")
+                        f"total={total_tokens}, tpm_limit={tpm_limit}, max_output_tokens={max_output_tokens}")
 
             # Check TPM limit (input + output must fit under TPM)
             if tpm_limit > 0 and total_tokens > tpm_limit:
@@ -158,10 +161,18 @@ class TranslationService:
 
             # Check if we fit within context window
             context_total = input_tokens + min(estimated_output, max_output_tokens)
-            if context_total >= context_window * 0.9:  # 90% safety margin
+            if context_total >= context_window * SAFETY_MARGIN:
                 return False, None, 0
 
             available_output_tokens = min(max_output_tokens, context_window - input_tokens)
+
+            # Ensure estimated output doesn't exceed available capacity (with safety margin)
+            # Don't use more than SAFETY_MARGIN of available to avoid truncation
+            if estimated_output > available_output_tokens * SAFETY_MARGIN:
+                logger.debug(f"  Insufficient output tokens: estimated={estimated_output}, "
+                           f"available={available_output_tokens}, safe_limit={available_output_tokens * SAFETY_MARGIN:.0f}")
+                return False, None, 0
+
             return True, limited_sources, available_output_tokens
 
         # Binary search for maximum number of paragraphs that fit
@@ -243,6 +254,13 @@ class TranslationService:
             duration = (datetime.utcnow() - start_time).total_seconds()
             logger.debug("API call duration: %.2f seconds", duration)
 
+            # Log actual token usage
+            if response.usage:
+                logger.info(f"OpenAI token usage: input={response.usage.prompt_tokens}, "
+                          f"output={response.usage.completion_tokens}, "
+                          f"total={response.usage.total_tokens}, "
+                          f"max_tokens_requested={max_output_tokens}")
+
             if not response or not response.choices or not response.choices[0].message.content:
                 logger.error("OpenAI returned an empty response")
                 raise ValueError("OpenAI returned an empty response")
@@ -250,8 +268,20 @@ class TranslationService:
             # Check if response was truncated due to max_tokens limit
             finish_reason = response.choices[0].finish_reason
             if finish_reason == "length":
-                logger.error("Response was truncated due to max_tokens limit")
-                raise ValueError("Translation response was truncated. Try translating fewer paragraphs at a time.")
+                actual_input = response.usage.prompt_tokens if response.usage else "unknown"
+                actual_output = response.usage.completion_tokens if response.usage else "unknown"
+                actual_total = response.usage.total_tokens if response.usage else "unknown"
+
+                error_msg = (
+                    f"Translation response was truncated due to max_tokens limit. "
+                    f"Input tokens: {actual_input}, "
+                    f"Output tokens: {actual_output}/{max_output_tokens}, "
+                    f"Total tokens: {actual_total}. "
+                    f"Try translating fewer paragraphs at a time."
+                )
+
+                logger.error(error_msg)
+                raise ValueError(error_msg)
 
             text = response.choices[0].message.content.strip()
             logger.debug("Raw response:\n%s", text)
