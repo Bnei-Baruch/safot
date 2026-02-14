@@ -29,7 +29,12 @@ from fastapi import (
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from services.translation_service import TranslationService, get_provider_lock
+from services.translation_service import get_provider_lock
+from services.provider_factory import create_translation_provider
+from services.openai_provider import OPENAI_MODELS, PROVIDER_NAME as OPENAI_NAME, PROVIDER_LABEL as OPENAI_LABEL
+from services.claude_provider import CLAUDE_MODELS, PROVIDER_NAME as CLAUDE_NAME, PROVIDER_LABEL as CLAUDE_LABEL
+from services.prompt_helper import get_task_prompt_for_translation
+from services.cost_calculator import calculate_cost
 from services.segment_service import get_paragraphs_from_file, get_latest_segments, store_segments
 from services.source_service import (
     create_or_update_sources,
@@ -55,9 +60,11 @@ from services.utils import (
 )
 
 from models import (
+    CostEstimateRequest,
     Dictionaries,
     ParagraphsTranslateRequest,
     PromptRequest,
+    Provider,
     Rules,
     Segments,
     SegmentsOrigins,
@@ -385,6 +392,30 @@ async def create_segment_origin_links(request: Request, user_info: dict = Depend
         raise HTTPException(status_code=500, detail=f"Failed to create segment origin links: {str(e)}")
 
 ####### TRANSLATION
+@app.get("/providers", response_model=list)
+def get_providers_handler():
+    """
+    Get list of available translation providers and their models.
+    Returns provider metadata for frontend UI.
+    """
+    try:
+        providers = [
+            {
+                "value": OPENAI_NAME,
+                "label": OPENAI_LABEL,
+                "models": OPENAI_MODELS
+            },
+            {
+                "value": CLAUDE_NAME,
+                "label": CLAUDE_LABEL,
+                "models": CLAUDE_MODELS
+            }
+        ]
+        return providers
+    except Exception as e:
+        logger.error("Error getting providers: %s", e)
+        raise HTTPException(status_code=500, detail=f"Failed to get providers: {str(e)}")
+
 @app.post("/translate", response_model=dict)
 def translate_paragraphs_handler(
     request: ParagraphsTranslateRequest,
@@ -400,11 +431,28 @@ def translate_paragraphs_handler(
         if request.additional_sources_languages and (not request.additional_sources_texts or len(request.additional_sources_texts) != len(request.additional_sources_languages)):
             raise HTTPException(status_code=400, detail="len(additional_sources_texts) should match len(additional_sources_languages).")
 
-        options = TranslationServiceOptions()
-        translation_service = TranslationService(
-            api_key=OPENAI_API_KEY,
-            options=options,
+        # Determine provider and model (defaults for backward compatibility)
+        provider = request.provider if request.provider else Provider.OPENAI
+
+        # Set default model based on provider if not specified
+        if request.model:
+            model = request.model
+        else:
+            # Default models per provider
+            if provider == Provider.CLAUDE:
+                model = "claude-sonnet-4-5-20250929"
+            else:
+                model = "gpt-4o"
+
+        options = TranslationServiceOptions(
+            provider=provider,
+            model=model,
+            temperature=0.2,
+            tpm_limit=30000
         )
+
+        # Create provider instance using factory
+        translation_service = create_translation_provider(provider, options)
 
         # Acquire provider lock to prevent concurrent translations that would exceed TPM limit
         provider_lock = get_provider_lock(options.provider.value)
@@ -447,7 +495,106 @@ def translate_paragraphs_handler(
         logger.error("Error in translation handler: %s", e)
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Translation failed: {str(e)}")
-    
+
+
+@app.post("/estimate-cost", response_model=dict)
+def estimate_cost_handler(
+    request: CostEstimateRequest,
+    user_info: dict = Depends(get_user_info)
+):
+    """
+    Estimate translation cost before actual translation.
+
+    Calculates input/output tokens and cost based on paragraphs, additional sources,
+    and selected provider/model. No actual translation is performed.
+
+    Returns:
+        {
+            "input_tokens": int,
+            "output_tokens": int,
+            "input_cost": float,
+            "output_cost": float,
+            "total_cost": float,
+            "currency": "USD",
+            "provider": str,
+            "model": str
+        }
+    """
+    try:
+        required(request.paragraphs, "No paragraphs provided.")
+        required(request.original_language, "Missing original_language in request.")
+        required(request.translate_language, "Missing translate_language in request.")
+
+        if request.additional_sources_languages and (not request.additional_sources_texts or len(request.additional_sources_texts) != len(request.additional_sources_languages)):
+            raise HTTPException(status_code=400, detail="len(additional_sources_texts) should match len(additional_sources_languages).")
+
+        # Determine provider and model (defaults)
+        provider = request.provider if request.provider else Provider.OPENAI
+
+        # Set default model based on provider if not specified
+        if request.model:
+            model = request.model
+        else:
+            # Default models per provider
+            if provider == Provider.CLAUDE:
+                model = "claude-sonnet-4-5-20250929"
+            else:
+                model = "gpt-4o"
+
+        # Get task prompt using centralized helper
+        task_prompt = get_task_prompt_for_translation(
+            custom_prompt=request.task_prompt,
+            dictionary_id=request.dictionary_id,
+            dictionary_timestamp=request.dictionary_timestamp,
+            original_language=request.original_language,
+            additional_sources_languages=request.additional_sources_languages,
+            translate_language=request.translate_language
+        )
+
+        # Create provider instance for token calculation (no API calls, no locking needed)
+        options = TranslationServiceOptions(
+            provider=provider,
+            model=model,
+            temperature=0.2,
+            tpm_limit=30000
+        )
+        provider_instance = create_translation_provider(provider, options)
+
+        # Calculate input tokens
+        input_tokens = provider_instance.calculate_input_tokens(
+            task_prompt,
+            request.paragraphs,
+            request.additional_sources_texts if request.additional_sources_texts else None
+        )
+
+        # Estimate output tokens
+        num_references = len(request.additional_sources_languages) if request.additional_sources_languages else 0
+        output_tokens = provider_instance.estimate_output_tokens(
+            request.paragraphs,
+            num_references
+        )
+
+        # Calculate cost using centralized helper
+        cost_info = calculate_cost(input_tokens, output_tokens, provider, model)
+
+        # Add provider and model info to response
+        cost_info["provider"] = provider.value
+        cost_info["model"] = model
+
+        logger.info(
+            f"Cost estimate for user {user_info['preferred_username']}: "
+            f"{cost_info['total_cost']} USD ({input_tokens} input + {output_tokens} output tokens) "
+            f"using {provider.value}/{model}"
+        )
+
+        return cost_info
+
+    except Exception as e:
+        logger.error("Error in cost estimation handler: %s", e)
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Cost estimation failed: {str(e)}")
+
+
 ####### IMPORT/EXPORT
 # TODO: Consider moving this to a frontend library.
 @app.post('/docx2text')

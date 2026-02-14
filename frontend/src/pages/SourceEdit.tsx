@@ -42,6 +42,7 @@ import { fetchSegments, saveSegments } from '../store/SegmentSlice';
 import { fetchSources, addOrUpdateSources, fetchSourceRelations } from '../store/SourceSlice';
 import { fetchDictionaries } from '../store/DictionarySlice';
 import Dictionary from '../cmp/Dictionary';
+import TranslationDialog from '../cmp/TranslationDialog';
 
 import { formatShortDateTime } from '../cmp/Utils';
 import { useFlow } from '../useFlow';
@@ -294,6 +295,35 @@ const SourceEdit: React.FC = () => {
   // Maps translated segments order to text area value.
   const [translations, setTranslations] = useState<Record<number, string>>({});
   const [titleEditing, setTitleEditing] = useState<{original: string, translated: string} | null>(null);
+  const [translationDialogOpen, setTranslationDialogOpen] = useState<boolean>(false);
+
+  // Extract default provider and model from source properties
+  const defaultProvider = useMemo(() =>
+    translatedSource?.properties?.translation?.provider || 'openai',
+    [translatedSource]
+  );
+  const defaultModel = useMemo(() =>
+    translatedSource?.properties?.translation?.model || 'gpt-4o',
+    [translatedSource]
+  );
+
+  // Calculate untranslated segments for cost estimation
+  const untranslatedSegments = useMemo(() => {
+    const segments = [];
+    for (const originalSegment of originalSegments) {
+      if (!translatedSegmentsByOrder[originalSegment.order] && !translations[originalSegment.order]) {
+        segments.push(originalSegment);
+      }
+    }
+    return segments;
+  }, [originalSegments, translatedSegmentsByOrder, translations]);
+
+  // Get additional sources rest of text for cost estimation
+  const additionalSourcesRestOfText = useMemo(() => {
+    return additionalSources.map(s =>
+      (segments[s.id] || []).find(seg => seg.properties?.segment_type === 'rest_of_text')
+    );
+  }, [additionalSources, segments]);
 
   // Initialize visibility state for all source languages (original + additional sources)
   useEffect(() => {
@@ -371,7 +401,11 @@ const SourceEdit: React.FC = () => {
     }
   }, [translatedSourceId, segments]);
 
-  const handleTranslateMore = useCallback(async () => {
+  const handleTranslateMore = useCallback(async (
+    provider: string,
+    model: string,
+    translateAll: boolean
+  ) => {
     showToast('Translating more...', 'info');
     try {
       if (!originalSource || !originalLanguage || !translatedSourceId) {
@@ -386,7 +420,8 @@ const SourceEdit: React.FC = () => {
         if (!translatedSegmentsByOrder[originalSegment.order] && !translations[originalSegment.order]) {
           segmentsToTranslate.push(originalSegment);
         }
-        if (segmentsToTranslate.length >= 10) {
+        // If not translating all, limit to 10 segments
+        if (!translateAll && segmentsToTranslate.length >= 10) {
           break;
         }
       };
@@ -401,7 +436,16 @@ const SourceEdit: React.FC = () => {
         throw new Error('Missing segments for additional sources');
       }
 
-      await translateSegments(originalLanguage, segmentsToTranslate, additionalSourcesLanguages, additionalSourcesRestOfText as Segment[], translatedLanguage, translatedSourceId);
+      await translateSegments(
+        originalLanguage,
+        segmentsToTranslate,
+        additionalSourcesLanguages,
+        additionalSourcesRestOfText as Segment[],
+        translatedLanguage,
+        translatedSourceId,
+        provider,
+        model
+      );
       showToast('Translation completed', 'success');
       dispatch(fetchSegments([translatedSourceId, ...additionalSources.map(s => s.id)]));
     } catch (error) {
@@ -642,7 +686,7 @@ const SourceEdit: React.FC = () => {
                 <Button
                   variant="contained"
                   color="primary"
-                  onClick={handleTranslateMore}
+                  onClick={() => setTranslationDialogOpen(true)}
                   disabled={!!loadingCount || allTranslated}
                 >
                   <TranslateIcon sx={loadingCount ? {
@@ -842,6 +886,23 @@ const SourceEdit: React.FC = () => {
           />}
         </Container>
       </Split>
+
+      {/* Translation Dialog */}
+      <TranslationDialog
+        open={translationDialogOpen}
+        onClose={() => setTranslationDialogOpen(false)}
+        onTranslate={handleTranslateMore}
+        defaultProvider={defaultProvider}
+        defaultModel={defaultModel}
+        disabled={!!loadingCount}
+        originalLanguage={originalLanguage}
+        paragraphs={untranslatedSegments.map(seg => seg.text)}
+        additionalSourcesLanguages={additionalSourcesLanguages}
+        additionalSourcesTexts={additionalSourcesRestOfText.filter(seg => seg !== undefined).map(seg => seg!.text)}
+        translateLanguage={translatedLanguage}
+        dictionaryId={translatedSource?.dictionary_id}
+        dictionaryTimestamp={translatedSource?.dictionary_timestamp_epoch}
+      />
     </Box>
   );
 };

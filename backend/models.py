@@ -125,13 +125,14 @@ class Provider(str, Enum):
     DEFAULT_DEV = "dev"
     SIMPLE_GPT_1 = "simple-gpt-1"
     OPENAI = "openai"
+    CLAUDE = "claude"
 
 class TranslationServiceOptions(BaseModel):
     model: str = "gpt-4o"
     # model: str = "gpt-3.5-turbo"
     provider: Provider = Provider.OPENAI
     temperature: float = 0.2
-    # Organization TPM (Tokens Per Minute) rate limit from OpenAI dashboard.
+    # TPM (Tokens Per Minute) rate limit for the provider.
     # Set to 0 to disable TPM-based limiting (use only model context window).
     tpm_limit: int = 30000
 
@@ -143,6 +144,26 @@ class ParagraphsTranslateRequest(BaseModel):
     translate_language: str
     # Optional: custom task prompt (Part 1). If not provided, default prompt is used.
     task_prompt: str | None = None
+    # Optional: provider to use (defaults to OpenAI for backward compatibility)
+    provider: Provider | None = None
+    # Optional: model to use (defaults based on provider)
+    model: str | None = None
+
+class CostEstimateRequest(BaseModel):
+    original_language: str
+    paragraphs: List[str]
+    additional_sources_languages: List[str]
+    additional_sources_texts: List[str]
+    translate_language: str
+    # Optional: custom task prompt (Part 1). If not provided, default prompt is used.
+    task_prompt: str | None = None
+    # Optional: provider to use (defaults to OpenAI)
+    provider: Provider | None = None
+    # Optional: model to use (defaults based on provider)
+    model: str | None = None
+    # Optional: dictionary to use for prompt
+    dictionary_id: int | None = None
+    dictionary_timestamp: int | None = None
 
 class PromptRequest(BaseModel):
     dictionary_id: int | None = None
