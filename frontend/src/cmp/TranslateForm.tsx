@@ -29,6 +29,7 @@ import {
   getLatestDictionary,
 } from '../store/DictionarySlice';
 import { Dictionary } from '../types/frontend-types';
+import ProviderModelPicker from './ProviderModelPicker';
 
 const LANG_STYLE = {
   width: 150,
@@ -54,6 +55,8 @@ const TranslateForm: React.FC = () => {
   const {translateFile, loadingCount} = useFlow();
   const {dictionaries, loading, error} = useAppSelector((state: RootState) => state.dictionaries);
   const [selectedDictionary, setSelectedDictionary] = useState<Dictionary | null>(null);
+  const [selectedProvider, setSelectedProvider] = useState<string>('openai');
+  const [selectedModel, setSelectedModel] = useState<string>('gpt-4o');
   const anythingLoading = !!loadingCount || loading;
 
   useEffect(() => {
@@ -182,6 +185,8 @@ const TranslateForm: React.FC = () => {
         all,
         selectedDictionary?.id,
         selectedDictionary?.timestamp,
+        selectedProvider,
+        selectedModel,
       );
       showToast('Translation completed', 'success');
       navigate(`/source-edit/${translatedSourceId}`);
@@ -275,6 +280,16 @@ const TranslateForm: React.FC = () => {
                 </MenuItem>
               ))}
             </TextField>
+
+            {/* Provider & Model Selection */}
+            <ProviderModelPicker
+              selectedProvider={selectedProvider}
+              selectedModel={selectedModel}
+              onProviderChange={setSelectedProvider}
+              onModelChange={setSelectedModel}
+              disabled={!!anythingLoading}
+              size="small"
+            />
 
             {/* Translate Section */}
             {!anythingLoading ? (

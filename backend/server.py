@@ -29,7 +29,10 @@ from fastapi import (
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from services.translation_service import TranslationService, get_provider_lock
+from services.translation_service import get_provider_lock
+from services.provider_factory import create_translation_provider
+from services.openai_provider import OPENAI_MODELS, PROVIDER_NAME as OPENAI_NAME, PROVIDER_LABEL as OPENAI_LABEL
+from services.claude_provider import CLAUDE_MODELS, PROVIDER_NAME as CLAUDE_NAME, PROVIDER_LABEL as CLAUDE_LABEL
 from services.segment_service import get_paragraphs_from_file, get_latest_segments, store_segments
 from services.source_service import (
     create_or_update_sources,
@@ -58,6 +61,7 @@ from models import (
     Dictionaries,
     ParagraphsTranslateRequest,
     PromptRequest,
+    Provider,
     Rules,
     Segments,
     SegmentsOrigins,
@@ -385,6 +389,30 @@ async def create_segment_origin_links(request: Request, user_info: dict = Depend
         raise HTTPException(status_code=500, detail=f"Failed to create segment origin links: {str(e)}")
 
 ####### TRANSLATION
+@app.get("/providers", response_model=list)
+def get_providers_handler():
+    """
+    Get list of available translation providers and their models.
+    Returns provider metadata for frontend UI.
+    """
+    try:
+        providers = [
+            {
+                "value": OPENAI_NAME,
+                "label": OPENAI_LABEL,
+                "models": OPENAI_MODELS
+            },
+            {
+                "value": CLAUDE_NAME,
+                "label": CLAUDE_LABEL,
+                "models": CLAUDE_MODELS
+            }
+        ]
+        return providers
+    except Exception as e:
+        logger.error("Error getting providers: %s", e)
+        raise HTTPException(status_code=500, detail=f"Failed to get providers: {str(e)}")
+
 @app.post("/translate", response_model=dict)
 def translate_paragraphs_handler(
     request: ParagraphsTranslateRequest,
@@ -400,11 +428,28 @@ def translate_paragraphs_handler(
         if request.additional_sources_languages and (not request.additional_sources_texts or len(request.additional_sources_texts) != len(request.additional_sources_languages)):
             raise HTTPException(status_code=400, detail="len(additional_sources_texts) should match len(additional_sources_languages).")
 
-        options = TranslationServiceOptions()
-        translation_service = TranslationService(
-            api_key=OPENAI_API_KEY,
-            options=options,
+        # Determine provider and model (defaults for backward compatibility)
+        provider = request.provider if request.provider else Provider.OPENAI
+
+        # Set default model based on provider if not specified
+        if request.model:
+            model = request.model
+        else:
+            # Default models per provider
+            if provider == Provider.CLAUDE:
+                model = "claude-sonnet-4-5-20250929"
+            else:
+                model = "gpt-4o"
+
+        options = TranslationServiceOptions(
+            provider=provider,
+            model=model,
+            temperature=0.2,
+            tpm_limit=30000
         )
+
+        # Create provider instance using factory
+        translation_service = create_translation_provider(provider, options)
 
         # Acquire provider lock to prevent concurrent translations that would exceed TPM limit
         provider_lock = get_provider_lock(options.provider.value)

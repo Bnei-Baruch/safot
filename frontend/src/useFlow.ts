@@ -279,7 +279,9 @@ export function useFlow() {
     additionalSourcesLanguages: string[],
     additionalSourcesSegments: Segment[],
     translatedLanguage: string,
-    translatedSourceId: number
+    translatedSourceId: number,
+    provider?: string,
+    model?: string,
   ): Promise<number> => {
     setLoadingCount(prev => prev + 1);
     try {
@@ -313,6 +315,8 @@ export function useFlow() {
         additionalSourcesSegments.map(s => s.text),
         translatedLanguage,
         taskPrompt,
+        provider,
+        model,
       );
 
       const properties: Record<string, any> = {
@@ -420,6 +424,8 @@ export function useFlow() {
     translateAll: boolean,
     dictionaryId: undefined|number,
     dictionaryTimestamp: undefined|string,
+    provider?: string,
+    model?: string,
   ) : Promise<number> => {
     console.log(dictionaryId, dictionaryTimestamp)
     setLoadingCount(prev => prev + 1);
@@ -448,6 +454,8 @@ export function useFlow() {
         additionalSourcesSegments,
         translatedLanguage,
         translatedSourceId,
+        provider,
+        model,
       );
     } finally {
       setLoadingCount(prev => prev - 1);

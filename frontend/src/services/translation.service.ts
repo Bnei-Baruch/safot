@@ -9,6 +9,8 @@ export async function translateParagraphs(
   additional_sources_texts: string[],
   translate_language: string,
   task_prompt?: string,
+  provider?: string,
+  model?: string,
 ): Promise<{
   translated_paragraphs: string[];
   additional_sources_paragraphs?: string[][];
@@ -24,6 +26,8 @@ export async function translateParagraphs(
     additional_sources_texts,
     translate_language,
     task_prompt,
+    provider,
+    model,
   });
   return await httpService.post(`${TRANSLATE}`, {
     original_language,
@@ -32,5 +36,7 @@ export async function translateParagraphs(
     additional_sources_texts,
     translate_language,
     task_prompt,
+    provider,
+    model,
   });
 }
