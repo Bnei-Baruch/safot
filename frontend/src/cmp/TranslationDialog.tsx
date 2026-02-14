@@ -10,8 +10,10 @@ import {
   Radio,
   RadioGroup,
   Typography,
+  Divider,
 } from '@mui/material';
 import ProviderModelPicker from './ProviderModelPicker';
+import CostEstimate from './CostEstimate';
 
 interface TranslationDialogProps {
   open: boolean;
@@ -20,6 +22,14 @@ interface TranslationDialogProps {
   defaultProvider?: string;
   defaultModel?: string;
   disabled?: boolean;
+  // Cost estimation parameters
+  originalLanguage?: string;
+  paragraphs?: string[];
+  additionalSourcesLanguages?: string[];
+  additionalSourcesTexts?: string[];
+  translateLanguage?: string;
+  dictionaryId?: number;
+  dictionaryTimestamp?: number;
 }
 
 const TranslationDialog: React.FC<TranslationDialogProps> = ({
@@ -29,6 +39,13 @@ const TranslationDialog: React.FC<TranslationDialogProps> = ({
   defaultProvider = 'openai',
   defaultModel = 'gpt-4o',
   disabled = false,
+  originalLanguage = '',
+  paragraphs = [],
+  additionalSourcesLanguages = [],
+  additionalSourcesTexts = [],
+  translateLanguage = '',
+  dictionaryId,
+  dictionaryTimestamp,
 }) => {
   const [selectedProvider, setSelectedProvider] = useState<string>(defaultProvider);
   const [selectedModel, setSelectedModel] = useState<string>(defaultModel);
@@ -103,6 +120,25 @@ const TranslationDialog: React.FC<TranslationDialogProps> = ({
               />
             </RadioGroup>
           </Box>
+
+          {/* Cost Estimate */}
+          {paragraphs.length > 0 && originalLanguage && translateLanguage && (
+            <>
+              <Divider />
+              <CostEstimate
+                originalLanguage={originalLanguage}
+                paragraphs={translateAll ? paragraphs : paragraphs.slice(0, 10)}
+                additionalSourcesLanguages={additionalSourcesLanguages}
+                additionalSourcesTexts={additionalSourcesTexts}
+                translateLanguage={translateLanguage}
+                provider={selectedProvider}
+                model={selectedModel}
+                dictionaryId={dictionaryId}
+                dictionaryTimestamp={dictionaryTimestamp}
+                disabled={disabled}
+              />
+            </>
+          )}
         </Box>
       </DialogContent>
       <DialogActions sx={{ p: 2 }}>

@@ -3,11 +3,10 @@ import logging
 from openai import OpenAI
 from openai import OpenAIError, APITimeoutError
 from datetime import datetime
-import re
 import json
 
 from models import TranslationServiceOptions
-from services.base_provider import BaseTranslationProvider, TranslatedParagraph, OTHER_LANG_TEXT_MULTIPLIER
+from services.base_provider import BaseTranslationProvider, TranslatedParagraph, OTHER_LANG_TEXT_MULTIPLIER, strip_markdown_json_fences
 
 logger = logging.getLogger(__name__)
 
@@ -179,14 +178,23 @@ class OpenAIProvider(BaseTranslationProvider):
             text = response.choices[0].message.content.strip()
             logger.debug("Raw response:\n%s", text)
 
-            # Extract JSON from markdown code blocks if present
-            json_text = re.sub(r'```(?:json)?\s*', '', text).replace('```', '').strip()
+            # Strip markdown code fences if present
+            json_text = strip_markdown_json_fences(text)
 
             try:
                 response_json = json.loads(json_text)
             except json.JSONDecodeError as e:
                 logger.error("Failed to parse JSON response: %s", e)
-                logger.error("Response text: %s", json_text[:500])
+                # Log the problematic area around the error position
+                error_pos = e.pos if hasattr(e, 'pos') else 0
+                start = max(0, error_pos - 200)
+                end = min(len(json_text), error_pos + 200)
+                context = json_text[start:end]
+                logger.error("Context around error position %d:", error_pos)
+                logger.error("...%s...", context)
+                logger.error("Full response length: %d characters", len(json_text))
+                # Also log first 1000 chars to see structure
+                logger.error("First 1000 chars of response: %s", json_text[:1000])
                 raise ValueError(f"Failed to parse JSON response: {e}")
 
             paragraphs = response_json.get("paragraphs", [])

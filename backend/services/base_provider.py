@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import TypedDict
 import logging
+import re
 from models import TranslationServiceOptions
 from services.prompt import get_task_prompt, format_input, LANGUAGES
 
@@ -11,6 +12,32 @@ OTHER_LANG_TEXT_MULTIPLIER = 1.5
 
 # Safety margin for token limits to avoid hitting exact limits (90%)
 SAFETY_MARGIN = 0.9
+
+
+def strip_markdown_json_fences(text: str) -> str:
+    """
+    Remove markdown code fences from JSON response if present.
+
+    LLMs sometimes wrap JSON in ```json ... ``` despite being instructed not to.
+    This function strips those fences to extract clean JSON.
+
+    Args:
+        text: Raw text that may contain markdown-wrapped JSON
+
+    Returns:
+        Cleaned text with markdown fences removed
+    """
+    json_text = text.strip()
+
+    if json_text.startswith('```'):
+        # Remove opening fence (```json or ```)
+        json_text = re.sub(r'^```(?:json)?\s*', '', json_text)
+        # Remove closing fence
+        json_text = re.sub(r'\s*```\s*$', '', json_text)
+        json_text = json_text.strip()
+        logger.debug("Stripped markdown fences from JSON response")
+
+    return json_text
 
 
 class TranslatedParagraph(TypedDict):

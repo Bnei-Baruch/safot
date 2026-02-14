@@ -307,6 +307,24 @@ const SourceEdit: React.FC = () => {
     [translatedSource]
   );
 
+  // Calculate untranslated segments for cost estimation
+  const untranslatedSegments = useMemo(() => {
+    const segments = [];
+    for (const originalSegment of originalSegments) {
+      if (!translatedSegmentsByOrder[originalSegment.order] && !translations[originalSegment.order]) {
+        segments.push(originalSegment);
+      }
+    }
+    return segments;
+  }, [originalSegments, translatedSegmentsByOrder, translations]);
+
+  // Get additional sources rest of text for cost estimation
+  const additionalSourcesRestOfText = useMemo(() => {
+    return additionalSources.map(s =>
+      (segments[s.id] || []).find(seg => seg.properties?.segment_type === 'rest_of_text')
+    );
+  }, [additionalSources, segments]);
+
   // Initialize visibility state for all source languages (original + additional sources)
   useEffect(() => {
     // First element is original source, rest are additional sources
@@ -877,6 +895,13 @@ const SourceEdit: React.FC = () => {
         defaultProvider={defaultProvider}
         defaultModel={defaultModel}
         disabled={!!loadingCount}
+        originalLanguage={originalLanguage}
+        paragraphs={untranslatedSegments.map(seg => seg.text)}
+        additionalSourcesLanguages={additionalSourcesLanguages}
+        additionalSourcesTexts={additionalSourcesRestOfText.filter(seg => seg !== undefined).map(seg => seg!.text)}
+        translateLanguage={translatedLanguage}
+        dictionaryId={translatedSource?.dictionary_id}
+        dictionaryTimestamp={translatedSource?.dictionary_timestamp_epoch}
       />
     </Box>
   );

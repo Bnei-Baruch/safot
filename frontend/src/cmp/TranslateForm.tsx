@@ -30,6 +30,8 @@ import {
 } from '../store/DictionarySlice';
 import { Dictionary } from '../types/frontend-types';
 import ProviderModelPicker from './ProviderModelPicker';
+import CostEstimate from './CostEstimate';
+import { extractParagraphs } from '../services/segment.service';
 
 const LANG_STYLE = {
   width: 150,
@@ -57,11 +59,38 @@ const TranslateForm: React.FC = () => {
   const [selectedDictionary, setSelectedDictionary] = useState<Dictionary | null>(null);
   const [selectedProvider, setSelectedProvider] = useState<string>('openai');
   const [selectedModel, setSelectedModel] = useState<string>('gpt-4o');
+  const [extractedParagraphs, setExtractedParagraphs] = useState<string[][] | null>(null);
+  const [extractingParagraphs, setExtractingParagraphs] = useState<boolean>(false);
   const anythingLoading = !!loadingCount || loading;
 
   useEffect(() => {
     dispatch(fetchDictionaries());
   }, [dispatch]);
+
+  // Extract paragraphs from uploaded files for cost estimation
+  useEffect(() => {
+    const extractFileParagraphs = async () => {
+      // Only extract if we have files
+      if (files.length === 0) {
+        setExtractedParagraphs(null);
+        return;
+      }
+
+      setExtractingParagraphs(true);
+      try {
+        const allFiles = files.map(f => f.file);
+        const paragraphs = await extractParagraphs(allFiles);
+        setExtractedParagraphs(paragraphs);
+      } catch (error) {
+        console.error('Failed to extract paragraphs for cost estimation:', error);
+        setExtractedParagraphs(null);
+      } finally {
+        setExtractingParagraphs(false);
+      }
+    };
+
+    extractFileParagraphs();
+  }, [files]);
 
   const handleFileClick = () => {
     document.getElementById('fileInput')?.click();
@@ -290,6 +319,26 @@ const TranslateForm: React.FC = () => {
               disabled={!!anythingLoading}
               size="small"
             />
+
+            {/* Cost Estimate */}
+            {extractedParagraphs && extractedParagraphs.length > 0 && originalSourceIndex !== null && (
+              <CostEstimate
+                originalLanguage={files[originalSourceIndex]?.sourceLanguage || ''}
+                paragraphs={translateAll ? extractedParagraphs[originalSourceIndex] : extractedParagraphs[originalSourceIndex]?.slice(0, 10) || []}
+                additionalSourcesLanguages={files
+                  .filter((_, idx) => idx !== originalSourceIndex)
+                  .map(f => f.sourceLanguage)}
+                additionalSourcesTexts={extractedParagraphs
+                  .filter((_, idx) => idx !== originalSourceIndex)
+                  .map(paras => paras.join('\n\n'))}
+                translateLanguage={targetLang || ''}
+                provider={selectedProvider}
+                model={selectedModel}
+                dictionaryId={selectedDictionary?.id}
+                dictionaryTimestamp={selectedDictionary?.timestamp_epoch}
+                disabled={anythingLoading || extractingParagraphs}
+              />
+            )}
 
             {/* Translate Section */}
             {!anythingLoading ? (

@@ -42,6 +42,27 @@ LANGUAGES = {
     "tr": "Turkish",
     "de": "German",
     "it": "Italian",
+    # Additional 20 common languages
+    "bg": "Bulgarian",
+    "hi": "Hindi",
+    "pt": "Portuguese",
+    "zh": "Chinese (Simplified)",
+    "ja": "Japanese",
+    "ko": "Korean",
+    "nl": "Dutch",
+    "pl": "Polish",
+    "el": "Greek",
+    "sv": "Swedish",
+    "cs": "Czech",
+    "ro": "Romanian",
+    "hu": "Hungarian",
+    "da": "Danish",
+    "fi": "Finnish",
+    "no": "Norwegian",
+    "fa": "Persian (Farsi)",
+    "ur": "Urdu",
+    "th": "Thai",
+    "vi": "Vietnamese",
 }
 
 def validate_language(lang_code: str) -> str:

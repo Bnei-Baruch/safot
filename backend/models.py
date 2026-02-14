@@ -149,6 +149,22 @@ class ParagraphsTranslateRequest(BaseModel):
     # Optional: model to use (defaults based on provider)
     model: str | None = None
 
+class CostEstimateRequest(BaseModel):
+    original_language: str
+    paragraphs: List[str]
+    additional_sources_languages: List[str]
+    additional_sources_texts: List[str]
+    translate_language: str
+    # Optional: custom task prompt (Part 1). If not provided, default prompt is used.
+    task_prompt: str | None = None
+    # Optional: provider to use (defaults to OpenAI)
+    provider: Provider | None = None
+    # Optional: model to use (defaults based on provider)
+    model: str | None = None
+    # Optional: dictionary to use for prompt
+    dictionary_id: int | None = None
+    dictionary_timestamp: int | None = None
+
 class PromptRequest(BaseModel):
     dictionary_id: int | None = None
     # If timestamp not set will take latest version of that dictionary.
