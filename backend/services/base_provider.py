@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import TypedDict
+import json
 import logging
 import re
 from models import TranslationServiceOptions
@@ -38,6 +39,59 @@ def strip_markdown_json_fences(text: str) -> str:
         logger.debug("Stripped markdown fences from JSON response")
 
     return json_text
+
+
+def repair_json_quotes(json_text: str) -> str:
+    """
+    Fix unescaped quotes in JSON string values.
+
+    LLMs sometimes generate text with unescaped quotes inside JSON strings,
+    causing parsing errors. This function attempts to repair such issues.
+
+    Strategy:
+    - Find all string values between "key": "value" patterns
+    - Escape any unescaped quotes within the value
+    - Preserve already-escaped quotes (\\")
+
+    Args:
+        json_text: JSON text that may contain unescaped quotes
+
+    Returns:
+        Repaired JSON text with quotes properly escaped
+    """
+    # First try parsing as-is
+    try:
+        json.loads(json_text)
+        return json_text  # No repair needed
+    except json.JSONDecodeError:
+        pass  # Continue with repair
+
+    # Strategy: Replace unescaped quotes with escaped quotes in string values
+    # We need to be careful not to escape quotes that are part of JSON structure
+    # Pattern: Find content between ": " and one of: , } ] \n
+
+    def escape_quotes_in_match(match):
+        """Escape unescaped quotes within a JSON string value"""
+        prefix = match.group(1)  # The ": " part
+        value = match.group(2)    # The string content
+        suffix = match.group(3)   # The ending (comma, brace, bracket, etc.)
+
+        # Escape any unescaped quotes in the value
+        # Replace " with \" but don't replace already-escaped \"
+        repaired_value = re.sub(r'(?<!\\)"', r'\"', value)
+
+        return f'{prefix}{repaired_value}{suffix}'
+
+    # Pattern explanation:
+    # (": ")          - Key-value separator (group 1)
+    # (.*?)           - String content, non-greedy (group 2)
+    # (",|"[\n\s]*[}\]])  - Ending: quote+comma OR quote+newline/space+closing brace/bracket (group 3)
+    pattern = r'(": ")(.+?)(",|"[\n\s]*[}\]])'
+
+    repaired = re.sub(pattern, escape_quotes_in_match, json_text, flags=re.DOTALL)
+
+    logger.debug("Applied JSON quote repair")
+    return repaired
 
 
 class TranslatedParagraph(TypedDict):

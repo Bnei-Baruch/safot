@@ -90,9 +90,9 @@ const CostEstimate: React.FC<CostEstimateProps> = ({
     translateLanguage,
     provider,
     model,
-    paragraphs.length,
-    additionalSourcesLanguages.length,
-    additionalSourcesTexts.length,
+    paragraphs,
+    additionalSourcesLanguages,
+    additionalSourcesTexts,
     dictionaryId,
     dictionaryTimestamp,
   ]);

@@ -7,6 +7,7 @@ import peewee as pw
 from peewee_migrate import Router
 from fastapi.testclient import TestClient
 from models import Dictionaries, Rules, Sources, Segments
+from server import app, get_user_info
 
 
 @pytest.fixture(scope="function")
@@ -58,8 +59,6 @@ def client(test_db):
             response = client.post("/rules", json={"rules": [...]})
             assert response.status_code == 200
     """
-    from server import app
-
     # Mock the get_user_info dependency to bypass Keycloak authentication
     def mock_get_user_info():
         return {
@@ -68,7 +67,6 @@ def client(test_db):
         }
 
     # Override the dependency
-    from server import get_user_info
     app.dependency_overrides[get_user_info] = mock_get_user_info
 
     with TestClient(app) as test_client:
