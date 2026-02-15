@@ -3,8 +3,9 @@ Tests for provider abstraction and both OpenAI/Claude providers
 """
 import pytest
 import logging
+import json
 from unittest.mock import MagicMock, patch
-from services.base_provider import OTHER_LANG_TEXT_MULTIPLIER
+from services.base_provider import OTHER_LANG_TEXT_MULTIPLIER, repair_json_quotes
 from services.openai_provider import OpenAIProvider
 from services.claude_provider import ClaudeProvider
 from models import TranslationServiceOptions, Provider
@@ -483,6 +484,148 @@ class TestProviderComparison:
 
         # Claude should fit more or equal paragraphs
         assert len(claude_result) >= len(openai_result)
+
+
+class TestJSONRepair:
+    """Test JSON repair utilities for handling malformed LLM responses"""
+
+    def test_repair_json_quotes_with_unescaped_quotes(self):
+        """Test repairing JSON with unescaped quotes in string values"""
+        # This is the actual case from the bug report - Bulgarian translation with quotes
+        malformed_json = '''{
+  "paragraphs": [
+    {
+      "id": 1,
+      "original_paragraph": "כתוב: "אין עוד מלבדו"",
+      "references": {
+        "English": "It is written: "There is none else besides Him.""
+      },
+      "translation": "Написано е: „Няма друг освен Него." Това означава, че няма друга сила в света."
+    }
+  ]
+}'''
+
+        # Without repair, this should fail to parse
+        with pytest.raises(json.JSONDecodeError):
+            json.loads(malformed_json)
+
+        # With repair, it should parse successfully
+        repaired = repair_json_quotes(malformed_json)
+        parsed = json.loads(repaired)
+
+        # Verify the structure is correct
+        assert "paragraphs" in parsed
+        assert len(parsed["paragraphs"]) == 1
+        assert parsed["paragraphs"][0]["id"] == 1
+        assert "Написано е:" in parsed["paragraphs"][0]["translation"]
+
+        logger.info("\nSuccessfully repaired JSON with unescaped quotes:")
+        logger.info(f"Original length: {len(malformed_json)}")
+        logger.info(f"Repaired length: {len(repaired)}")
+
+    def test_repair_json_quotes_multiple_paragraphs(self):
+        """Test repairing JSON with multiple paragraphs containing unescaped quotes"""
+        malformed_json = '''{
+  "paragraphs": [
+    {
+      "id": 1,
+      "original_paragraph": "test",
+      "references": {},
+      "translation": "He said "hello" and left."
+    },
+    {
+      "id": 2,
+      "original_paragraph": "test2",
+      "references": {},
+      "translation": "She replied "goodbye" quickly."
+    }
+  ]
+}'''
+
+        # Without repair, should fail
+        with pytest.raises(json.JSONDecodeError):
+            json.loads(malformed_json)
+
+        # With repair, should work
+        repaired = repair_json_quotes(malformed_json)
+        parsed = json.loads(repaired)
+
+        assert len(parsed["paragraphs"]) == 2
+        assert "hello" in parsed["paragraphs"][0]["translation"]
+        assert "goodbye" in parsed["paragraphs"][1]["translation"]
+
+    def test_repair_json_quotes_preserves_valid_json(self):
+        """Test that valid JSON is not modified"""
+        valid_json = '''{
+  "paragraphs": [
+    {
+      "id": 1,
+      "original_paragraph": "test",
+      "references": {},
+      "translation": "This is valid JSON without quotes."
+    }
+  ]
+}'''
+
+        # Should parse without repair
+        original_parsed = json.loads(valid_json)
+
+        # Should also parse after repair (no changes)
+        repaired = repair_json_quotes(valid_json)
+        repaired_parsed = json.loads(repaired)
+
+        # Both should be identical
+        assert original_parsed == repaired_parsed
+
+    def test_repair_json_quotes_preserves_escaped_quotes(self):
+        """Test that already-escaped quotes are preserved"""
+        json_with_escaped = r'''{
+  "paragraphs": [
+    {
+      "id": 1,
+      "original_paragraph": "test",
+      "references": {},
+      "translation": "He said \"hello\" and left."
+    }
+  ]
+}'''
+
+        # Should parse without repair
+        parsed = json.loads(json_with_escaped)
+        assert parsed["paragraphs"][0]["translation"] == 'He said "hello" and left.'
+
+        # Should still parse after repair (no double-escaping)
+        repaired = repair_json_quotes(json_with_escaped)
+        repaired_parsed = json.loads(repaired)
+        assert repaired_parsed["paragraphs"][0]["translation"] == 'He said "hello" and left.'
+
+    def test_repair_json_quotes_mixed_languages(self):
+        """Test repairing JSON with mixed language quotes (Hebrew, Bulgarian, etc.)"""
+        malformed_json = '''{
+  "paragraphs": [
+    {
+      "id": 1,
+      "original_paragraph": "שלום "עולם" בדיקה",
+      "references": {
+        "Bulgarian": "Здравей "свят" тест"
+      },
+      "translation": "Hello "world" test"
+    }
+  ]
+}'''
+
+        # Without repair, should fail
+        with pytest.raises(json.JSONDecodeError):
+            json.loads(malformed_json)
+
+        # With repair, should work
+        repaired = repair_json_quotes(malformed_json)
+        parsed = json.loads(repaired)
+
+        assert parsed["paragraphs"][0]["id"] == 1
+        assert "עולם" in parsed["paragraphs"][0]["original_paragraph"]
+        assert "свят" in parsed["paragraphs"][0]["references"]["Bulgarian"]
+        assert "world" in parsed["paragraphs"][0]["translation"]
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@ from datetime import datetime
 import json
 
 from models import TranslationServiceOptions
-from services.base_provider import BaseTranslationProvider, TranslatedParagraph, OTHER_LANG_TEXT_MULTIPLIER, strip_markdown_json_fences
+from services.base_provider import BaseTranslationProvider, TranslatedParagraph, OTHER_LANG_TEXT_MULTIPLIER, strip_markdown_json_fences, repair_json_quotes
 
 logger = logging.getLogger(__name__)
 
@@ -224,18 +224,26 @@ class ClaudeProvider(BaseTranslationProvider):
             try:
                 response_json = json.loads(json_text)
             except json.JSONDecodeError as e:
-                logger.error("Failed to parse JSON response: %s", e)
+                logger.warning("Failed to parse JSON response: %s", e)
                 # Log the problematic area around the error position
                 error_pos = e.pos if hasattr(e, 'pos') else 0
                 start = max(0, error_pos - 200)
                 end = min(len(json_text), error_pos + 200)
                 context = json_text[start:end]
-                logger.error("Context around error position %d:", error_pos)
-                logger.error("...%s...", context)
-                logger.error("Full response length: %d characters", len(json_text))
-                # Also log first 1000 chars to see structure
-                logger.error("First 1000 chars of response: %s", json_text[:1000])
-                raise ValueError(f"Failed to parse JSON response: {e}")
+                logger.warning("Context around error position %d:", error_pos)
+                logger.warning("...%s...", context)
+
+                # Try to repair common JSON issues (unescaped quotes)
+                logger.info("Attempting to repair JSON with unescaped quotes...")
+                try:
+                    repaired_json = repair_json_quotes(json_text)
+                    response_json = json.loads(repaired_json)
+                    logger.info("Successfully repaired and parsed JSON")
+                except json.JSONDecodeError as repair_error:
+                    logger.error("Failed to repair JSON: %s", repair_error)
+                    logger.error("Full response length: %d characters", len(json_text))
+                    logger.error("First 1000 chars of response: %s", json_text[:1000])
+                    raise ValueError(f"Failed to parse JSON response even after repair: {repair_error}")
 
             paragraphs = response_json.get("paragraphs", [])
             if not paragraphs:
