@@ -17,7 +17,8 @@ services:
       - mynetwork
 
   safot_db:
-    image: postgres:latest
+    # image: postgres:latest
+    image: postgres:15
     container_name: safot_db
     ports:
       - "${PG_PORT}:5432"
