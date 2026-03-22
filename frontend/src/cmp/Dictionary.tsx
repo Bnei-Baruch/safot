@@ -30,7 +30,6 @@ import {
   CheckOutlined as CheckOutlinedIcon,
   CloseOutlined as CloseOutlinedIcon,
   Delete as DeleteIcon,
-  DeleteOutlined as DeleteOutlinedIcon,
   EditOutlined as EditOutlinedIcon,
   ExpandLess as ExpandLessIcon,
   ExpandMore as ExpandMoreIcon,
@@ -469,20 +468,6 @@ const Dictionary: React.FC<{
             </IconButton>
           </Tooltip>
         </Box>
-        <Box component="span" sx={{ float: 'right' }}>
-          <Tooltip title="Show Deleted">
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={showDeleted}
-                  onChange={(e) => setShowDeleted(e.target.checked)}
-                  size="small"
-                />
-              }
-              label={<DeleteOutlinedIcon fontSize="small" sx={{ 'vertical-align': 'sub' }} />}
-            />
-          </Tooltip>
-        </Box>
         <Typography variant="caption" component="div" sx={{ mt: 0.5 }}>
           Version: {formatShortDateTime(dictionary.timestamp_epoch || 0)}
           <Box component="span">
@@ -491,6 +476,18 @@ const Dictionary: React.FC<{
             </IconButton>}
           </Box>
         </Typography>
+        <Box sx={{ mt: 1 }}>
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={showDeleted}
+                onChange={(e) => setShowDeleted(e.target.checked)}
+                size="small"
+              />
+            }
+            label={<Typography variant="body2">Show Deleted Rules</Typography>}
+          />
+        </Box>
         <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
           {!languagesEditing && <>
             <Typography variant="body2" color="text.secondary">

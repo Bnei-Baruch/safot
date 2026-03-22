@@ -43,6 +43,7 @@ import { fetchSources, addOrUpdateSources, fetchSourceRelations } from '../store
 import { fetchDictionaries } from '../store/DictionarySlice';
 import Dictionary from '../cmp/Dictionary';
 import TranslationDialog from '../cmp/TranslationDialog';
+import { DictionarySelector } from '../cmp/DictionarySelector';
 
 import { formatShortDateTime } from '../cmp/Utils';
 import { useFlow } from '../useFlow';
@@ -159,6 +160,7 @@ const SourceEdit: React.FC = () => {
   const translatedSourceId = id ? parseInt(id, 10) : undefined;
 
   const { sources, relations } = useAppSelector((state: RootState) => state.sources);
+  const { dictionaries } = useAppSelector((state: RootState) => state.dictionaries);
 
   // Visibility control state
   const [visibilityMenuOpen, setVisibilityMenuOpen] = useState<boolean>(false);
@@ -357,6 +359,30 @@ const SourceEdit: React.FC = () => {
     }
     return false;
   }, [dispatch]);
+
+  const handleDictionaryChange = useCallback(async (dictionaryId: number | null, timestamp: number | null) => {
+    if (!translatedSource) return;
+
+    await dispatch(addOrUpdateSources([{
+      ...translatedSource,
+      dictionary_id: dictionaryId as any,
+      dictionary_timestamp: timestamp as any,
+      modified_by: undefined,
+      modified_at: undefined,
+    }])).unwrap();
+
+    dispatch(fetchSources([translatedSourceId!]));
+  }, [dispatch, translatedSource, translatedSourceId]);
+
+  const handleDisconnectDictionary = useCallback(async () => {
+    await handleDictionaryChange(null, null);
+  }, [handleDictionaryChange]);
+
+  const handleCreateNewDictionary = useCallback(async () => {
+    if (!translatedSource) return;
+    await createDefaultDict(translatedSource);
+    dispatch(fetchSources([translatedSourceId!]));
+  }, [createDefaultDict, translatedSource, translatedSourceId, dispatch]);
 
   useEffect(() => {
     if (translatedSource && translatedSourceId && checkedDictionaryForSourceId.current !== translatedSourceId) {
@@ -856,15 +882,32 @@ const SourceEdit: React.FC = () => {
           </Box>
         </Container>
         <Container maxWidth="lg"  sx={{ minWidth: '350px', textAlign: 'left' }} className="right-side-pane">
-          {translatedSourceId && translatedSource && !translatedSource.dictionary_id &&
-            <Box>
-              <Typography>Default dictionary was used</Typography>
-              <Button onClick={async () => {
-                await createDefaultDict(translatedSource);
-                dispatch(fetchSources([translatedSourceId]));
-              }}>Create Cutsom Dictionary</Button>
+          {translatedSourceId && translatedSource && originalSource && (
+            <Box sx={{ p: 2, borderBottom: '1px solid #ddd' }}>
+              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                <DictionarySelector
+                  value={translatedSource.dictionary_id}
+                  onChange={handleDictionaryChange}
+                  sourceLanguages={[originalSource.language, ...additionalSourcesLanguages]}
+                  translatedLanguage={translatedLanguage}
+                  dictionaries={dictionaries}
+                  disabled={!!loadingCount}
+                />
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={translatedSource.dictionary_id ? handleDisconnectDictionary : handleCreateNewDictionary}
+                  disabled={!!loadingCount}
+                  sx={{
+                    whiteSpace: 'nowrap',
+                    minWidth: translatedSource.dictionary_id ? '90px' : 'auto'
+                  }}
+                >
+                  {translatedSource.dictionary_id ? 'Disconnect' : 'Create New'}
+                </Button>
+              </Box>
             </Box>
-          }
+          )}
           {translatedSourceId && translatedSource && translatedSource.dictionary_id && <Dictionary
             dictionary_id={translatedSource.dictionary_id}
             dictionary_timestamp_epoch={translatedSource.dictionary_timestamp_epoch}
